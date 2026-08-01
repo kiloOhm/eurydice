@@ -1,0 +1,138 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Everyday run. Optimised with symbols, so the audio engine keeps
+            // up with real time — an unoptimised engine drops buffers.
+            "name": "Eurydice",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Eurydice_artefacts/RelWithDebInfo/Eurydice.app/Contents/MacOS/Eurydice",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "build"
+        },
+        {
+            // Use when you need reliable stepping and no <optimized out>.
+            // Expect audio glitches: the engine is unoptimised here.
+            "name": "Eurydice (unoptimised)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build-debug/Eurydice_artefacts/Debug/Eurydice.app/Contents/MacOS/Eurydice",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "build debug"
+        },
+        {
+            // Uses whatever target CMake Tools has selected in the status bar.
+            "name": "Eurydice (CMake Tools target)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Unit tests",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/EurydiceTests_artefacts/RelWithDebInfo/EurydiceTests",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "build tests"
+        },
+        {
+            // Prompts for a gtest filter, e.g. SequencerEngine.* or
+            // Snapping.MoveSnapsFlushAgainstAnotherPanel
+            "name": "Unit tests (filtered)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/EurydiceTests_artefacts/RelWithDebInfo/EurydiceTests",
+            "args": ["--gtest_filter=${input:testFilter}", "--gtest_break_on_failure"],
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "build tests"
+        },
+        {
+            // Headless checks that print markers instead of needing the UI.
+            // Swap EURYDICE_UICHECK for AUTOPLAY, SCAN, RESETCHECK, or
+            // EDITOR=<channel index|synth> as needed.
+            "name": "Eurydice (headless UI check)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Eurydice_artefacts/RelWithDebInfo/Eurydice.app/Contents/MacOS/Eurydice",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                { "name": "EURYDICE_UICHECK", "value": "1" }
+            ],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "build"
+        },
+        {
+            // Debug a plugin-hosting problem without the scan racing startup.
+            "name": "Eurydice (plugin scan, quits when done)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Eurydice_artefacts/RelWithDebInfo/Eurydice.app/Contents/MacOS/Eurydice",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                { "name": "EURYDICE_SCAN", "value": "1" }
+            ],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "build"
+        },
+        {
+            // For catching a crash in an already-running instance, or one
+            // launched by scripts/e2e_mcp.py.
+            "name": "Attach to running Eurydice",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/build/Eurydice_artefacts/RelWithDebInfo/Eurydice.app/Contents/MacOS/Eurydice",
+            "MIMode": "lldb"
+        },
+        {
+            "name": "MCP server (Node)",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/mcp/index.mjs",
+            "cwd": "${workspaceFolder}/mcp",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
+            "name": "E2E script (Python)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/e2e_mcp.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "preLaunchTask": "build"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "testFilter",
+            "type": "promptString",
+            "description": "gtest filter (e.g. Snapping.* or ProjectModel.SaveLoadRoundTrip)",
+            "default": "*"
+        }
+    ]
+}

@@ -119,6 +119,13 @@ tests/         GoogleTest suite
 todo/          Per-feature status notes
 ```
 
+## Plugins
+
+Eurydice ships no stock effects yet, so start with free VSTs:
+[docs/free-plugins.md](docs/free-plugins.md) lists verified free, Apple-Silicon
+native VST3/AU plugins organised by the FL Studio stock plugin they replace,
+aimed at techno and adjacent hard genres.
+
 ## Licence
 
 GPLv3 — required by the VST3 SDK and Rubber Band, both used under their GPL terms.

@@ -1,0 +1,66 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            // Default build: RelWithDebInfo (optimised, but with symbols).
+            "label": "build",
+            "type": "shell",
+            "command": "cmake --build build",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": "$gcc",
+            "presentation": { "reveal": "silent", "clear": true }
+        },
+        {
+            "label": "build tests",
+            "type": "shell",
+            "command": "cmake --build build --target EurydiceTests",
+            "group": "build",
+            "problemMatcher": "$gcc",
+            "presentation": { "reveal": "silent", "clear": true }
+        },
+        {
+            // Separate unoptimised tree. Stepping through RelWithDebInfo skips
+            // lines and shows <optimized out>; use this when that bites.
+            "label": "configure debug",
+            "type": "shell",
+            "command": "cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug",
+            "problemMatcher": []
+        },
+        {
+            "label": "build debug",
+            "type": "shell",
+            "command": "cmake --build build-debug",
+            "dependsOn": "configure debug",
+            "group": "build",
+            "problemMatcher": "$gcc",
+            "presentation": { "reveal": "silent", "clear": true }
+        },
+        {
+            "label": "run tests",
+            "type": "shell",
+            "command": "./build/EurydiceTests_artefacts/RelWithDebInfo/EurydiceTests",
+            "dependsOn": "build tests",
+            "group": { "kind": "test", "isDefault": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "coverage",
+            "type": "shell",
+            "command": "./scripts/coverage.sh 80",
+            "problemMatcher": []
+        },
+        {
+            "label": "static analysis",
+            "type": "shell",
+            "command": "./scripts/static-analysis.sh build",
+            "problemMatcher": []
+        },
+        {
+            "label": "e2e (MCP)",
+            "type": "shell",
+            "command": "python3 scripts/e2e_mcp.py",
+            "dependsOn": "build",
+            "problemMatcher": []
+        }
+    ]
+}
