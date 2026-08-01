@@ -13,6 +13,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
 
     std::function<void()> onPlay, onStop, onRecordToggled;
     std::function<void (double)> onTempoChanged;
@@ -22,6 +23,7 @@ public:
     // shortcuts and buttons can never disagree about state.
     std::function<void (juce::CommandID)> onPanelToggled;
     std::function<bool (juce::CommandID)> isPanelVisible;
+    std::function<void (juce::CommandID)> onPanelContextMenu;
     void refreshPanelButtons();
 
     // Polled at UI rate for the readouts.

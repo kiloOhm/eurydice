@@ -19,6 +19,8 @@ FloatingPanel::FloatingPanel (const juce::String& t, std::unique_ptr<juce::Compo
     addAndMakeVisible (closeButton);
 
     constrainer.setMinimumSize (240, 140);
+    // Always keep the title bar reachable so a panel can't be lost off-screen.
+    constrainer.setMinimumOnscreenAmounts (titleBarHeight, 80, titleBarHeight, 80);
 
     if (resizable)
     {

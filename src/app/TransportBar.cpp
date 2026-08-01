@@ -60,11 +60,26 @@ TransportBar::TransportBar()
         entry->button.setClickingTogglesState (false);
         entry->button.setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
         entry->button.onClick = [this, command] { if (onPanelToggled) onPanelToggled (command); };
+        // TextButton eats right-clicks, so listen in and handle them here.
+        entry->button.addMouseListener (this, false);
         addAndMakeVisible (entry->button);
         panelButtons.push_back (std::move (entry));
     }
 
     startTimerHz (30);
+}
+
+void TransportBar::mouseDown (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu() || ! onPanelContextMenu)
+        return;
+
+    for (auto& entry : panelButtons)
+        if (e.eventComponent == &entry->button)
+        {
+            onPanelContextMenu (entry->command);
+            return;
+        }
 }
 
 void TransportBar::paint (juce::Graphics& g)

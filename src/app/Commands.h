@@ -20,6 +20,7 @@ enum
     viewPianoRoll,
     viewMixer,
     viewBrowser,
+    viewResetLayout,
 
     transportPlayStop,
     transportRewind,

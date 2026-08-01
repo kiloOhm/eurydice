@@ -51,6 +51,11 @@ for brightness and media by default — either use `Fn`+the key, or turn on
 `⌘N`/`⌘O`/`⌘S`/`⇧⌘S` project · `⌘R` export · `⌘Z`/`⇧⌘Z` undo/redo ·
 `⌘,` audio settings · `Z`–`M` and `Q`–`P` rows play notes · `,`/`.` shift octave.
 
+Right-click a panel button to reset that panel's position (or all of them);
+*View → Reset Panel Positions* does the same. Panels also can't be dragged
+fully off-screen, and double-clicking a title bar maximises it. Hold shift
+while dragging to bypass snapping.
+
 Click a channel name to open its editor (sampler: sample slot, root note, ADSR,
 filter, one-shot; synth: oscillators, filter, envelope, keyboard). Right-click a
 channel for piano roll, routing, and automation. Double-click a pattern clip in

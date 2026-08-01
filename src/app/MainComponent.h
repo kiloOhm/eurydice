@@ -44,6 +44,9 @@ public:
 
 private:
     void layoutDefaultPanelPositions();
+    juce::Rectangle<int> defaultBoundsFor (const FloatingPanel*) const;
+    void resetPanelPosition (FloatingPanel*);
+    void showPanelContextMenu (juce::CommandID);
     void showAudioSettings();
     void showExportDialog();
     void saveProject (bool forceChooser);

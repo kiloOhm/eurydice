@@ -62,6 +62,7 @@ MainComponent::MainComponent()
     {
         commandManager.invokeDirectly (id, false);
     };
+    transportBar.onPanelContextMenu = [this] (juce::CommandID id) { showPanelContextMenu (id); };
     transportBar.isPanelVisible = [this] (juce::CommandID id)
     {
         auto* panel = panelForCommand (id);
@@ -179,6 +180,25 @@ MainComponent::MainComponent()
         });
     }
 
+    // EURYDICE_RESETCHECK=1 drags a panel off-screen and resets it.
+    if (juce::SystemStats::getEnvironmentVariable ("EURYDICE_RESETCHECK", "") == "1")
+    {
+        juce::Timer::callAfterDelay (600, [this]
+        {
+            const auto expected = defaultBoundsFor (mixerPanel.get());
+            mixerPanel->setVisible (true);
+            mixerPanel->setBounds (-4000, -3000, 400, 300);
+            std::cout << "LOST " << mixerPanel->getBounds().toString() << "\n" << std::flush;
+
+            commandManager.invokeDirectly (CommandIDs::viewResetLayout, false);
+            std::cout << "AFTER_RESET " << mixerPanel->getBounds().toString()
+                      << " expected " << expected.toString()
+                      << " match=" << (mixerPanel->getBounds() == expected ? 1 : 0)
+                      << " visible=" << (mixerPanel->isVisible() ? 1 : 0) << "\n" << std::flush;
+            juce::JUCEApplication::getInstance()->systemRequestedQuit();
+        });
+    }
+
     // Debug hook: EURYDICE_UICHECK=1 exercises the menu model and the
     // channel-editor route, printing what a user would be able to reach.
     if (juce::SystemStats::getEnvironmentVariable ("EURYDICE_UICHECK", "") == "1")
@@ -280,6 +300,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         menu.addCommandItem (&commandManager, CommandIDs::viewMixer);
         menu.addSeparator();
         menu.addCommandItem (&commandManager, CommandIDs::viewBrowser);
+        menu.addSeparator();
+        menu.addCommandItem (&commandManager, CommandIDs::viewResetLayout);
     }
     else if (index == 3)
     {
@@ -315,6 +337,7 @@ void MainComponent::getAllCommands (juce::Array<juce::CommandID>& commands)
         CommandIDs::editUndo, CommandIDs::editRedo,
         CommandIDs::viewPlaylist, CommandIDs::viewChannelRack,
         CommandIDs::viewPianoRoll, CommandIDs::viewMixer, CommandIDs::viewBrowser,
+        CommandIDs::viewResetLayout,
         CommandIDs::transportPlayStop, CommandIDs::transportRewind,
         CommandIDs::transportToggleSongMode, CommandIDs::transportToggleRecord,
         CommandIDs::optionsAudioSettings, CommandIDs::optionsScanPlugins });
@@ -386,6 +409,11 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setInfo ("Browser", "Show or hide the browser", "View", 0);
             info.addDefaultKeypress ('b', cmd);
             info.setTicked (browserVisible);
+            break;
+
+        case CommandIDs::viewResetLayout:
+            info.setInfo ("Reset Panel Positions", "Move every panel back to its default place",
+                          "View", 0);
             break;
 
         case CommandIDs::transportPlayStop:
@@ -469,6 +497,14 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
             resized();
             transportBar.refreshPanelButtons();
             commandManager.commandStatusChanged();
+            return true;
+
+        case CommandIDs::viewResetLayout:
+            layoutDefaultPanelPositions();
+            for (auto* panel : { playlistPanel.get(), channelRackPanel.get(),
+                                 pianoRollPanel.get(), mixerPanel.get() })
+                panel->toFront (false);
+            transportBar.refreshPanelButtons();
             return true;
 
         case CommandIDs::transportPlayStop:
@@ -734,17 +770,62 @@ bool MainComponent::keyStateChanged (bool)
     return handled;
 }
 
-void MainComponent::layoutDefaultPanelPositions()
+juce::Rectangle<int> MainComponent::defaultBoundsFor (const FloatingPanel* panel) const
 {
     const int w = desktop.getWidth();
     const int h = desktop.getHeight();
-
     const auto wf = (float) w;
     const auto hf = (float) h;
 
-    playlistPanel->setBounds (juce::jmax (0, w - (int) (wf * 0.62f) - 12), 12,
-                              (int) (wf * 0.62f), (int) (hf * 0.55f));
-    channelRackPanel->setBounds (12, 12, 700, 460);
-    pianoRollPanel->setBounds (60, 80, (int) (wf * 0.7f), (int) (hf * 0.65f));
-    mixerPanel->setBounds (40, h - 340 - 20, w - 80, 340);
+    if (panel == playlistPanel.get())
+        return { juce::jmax (0, w - (int) (wf * 0.62f) - 12), 12,
+                 (int) (wf * 0.62f), (int) (hf * 0.55f) };
+    if (panel == channelRackPanel.get())
+        return { 12, 12, 700, 460 };
+    if (panel == pianoRollPanel.get())
+        return { 60, 80, (int) (wf * 0.7f), (int) (hf * 0.65f) };
+    if (panel == mixerPanel.get())
+        return { 40, juce::jmax (0, h - 360), w - 80, 340 };
+
+    return { 40, 40, 640, 420 };
+}
+
+void MainComponent::layoutDefaultPanelPositions()
+{
+    for (auto* panel : { playlistPanel.get(), channelRackPanel.get(),
+                         pianoRollPanel.get(), mixerPanel.get() })
+        panel->setBounds (defaultBoundsFor (panel));
+}
+
+void MainComponent::resetPanelPosition (FloatingPanel* panel)
+{
+    if (panel == nullptr)
+        return;
+    panel->setBounds (defaultBoundsFor (panel));
+    panel->bringToFrontAndShow();
+    transportBar.refreshPanelButtons();
+}
+
+void MainComponent::showPanelContextMenu (juce::CommandID commandID)
+{
+    auto* panel = panelForCommand (commandID);
+
+    juce::PopupMenu menu;
+    if (panel != nullptr)
+    {
+        menu.addItem (1, panel->isVisible() ? "Hide" : "Show");
+        menu.addSeparator();
+        menu.addItem (2, "Reset position");
+    }
+    menu.addItem (3, "Reset all panel positions");
+
+    menu.showMenuAsync ({}, [this, commandID, panel] (int result)
+    {
+        if (result == 1)
+            commandManager.invokeDirectly (commandID, false);
+        else if (result == 2)
+            resetPanelPosition (panel);
+        else if (result == 3)
+            commandManager.invokeDirectly (CommandIDs::viewResetLayout, false);
+    });
 }
