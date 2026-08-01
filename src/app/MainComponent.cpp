@@ -142,7 +142,9 @@ MainComponent::MainComponent()
     const auto shotPath = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SCREENSHOT", "");
     if (shotPath.isNotEmpty())
     {
-        juce::Timer::callAfterDelay (1500, [this, shotPath]
+        const auto shotDelay = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SCREENSHOT_DELAY", "1500")
+                                   .getIntValue();
+        juce::Timer::callAfterDelay (shotDelay, [this, shotPath]
         {
             // If a separate editor window is open, capture that instead — it
             // is what the check is about.

@@ -17,6 +17,19 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
         if (onSelected) onSelected (getChannelId());
         if (onOpenEditor) onOpenEditor (channel);
     };
+    // The button would otherwise swallow right-clicks, so route its mouse
+    // events here too and handle the context menu ourselves.
+    nameButton.addMouseListener (this, false);
+
+    insertButton.setWantsKeyboardFocus (false);
+    insertButton.setTooltip ("Mixer insert this channel is routed to");
+    insertButton.onClick = [this]
+    {
+        if (onSelected) onSelected (getChannelId());
+        if (onWantsInsertMenu) onWantsInsertMenu (channel);
+    };
+    insertButton.addMouseListener (this, false);
+    addAndMakeVisible (insertButton);
 
     auto initKnob = [this] (juce::Slider& k, const juce::Identifier& prop, double min, double max)
     {
@@ -57,6 +70,11 @@ void ChannelRow::setPlayStep (int step)
 void ChannelRow::refreshFromModel()
 {
     nameButton.setButtonText (channel[ids::name].toString());
+
+    const int insertIndex = channel[ids::insertIndex];
+    insertButton.setButtonText (insertIndex == 0 ? "MST" : juce::String (insertIndex));
+    insertButton.setColour (juce::TextButton::textColourOffId,
+                            insertIndex == 0 ? theme::textFaint : theme::secondary);
     const bool muted = channel[ids::mute];
     muteLed.setToggleState (! muted, juce::dontSendNotification);
     muteLed.setColour (juce::TextButton::buttonColourId,    muted ? theme::ledOff : theme::ledGreen);
@@ -152,21 +170,36 @@ void ChannelRow::resized()
     auto r = getLocalBounds();
     muteLed.setBounds (r.removeFromLeft (18).reduced (3, 9));
     r.removeFromLeft (4);
-    nameButton.setBounds (r.removeFromLeft (130).reduced (0, 3));
+    nameButton.setBounds (r.removeFromLeft (118).reduced (0, 3));
     r.removeFromLeft (4);
     panKnob.setBounds (r.removeFromLeft (26).reduced (1));
     volKnob.setBounds (r.removeFromLeft (26).reduced (1));
+    r.removeFromLeft (4);
+    insertButton.setBounds (r.removeFromLeft (40).reduced (0, 5));
 }
 
 void ChannelRow::mouseDown (const juce::MouseEvent& e)
 {
-    if (e.mods.isPopupMenu() && e.getPosition().x < fixedLeftWidth)
+    // Events forwarded from the child buttons arrive with their coordinates,
+    // so translate before deciding where the click landed.
+    const auto pos = e.eventComponent == this ? e.getPosition()
+                                              : e.getEventRelativeTo (this).getPosition();
+
+    if (e.mods.isPopupMenu())
     {
-        if (onWantsContextMenu) onWantsContextMenu (channel);
-        return;
+        if (pos.x < fixedLeftWidth)
+        {
+            if (onSelected) onSelected (getChannelId());
+            if (onWantsContextMenu) onWantsContextMenu (channel);
+            return;
+        }
+    }
+    else if (e.eventComponent != this)
+    {
+        return;   // let the button handle its own left-click
     }
 
-    const int step = stepAt (e.getPosition());
+    const int step = stepAt (pos);
     if (step < 0)
         return;
 

@@ -1,5 +1,7 @@
 #include "FloatingPanel.h"
+#include "Snapping.h"
 #include "app/Theme.h"
+
 
 FloatingPanel::FloatingPanel (const juce::String& t, std::unique_ptr<juce::Component> c, bool resizable)
     : title (t), content (std::move (c))
@@ -16,9 +18,10 @@ FloatingPanel::FloatingPanel (const juce::String& t, std::unique_ptr<juce::Compo
     };
     addAndMakeVisible (closeButton);
 
+    constrainer.setMinimumSize (240, 140);
+
     if (resizable)
     {
-        constrainer.setMinimumSize (240, 140);
         resizer = std::make_unique<juce::ResizableCornerComponent> (this, &constrainer);
         addAndMakeVisible (*resizer);
     }
@@ -28,6 +31,57 @@ FloatingPanel::FloatingPanel (const juce::String& t, std::unique_ptr<juce::Compo
 
 FloatingPanel::~FloatingPanel() = default;
 
+// ---------------- snapping ----------------
+
+void FloatingPanel::gatherSnapLines (std::vector<int>& xLines, std::vector<int>& yLines) const
+{
+    auto* parent = getParentComponent();
+    if (parent == nullptr)
+        return;
+
+    xLines.push_back (0);
+    xLines.push_back (parent->getWidth());
+    yLines.push_back (0);
+    yLines.push_back (parent->getHeight());
+
+    for (auto* sibling : parent->getChildren())
+    {
+        if (sibling == this || ! sibling->isVisible())
+            continue;
+        if (dynamic_cast<FloatingPanel*> (sibling) == nullptr)
+            continue;
+
+        const auto r = sibling->getBounds();
+        xLines.push_back (r.getX());
+        xLines.push_back (r.getRight());
+        yLines.push_back (r.getY());
+        yLines.push_back (r.getBottom());
+    }
+}
+
+void FloatingPanel::SnappingConstrainer::checkBounds (juce::Rectangle<int>& bounds,
+                                                      const juce::Rectangle<int>& previousBounds,
+                                                      const juce::Rectangle<int>& limits,
+                                                      bool isStretchingTop, bool isStretchingLeft,
+                                                      bool isStretchingBottom, bool isStretchingRight)
+{
+    juce::ComponentBoundsConstrainer::checkBounds (bounds, previousBounds, limits,
+                                                   isStretchingTop, isStretchingLeft,
+                                                   isStretchingBottom, isStretchingRight);
+    if (! enabled)
+        return;
+
+    std::vector<int> xLines, yLines;
+    panel.gatherSnapLines (xLines, yLines);
+    if (xLines.empty())
+        return;
+
+    snapping::apply (bounds, xLines, yLines, FloatingPanel::snapThreshold,
+                     { isStretchingTop, isStretchingLeft, isStretchingBottom, isStretchingRight });
+}
+
+// ---------------- painting / layout ----------------
+
 void FloatingPanel::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds();
@@ -36,7 +90,7 @@ void FloatingPanel::paint (juce::Graphics& g)
     g.fillRoundedRectangle (bounds.toFloat(), 4.0f);
 
     auto header = bounds.removeFromTop (titleBarHeight);
-    g.setColour (theme::panelHeader);
+    g.setColour (draggingFromTitleBar ? theme::accentDim : theme::panelHeader);
     g.fillRoundedRectangle (header.toFloat(), 4.0f);
     g.fillRect (header.withTop (header.getBottom() - 4));
 
@@ -59,17 +113,60 @@ void FloatingPanel::resized()
         resizer->setBounds (getWidth() - 14, getHeight() - 14, 14, 14);
 }
 
+// ---------------- interaction ----------------
+
 void FloatingPanel::mouseDown (const juce::MouseEvent& e)
 {
     toFront (true);
-    if (e.getPosition().y < titleBarHeight)
+
+    draggingFromTitleBar = e.getPosition().y < titleBarHeight;
+    if (draggingFromTitleBar)
+    {
         dragger.startDraggingComponent (this, e);
+        repaint();
+    }
 }
 
 void FloatingPanel::mouseDrag (const juce::MouseEvent& e)
 {
-    if (e.getMouseDownPosition().y < titleBarHeight)
-        dragger.dragComponent (this, e, &constrainer);
+    if (! draggingFromTitleBar)
+        return;
+
+    // Hold shift to place freely, ignoring snap lines.
+    constrainer.enabled = ! e.mods.isShiftDown();
+    dragger.dragComponent (this, e, &constrainer);
+}
+
+void FloatingPanel::mouseUp (const juce::MouseEvent&)
+{
+    if (draggingFromTitleBar)
+    {
+        draggingFromTitleBar = false;
+        constrainer.enabled = true;
+        repaint();
+    }
+}
+
+void FloatingPanel::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    if (e.getPosition().y >= titleBarHeight)
+        return;
+
+    auto* parent = getParentComponent();
+    if (parent == nullptr)
+        return;
+
+    // Double-click the title bar to fill the desktop, again to restore.
+    if (getBounds() == parent->getLocalBounds())
+    {
+        if (! boundsBeforeMaximise.isEmpty())
+            setBounds (boundsBeforeMaximise);
+    }
+    else
+    {
+        boundsBeforeMaximise = getBounds();
+        setBounds (parent->getLocalBounds());
+    }
 }
 
 void FloatingPanel::toggleVisibility()
@@ -86,4 +183,5 @@ void FloatingPanel::bringToFrontAndShow()
 {
     setVisible (true);
     toFront (true);
+    if (onVisibilityToggled) onVisibilityToggled();
 }

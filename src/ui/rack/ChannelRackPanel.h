@@ -30,6 +30,7 @@ private:
     int rowContainerWidth() const;
     juce::ValueTree activePattern() const;
     void showChannelMenu (juce::ValueTree channel);
+    void showInsertMenu (juce::ValueTree channel);
     void showAddChannelMenu();
     void openChannelEditor (juce::ValueTree channel);
 

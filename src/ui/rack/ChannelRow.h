@@ -24,10 +24,11 @@ public:
     std::function<void (int channelId)> onSelected;
     std::function<void (juce::ValueTree channel)> onOpenEditor;
     std::function<void (juce::ValueTree channel)> onWantsContextMenu;
+    std::function<void (juce::ValueTree channel)> onWantsInsertMenu;
 
     static constexpr int rowHeight   = 30;
     static constexpr int stepWidth   = 26;
-    static constexpr int fixedLeftWidth = 18 + 4 + 130 + 4 + 26 + 26 + 8;
+    static constexpr int fixedLeftWidth = 18 + 4 + 118 + 4 + 26 + 26 + 4 + 40 + 8;
 
     int numSteps() const;
 
@@ -44,6 +45,7 @@ private:
     juce::TextButton muteLed;
     juce::TextButton nameButton;
     juce::Slider panKnob, volKnob;
+    juce::TextButton insertButton;   // target mixer insert, click to reassign
 
     int playStep = -1;
     int dragPaintMode = -1;   // 1 = painting on, 0 = erasing, -1 = idle

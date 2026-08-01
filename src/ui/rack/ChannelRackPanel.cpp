@@ -114,6 +114,7 @@ void ChannelRackPanel::rebuildRows()
         };
         row->onWantsContextMenu = [this] (juce::ValueTree channel) { showChannelMenu (channel); };
         row->onOpenEditor = [this] (juce::ValueTree channel) { openChannelEditor (channel); };
+        row->onWantsInsertMenu = [this] (juce::ValueTree channel) { showInsertMenu (channel); };
         rowContainer.addAndMakeVisible (*row);
         rows.push_back (std::move (row));
     }
@@ -170,6 +171,27 @@ void ChannelRackPanel::openChannelEditor (juce::ValueTree channel)
 {
     if (onOpenChannelEditor)
         onOpenChannelEditor (channel);
+}
+
+void ChannelRackPanel::showInsertMenu (juce::ValueTree channel)
+{
+    const int current = channel[ids::insertIndex];
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Route \"" + channel[ids::name].toString() + "\" to");
+    for (int i = 0; i < services.project.numInserts(); ++i)
+    {
+        const auto insert = services.project.getInsert (i);
+        menu.addItem (i + 1, insert[ids::name].toString(), true, i == current);
+    }
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withMinimumWidth (160),
+        [this, channel] (int result) mutable
+        {
+            if (result > 0)
+                channel.setProperty (ids::insertIndex, result - 1,
+                                     &services.project.getUndoManager());
+        });
 }
 
 void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
@@ -273,6 +295,7 @@ void ChannelRackPanel::valueTreePropertyChanged (juce::ValueTree& tree, const ju
 {
     if (tree.hasType (ids::CHANNEL))
     {
+        juce::ignoreUnused (prop);
         for (auto& row : rows)
             if (row->getChannelTree() == tree)
                 row->refreshFromModel();
