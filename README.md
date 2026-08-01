@@ -51,10 +51,15 @@ for brightness and media by default — either use `Fn`+the key, or turn on
 `⌘N`/`⌘O`/`⌘S`/`⇧⌘S` project · `⌘R` export · `⌘Z`/`⇧⌘Z` undo/redo ·
 `⌘,` audio settings · `Z`–`M` and `Q`–`P` rows play notes · `,`/`.` shift octave.
 
+Drag a panel near an edge to dock it to that half of the desktop, or into a
+corner for a quarter — a preview shows the target region before you release,
+and a panel already occupying that region is pushed into the complementary one
+so the two tile instead of overlapping. Away from the edges, panels snap
+magnetically to each other. Hold shift while dragging to place freely.
+
 Right-click a panel button to reset that panel's position (or all of them);
 *View → Reset Panel Positions* does the same. Panels also can't be dragged
-fully off-screen, and double-clicking a title bar maximises it. Hold shift
-while dragging to bypass snapping.
+fully off-screen, and double-clicking a title bar maximises it.
 
 Click a channel name to open its editor (sampler: sample slot, root note, ADSR,
 filter, one-shot; synth: oscillators, filter, envelope, keyboard). Right-click a

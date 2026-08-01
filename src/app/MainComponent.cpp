@@ -10,6 +10,7 @@
 #include "ui/playlist/PlaylistPanel.h"
 #include "ui/rack/ChannelEditor.h"
 #include "ui/rack/ChannelRackPanel.h"
+#include "ui/common/DockZones.h"
 
 namespace
 {
@@ -177,6 +178,31 @@ MainComponent::MainComponent()
                           << d.createIdentifierString() << "\n" << std::flush;
             std::cout << "SCAN_DONE " << services.plugins.getKnownPlugins().getNumTypes() << "\n" << std::flush;
             juce::JUCEApplication::getInstance()->systemRequestedQuit();
+        });
+    }
+
+    // EURYDICE_DOCKCHECK=1 docks panels into zones and reports the result.
+    if (juce::SystemStats::getEnvironmentVariable ("EURYDICE_DOCKCHECK", "") == "1")
+    {
+        juce::Timer::callAfterDelay (700, [this]
+        {
+            mixerPanel->setVisible (true);
+            pianoRollPanel->setVisible (true);
+
+            const auto area = desktop.getLocalBounds();
+            auto dockTo = [&] (FloatingPanel* panel, docking::Zone zone)
+            {
+                panel->setBounds (docking::boundsForZone (zone, area));
+            };
+            dockTo (channelRackPanel.get(), docking::Zone::left);
+            dockTo (playlistPanel.get(), docking::Zone::topRight);
+            dockTo (mixerPanel.get(), docking::Zone::bottomRight);
+            pianoRollPanel->setVisible (false);
+
+            std::cout << "DESKTOP " << area.toString() << "\n"
+                      << "RACK " << channelRackPanel->getBounds().toString() << "\n"
+                      << "PLAYLIST " << playlistPanel->getBounds().toString() << "\n"
+                      << "MIXER " << mixerPanel->getBounds().toString() << "\n" << std::flush;
         });
     }
 
