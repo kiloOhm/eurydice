@@ -58,6 +58,24 @@ TEST_F (DispatcherFixture, TransportSetAndPlayStop)
     EXPECT_FALSE (services.engine.isPlaying());
 }
 
+TEST_F (DispatcherFixture, TransportSetLoopRange)
+{
+    call ("transport.set", R"({"loopStart": 3840, "loopEnd": 15360, "loopEnabled": true})");
+    EXPECT_EQ (services.project.getLoopStart(), 3840);
+    EXPECT_EQ (services.project.getLoopEnd(), 15360);
+    EXPECT_TRUE (services.project.isLoopEnabled());
+
+    // One end at a time leaves the other where it was.
+    call ("transport.set", R"({"loopEnd": 7680})");
+    EXPECT_EQ (services.project.getLoopStart(), 3840);
+    EXPECT_EQ (services.project.getLoopEnd(), 7680);
+
+    const auto state = call ("state.get");
+    EXPECT_EQ ((int) state["loopStart"], 3840);
+    EXPECT_EQ ((int) state["loopEnd"], 7680);
+    EXPECT_TRUE ((bool) state["loopEnabled"]);
+}
+
 TEST_F (DispatcherFixture, ChannelAddSetRemove)
 {
     const auto added = call ("channel.add", R"({"type": "synth", "name": "Lead"})");

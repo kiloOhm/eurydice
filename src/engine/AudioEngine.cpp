@@ -211,47 +211,83 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     for (int i = 0; i < numChannels; ++i)
         channelMidi[(size_t) i].clear();
 
-    const double tps = (snap->tempo / 60.0) * (double) ids::ticksPerQuarter / sampleRate; // ticks per sample
-    const bool isPlayingNow = playing.load (std::memory_order_relaxed);
-
-    if (isPlayingNow)
-    {
-        const double t0 = tickPos;
-        const double t1 = t0 + tps * numSamples;
-
-        flushNoteOffs (*snap, t0, t1, tps);
-        generateMidiForRange (*snap, t0, t1, tps);
-
-        tickPos = t1;
-
-        // Wrap in pattern mode so the position readout loops.
-        if (! snap->songMode
-            && snap->activePatternIndex >= 0
-            && snap->activePatternIndex < (int) snap->patterns.size())
-        {
-            const auto len = (double) snap->patterns[(size_t) snap->activePatternIndex].lengthTicks;
-            if (len > 0 && tickPos >= len)
-                tickPos = std::fmod (tickPos, len);
-        }
-    }
-
-    publishedTickPos.store (tickPos, std::memory_order_relaxed);
+    // Cleared before sequencing so audio clips can be mixed straight into the
+    // master bus per sub-range, ahead of the channels adding their output.
+    const int numInserts = juce::jmin ((int) snap->inserts.size(), maxInserts);
+    for (int i = 0; i < numInserts; ++i)
+        insertBus[(size_t) i].clear (0, numSamples);
 
     // Automation overrides for this block.
     channelVolAuto.fill (-1000.0f);
     channelPanAuto.fill (-1000.0f);
     insertVolAuto.fill (-1000.0f);
     insertPanAuto.fill (-1000.0f);
-    if (isPlayingNow && snap->songMode)
-        applyAutomation (*snap, tickPos - tps * numSamples);
+
+    const double tps = (snap->tempo / 60.0) * (double) ids::ticksPerQuarter / sampleRate; // ticks per sample
+    const bool isPlayingNow = playing.load (std::memory_order_relaxed);
+
+    if (isPlayingNow)
+    {
+        const double loopEnd = (double) snap->loopEndTicks;
+        int done = 0;
+
+        // The block is sequenced in sub-ranges cut at the loop end, so the
+        // wrap lands on its exact sample instead of the next block boundary.
+        while (done < numSamples)
+        {
+            int chunk = numSamples - done;
+            bool wrapAfterChunk = false;
+
+            if (snap->loopEnabled && tickPos < loopEnd)
+            {
+                const int samplesToLoopEnd = juce::jmax (1, (int) std::ceil ((loopEnd - tickPos) / tps));
+                if (samplesToLoopEnd <= chunk)
+                {
+                    chunk = samplesToLoopEnd;
+                    wrapAfterChunk = true;
+                }
+            }
+
+            const double t0 = tickPos;
+            const double t1 = t0 + tps * chunk;
+            blockSampleBase = done;
+
+            flushNoteOffs (*snap, t0, t1, tps);
+            generateMidiForRange (*snap, t0, t1, tps);
+            if (snap->songMode)
+            {
+                applyAutomation (*snap, t0);
+                mixAudioClips (*snap, t0, t1, tps, done, chunk);
+            }
+
+            tickPos = t1;
+
+            if (wrapAfterChunk)
+            {
+                // Release what is still sounding so notes at the loop start
+                // retrigger instead of being cut mid-pass by a stale note-off.
+                releaseActiveNotes (*snap, done + chunk - 1);
+                tickPos = (double) snap->loopStartTicks;
+            }
+            else if (! snap->loopEnabled && ! snap->songMode
+                     && snap->activePatternIndex >= 0
+                     && snap->activePatternIndex < (int) snap->patterns.size())
+            {
+                // Wrap in pattern mode so the position readout loops.
+                const auto len = (double) snap->patterns[(size_t) snap->activePatternIndex].lengthTicks;
+                if (len > 0 && tickPos >= len)
+                    tickPos = std::fmod (tickPos, len);
+            }
+
+            done += chunk;
+        }
+    }
+
+    publishedTickPos.store (tickPos, std::memory_order_relaxed);
 
     processPreviewEvents (*snap, numSamples);
 
     // --- render channels into insert buses ---
-    const int numInserts = juce::jmin ((int) snap->inserts.size(), maxInserts);
-    for (int i = 0; i < numInserts; ++i)
-        insertBus[(size_t) i].clear (0, numSamples);
-
     for (int i = 0; i < numChannels; ++i)
     {
         const auto& ch = snap->channels[(size_t) i];
@@ -273,36 +309,6 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
         auto& bus = insertBus[(size_t) juce::jlimit (0, numInserts - 1, ch.insertIndex)];
         bus.addFrom (0, 0, scratchView, 0, 0, numSamples, gain * panL);
         bus.addFrom (1, 0, scratchView, 1, 0, numSamples, gain * panR);
-    }
-
-    // --- audio clips: mix into the master bus (pre-effects) ---
-    if (isPlayingNow && snap->songMode && numInserts > 0)
-    {
-        const double t0 = tickPos - tps * numSamples;
-        auto& masterBus = insertBus[0];
-
-        for (const auto& clip : snap->clips)
-        {
-            if (clip.type != ClipSnapshot::Type::audio || clip.audio == nullptr)
-                continue;
-            const double clipStart = clip.startTicks;
-            const double clipEnd   = clipStart + clip.lengthTicks;
-            if (clipEnd <= t0 || clipStart >= tickPos)
-                continue;
-
-            const auto& audio = *clip.audio;
-            for (int i = 0; i < numSamples; ++i)
-            {
-                const double tick = t0 + i * tps;
-                if (tick < clipStart || tick >= clipEnd)
-                    continue;
-                const auto sourcePos = (juce::int64) ((tick - clipStart) / tps + clip.audioOffsetSamples);
-                if (sourcePos < 0 || sourcePos >= audio.getNumSamples())
-                    continue;
-                masterBus.addSample (0, i, audio.getSample (0, (int) sourcePos) * clip.audioGain);
-                masterBus.addSample (1, i, audio.getSample (1, (int) sourcePos) * clip.audioGain);
-            }
-        }
     }
 
     // --- process inserts in topological order (master index 0 comes last) ---
@@ -344,6 +350,38 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     {
         juce::FloatVectorOperations::copy (outputChannelData[ch], master.getReadPointer (ch), numSamples);
         masterPeak[ch].store (master.getMagnitude (ch, 0, numSamples), std::memory_order_relaxed);
+    }
+}
+
+void AudioEngine::mixAudioClips (const EngineSnapshot& snap, double t0, double t1, double tps,
+                                 int startSample, int numChunkSamples)
+{
+    if (snap.inserts.empty())
+        return;
+
+    auto& masterBus = insertBus[0];   // pre-effects
+
+    for (const auto& clip : snap.clips)
+    {
+        if (clip.type != ClipSnapshot::Type::audio || clip.audio == nullptr)
+            continue;
+        const double clipStart = clip.startTicks;
+        const double clipEnd   = clipStart + clip.lengthTicks;
+        if (clipEnd <= t0 || clipStart >= t1)
+            continue;
+
+        const auto& audio = *clip.audio;
+        for (int i = 0; i < numChunkSamples; ++i)
+        {
+            const double tick = t0 + i * tps;
+            if (tick < clipStart || tick >= clipEnd)
+                continue;
+            const auto sourcePos = (juce::int64) ((tick - clipStart) / tps + clip.audioOffsetSamples);
+            if (sourcePos < 0 || sourcePos >= audio.getNumSamples())
+                continue;
+            masterBus.addSample (0, startSample + i, audio.getSample (0, (int) sourcePos) * clip.audioGain);
+            masterBus.addSample (1, startSample + i, audio.getSample (1, (int) sourcePos) * clip.audioGain);
+        }
     }
 }
 
@@ -468,8 +506,9 @@ void AudioEngine::emitPatternSegment (const EngineSnapshot& snap, const PatternS
             continue;
 
         const double songTick = start + tickOffsetToSong;
-        const int sampleOffset = juce::jlimit (0, juce::jmax (0, currentBlockSamples - 1),
-                                               (int) ((songTick - blockStartTick) / tps));
+        const int sampleOffset = juce::jlimit (blockSampleBase,
+                                               juce::jmax (blockSampleBase, currentBlockSamples - 1),
+                                               blockSampleBase + (int) ((songTick - blockStartTick) / tps));
         const double offTick = songTick + note.lengthTicks;
 
         addNoteOn (note.channelIndex, note.key, note.velocity, sampleOffset, offTick);
@@ -503,13 +542,29 @@ void AudioEngine::flushNoteOffs (const EngineSnapshot& snap, double t0, double t
         {
             if (slot.channelIndex < (int) snap.channels.size())
             {
-                const int offset = juce::jlimit (0, juce::jmax (0, currentBlockSamples - 1),
-                                                 (int) ((slot.offTick - t0) / tps));
+                const int offset = juce::jlimit (blockSampleBase,
+                                                 juce::jmax (blockSampleBase, currentBlockSamples - 1),
+                                                 blockSampleBase + (int) ((slot.offTick - t0) / tps));
                 channelMidi[(size_t) slot.channelIndex]
                     .addEvent (juce::MidiMessage::noteOff (1, slot.key), offset);
             }
             slot.channelIndex = -1;
         }
+    }
+}
+
+void AudioEngine::releaseActiveNotes (const EngineSnapshot& snap, int sampleOffset)
+{
+    const int offset = juce::jlimit (0, juce::jmax (0, currentBlockSamples - 1), sampleOffset);
+
+    for (auto& slot : activeNotes)
+    {
+        if (slot.channelIndex < 0)
+            continue;
+        if (slot.channelIndex < (int) snap.channels.size())
+            channelMidi[(size_t) slot.channelIndex]
+                .addEvent (juce::MidiMessage::noteOff (1, slot.key), offset);
+        slot.channelIndex = -1;
     }
 }
 

@@ -8,6 +8,7 @@ TransportBar::TransportBar()
     recordButton.setWantsKeyboardFocus (false);
     patButton.setWantsKeyboardFocus (false);
     songButton.setWantsKeyboardFocus (false);
+    loopButton.setWantsKeyboardFocus (false);
 
     playButton.onClick   = [this] { if (onPlay) onPlay(); };
     stopButton.onClick   = [this] { if (onStop) onStop(); };
@@ -22,6 +23,10 @@ TransportBar::TransportBar()
     patButton.setToggleState (true, juce::dontSendNotification);
     patButton.onClick  = [this] { if (onSongModeChanged) onSongModeChanged (false); };
     songButton.onClick = [this] { if (onSongModeChanged) onSongModeChanged (true); };
+
+    loopButton.setClickingTogglesState (true);
+    loopButton.setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
+    loopButton.onClick = [this] { if (onLoopToggled) onLoopToggled(); };
 
     tempoSlider.setSliderStyle (juce::Slider::LinearBar);
     tempoSlider.setRange (20.0, 999.0, 0.01);
@@ -40,7 +45,8 @@ TransportBar::TransportBar()
     positionLabel.setText ("  1 : 1 : 00", juce::dontSendNotification);
 
     for (auto* c : std::initializer_list<juce::Component*> { &playButton, &stopButton, &recordButton,
-                                                             &patButton, &songButton, &tempoSlider, &positionLabel })
+                                                             &patButton, &songButton, &loopButton,
+                                                             &tempoSlider, &positionLabel })
         addAndMakeVisible (c);
 
     // Visible panel toggles: the discoverable route to every window.
@@ -103,6 +109,9 @@ void TransportBar::resized()
     patButton.setBounds (r.removeFromLeft (48));
     r.removeFromLeft (2);
     songButton.setBounds (r.removeFromLeft (48));
+    r.removeFromLeft (8);
+
+    loopButton.setBounds (r.removeFromLeft (48));
     r.removeFromLeft (16);
 
     tempoSlider.setBounds (r.removeFromLeft (110));
@@ -155,6 +164,11 @@ void TransportBar::timerCallback()
     // Poll rather than relying on toggle callbacks: panels can also be shown
     // or hidden by their own close button, startup flags, or the API.
     refreshPanelButtons();
+
+    // The loop can also be toggled from the playlist ruler, a command or the
+    // control API, so poll rather than tracking it from the click callback.
+    if (getLoopEnabled)
+        loopButton.setToggleState (getLoopEnabled(), juce::dontSendNotification);
 
     const bool playing = getIsPlaying ? getIsPlaying() : false;
     playButton.setColour (juce::TextButton::textColourOffId,

@@ -82,6 +82,9 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         return makeObj ({
             { "tempo", project.getTempo() }, { "swing", project.getSwing() },
             { "songMode", project.isSongMode() },
+            { "loopStart", project.getLoopStart() },
+            { "loopEnd", project.getLoopEnd() },
+            { "loopEnabled", project.isLoopEnabled() },
             { "playing", engine.isPlaying() },
             { "positionTicks", engine.getPositionTicks() },
             { "activePatternId", (int) project.getRoot()[ids::activePattern] },
@@ -100,6 +103,10 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         if (has (params, "tempo"))    project.setTempo (getOr (params, "tempo", 140.0));
         if (has (params, "swing"))    project.setSwing (getOr (params, "swing", 0.0));
         if (has (params, "songMode")) project.setSongMode (getOr (params, "songMode", false));
+        if (has (params, "loopStart") || has (params, "loopEnd"))
+            project.setLoopRange ((int) getOr (params, "loopStart", project.getLoopStart()),
+                                  (int) getOr (params, "loopEnd", project.getLoopEnd()));
+        if (has (params, "loopEnabled")) project.setLoopEnabled (getOr (params, "loopEnabled", false));
         return true;
     }
 

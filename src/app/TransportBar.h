@@ -15,7 +15,7 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
 
-    std::function<void()> onPlay, onStop, onRecordToggled;
+    std::function<void()> onPlay, onStop, onRecordToggled, onLoopToggled;
     std::function<void (double)> onTempoChanged;
     std::function<void (bool)> onSongModeChanged;
 
@@ -30,6 +30,7 @@ public:
     std::function<double()> getBeatPosition;   // in quarter notes
     std::function<bool()>   getIsPlaying;
     std::function<bool()>   getIsRecording;
+    std::function<bool()>   getLoopEnabled;
 
     void setTempoDisplay (double bpm);
     void setSongMode (bool songMode);
@@ -45,6 +46,7 @@ private:
     juce::TextButton recordButton { juce::CharPointer_UTF8 ("\xe2\x97\x8f") };
     juce::TextButton patButton  { "PAT" };
     juce::TextButton songButton { "SONG" };
+    juce::TextButton loopButton { "LOOP" };
     juce::Slider tempoSlider;
     juce::Label positionLabel;
 

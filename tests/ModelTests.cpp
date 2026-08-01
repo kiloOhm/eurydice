@@ -128,6 +128,28 @@ TEST (ProjectModel, PlaylistClips)
     EXPECT_FALSE (model.addPlaylistClip ("pattern", 99, 0, 100).isValid());
 }
 
+TEST (ProjectModel, LoopRangeIsSanitised)
+{
+    ProjectModel model;
+    EXPECT_FALSE (model.isLoopEnabled());
+
+    model.setLoopRange (2 * ids::ticksPerBar, ids::ticksPerBar);   // dragged right to left
+    EXPECT_EQ (model.getLoopStart(), ids::ticksPerBar);
+    EXPECT_EQ (model.getLoopEnd(), 2 * ids::ticksPerBar);
+
+    model.setLoopRange (-500, ids::ticksPerQuarter);
+    EXPECT_EQ (model.getLoopStart(), 0);
+    EXPECT_EQ (model.getLoopEnd(), ids::ticksPerQuarter);
+
+    model.setLoopEnabled (true);
+    EXPECT_TRUE (model.isLoopEnabled());
+
+    model.clearLoop();
+    EXPECT_FALSE (model.isLoopEnabled());
+    EXPECT_EQ (model.getLoopStart(), 0);
+    EXPECT_EQ (model.getLoopEnd(), 0);
+}
+
 TEST (ProjectModel, AutomationDefaults)
 {
     ProjectModel model;

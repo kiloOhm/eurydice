@@ -46,11 +46,12 @@ private:
 
     juce::ValueTree clipAt (juce::Point<int>, bool& overRightEdge);
     void addClipAt (juce::Point<int>);
+    bool loopRangeBounds (int& x0, int& x1) const;
     void paintTrackHeaders (juce::Graphics&);
     void paintRuler (juce::Graphics&);
     void paintClips (juce::Graphics&);
 
-    void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
+    void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& property) override;
     void valueTreeChildAdded (juce::ValueTree&, juce::ValueTree&) override;
     void valueTreeChildRemoved (juce::ValueTree&, juce::ValueTree&, int) override;
     void valueTreeChildOrderChanged (juce::ValueTree&, int, int) override {}
@@ -66,10 +67,11 @@ private:
     int scrollY = 0;
     int trackHeight = 34;
 
-    enum class Drag { none, move, resize, erase, seek };
+    enum class Drag { none, move, resize, erase, seek, loop };
     Drag drag = Drag::none;
     juce::ValueTree dragClip;
     double dragTickOffset = 0.0;
+    double loopAnchorTicks = 0.0;
 
     double playheadTicks = -1.0;
 

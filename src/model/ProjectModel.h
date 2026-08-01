@@ -24,6 +24,14 @@ public:
     bool   isSongMode() const                 { return root[ids::songMode]; }
     void   setSongMode (bool song)            { root.setProperty (ids::songMode, song, nullptr); }
 
+    // Transport loop. Not undoable: it is a playback setting, not an edit.
+    int    getLoopStart() const               { return root[ids::loopStart]; }
+    int    getLoopEnd() const                 { return root[ids::loopEnd]; }
+    bool   isLoopEnabled() const              { return root[ids::loopEnabled]; }
+    void   setLoopRange (int startTicks, int endTicks);
+    void   setLoopEnabled (bool enabled)      { root.setProperty (ids::loopEnabled, enabled, nullptr); }
+    void   clearLoop();
+
     // --- Sections ---
     juce::ValueTree channels() const          { return root.getChildWithName (ids::CHANNELS); }
     juce::ValueTree patterns() const          { return root.getChildWithName (ids::PATTERNS); }
