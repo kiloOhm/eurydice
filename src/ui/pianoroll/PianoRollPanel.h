@@ -1,12 +1,16 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <vector>
 #include "app/AppServices.h"
+#include "NoteTools.h"
 
 // FL-style piano roll for the selected channel's lane in the active pattern.
 // Draw notes with left click (click-drag moves, right edge resizes),
 // right-click deletes, cmd-drag marquee-selects. Velocity lane at the bottom,
 // ghost notes from other channels, chord stamp + scale highlighting.
+// Tool row: roll/ratchet, chop, glue and strum over the selection, also
+// reachable by right-clicking a selected note.
 class PianoRollPanel : public juce::Component,
                        private juce::ValueTree::Listener,
                        private juce::Timer
@@ -50,6 +54,21 @@ private:
     void deleteSelected();
     void preview (int key);
 
+    // --- editing tools ---
+    int rollDivisionTicks() const;
+    notetools::Ramp velocityRamp() const;
+    int strumOffsetTicks() const;
+
+    std::vector<notetools::Note> selectedNotes() const;
+    void replaceSelection (const std::vector<notetools::Note>& notes);
+    void applyRoll (int divisionTicks);
+    void applyChop();
+    void applyGlue();
+    void applyStrum (int offsetTicks);
+
+    void showToolMenu();
+    void handleToolMenu (int result);
+
     void paintGrid (juce::Graphics&);
     void paintNotes (juce::Graphics&);
     void paintKeyboard (juce::Graphics&);
@@ -71,6 +90,11 @@ private:
     juce::ComboBox snapBox, chordBox, scaleRootBox, scaleTypeBox;
     juce::Label targetLabel;
 
+    // tool row
+    juce::ComboBox rollDivBox, rampBox, strumBox;
+    juce::TextButton rollButton { "Roll" }, chopButton { "Chop" }, glueButton { "Glue" },
+                     strumBackButton { "<" }, strumForwardButton { ">" };
+
     // view state
     double pxPerTick = 24.0 / 240.0;
     int keyHeight = 12;
@@ -91,7 +115,8 @@ private:
 
     double playheadTicks = -1.0;
 
-    static constexpr int headerH = 34;
+    static constexpr int headerH = 62;   // two rows: view settings + tools
+    static constexpr int headerRowH = 23;
     static constexpr int keyboardW = 64;
     static constexpr int velocityH = 78;
 

@@ -17,6 +17,21 @@ const int chordIntervalsMinor[]  = { 0, 3, 7 };
 const int chordIntervalsMaj7[]   = { 0, 4, 7, 11 };
 const int chordIntervalsMin7[]   = { 0, 3, 7, 10 };
 const int chordIntervalsDom7[]   = { 0, 4, 7, 10 };
+
+struct Division { const char* name; int ticks; };
+const Division rollDivisions[] = {
+    { "1/8",   480 }, { "1/16",  240 }, { "1/32",  120 }, { "1/64",   60 },
+    { "1/8T",  320 }, { "1/16T", 160 }, { "1/32T",  80 },
+};
+constexpr int numRollDivisions = (int) std::size (rollDivisions);
+
+// Tool menu ids.
+enum ToolMenu
+{
+    menuRoll = 1, menuChop, menuGlue, menuStrumForward, menuStrumBack, menuDelete,
+    menuRampFlat = 10, menuRampRising, menuRampFalling,
+    menuRollDivisionBase = 100
+};
 }
 
 PianoRollPanel::PianoRollPanel (AppServices& s)
@@ -65,6 +80,39 @@ PianoRollPanel::PianoRollPanel (AppServices& s)
     targetLabel.setFont (theme::uiFont (12.0f, true));
     targetLabel.setColour (juce::Label::textColourId, theme::secondary);
     addAndMakeVisible (targetLabel);
+
+    for (const auto& division : rollDivisions)
+        rollDivBox.addItem (juce::String ("Roll: ") + division.name, division.ticks);
+    rollDivBox.setSelectedId (240, juce::dontSendNotification);
+    rollDivBox.setTooltip ("Note repeat division");
+    addAndMakeVisible (rollDivBox);
+
+    rampBox.addItem ("Ramp: Flat",    1);
+    rampBox.addItem ("Ramp: Rising",  2);
+    rampBox.addItem ("Ramp: Falling", 3);
+    rampBox.setSelectedId (1, juce::dontSendNotification);
+    rampBox.setTooltip ("Velocity shape across a roll");
+    addAndMakeVisible (rampBox);
+
+    for (const int ticks : { 5, 10, 20, 40, 80 })
+        strumBox.addItem ("Strum: " + juce::String (ticks) + "t", ticks);
+    strumBox.setSelectedId (20, juce::dontSendNotification);
+    strumBox.setTooltip ("Offset applied per note when strumming");
+    addAndMakeVisible (strumBox);
+
+    rollButton.setTooltip ("Repeat each selected note at the roll division");
+    rollButton.onClick = [this] { applyRoll (rollDivisionTicks()); };
+    chopButton.setTooltip ("Split selected notes at the snap division");
+    chopButton.onClick = [this] { applyChop(); };
+    glueButton.setTooltip ("Merge touching or overlapping selected notes");
+    glueButton.onClick = [this] { applyGlue(); };
+    strumBackButton.setTooltip ("Strum earlier");
+    strumBackButton.onClick = [this] { applyStrum (-strumOffsetTicks()); };
+    strumForwardButton.setTooltip ("Strum later");
+    strumForwardButton.onClick = [this] { applyStrum (strumOffsetTicks()); };
+
+    for (auto* button : { &rollButton, &chopButton, &glueButton, &strumBackButton, &strumForwardButton })
+        addAndMakeVisible (button);
 
     scrollKeysY = (127 - 72) * keyHeight;   // start around C5 at the top
     startTimerHz (30);
@@ -230,10 +278,175 @@ void PianoRollPanel::deleteSelected()
     auto lane = currentLane (false);
     if (! lane.isValid())
         return;
+    auto& undo = services.project.getUndoManager();
+    undo.beginNewTransaction ("Delete notes");
     for (auto& note : selection)
         services.project.removeNote (lane, note);
     selection.clearQuick();
+    undo.beginNewTransaction();
     repaint();
+}
+
+// ---------- editing tools ----------
+
+int PianoRollPanel::rollDivisionTicks() const
+{
+    return juce::jmax (1, rollDivBox.getSelectedId());
+}
+
+notetools::Ramp PianoRollPanel::velocityRamp() const
+{
+    switch (rampBox.getSelectedId())
+    {
+        case 2:  return notetools::Ramp::rising;
+        case 3:  return notetools::Ramp::falling;
+        default: return notetools::Ramp::flat;
+    }
+}
+
+int PianoRollPanel::strumOffsetTicks() const
+{
+    return juce::jmax (1, strumBox.getSelectedId());
+}
+
+std::vector<notetools::Note> PianoRollPanel::selectedNotes() const
+{
+    std::vector<notetools::Note> notes;
+    notes.reserve ((size_t) selection.size());
+    for (const auto& tree : selection)
+        notes.push_back ({ (int) tree[ids::key],
+                           (int) tree[ids::startTicks],
+                           (int) tree[ids::lengthTicks],
+                           (double) tree[ids::velocity],
+                           (double) tree[ids::notePan] });
+    return notes;
+}
+
+// Swaps the selection for a freshly built set of notes. The caller opens the
+// undo transaction, so the whole swap collapses into one step.
+void PianoRollPanel::replaceSelection (const std::vector<notetools::Note>& notes)
+{
+    auto lane = currentLane (false);
+    if (! lane.isValid())
+        return;
+
+    auto& model = services.project;
+    const auto replaced = selection;
+    selection.clearQuick();
+
+    for (const auto& tree : replaced)
+        model.removeNote (lane, tree);
+    for (const auto& note : notes)
+        selection.add (model.addNote (lane, note.key, note.startTicks, note.lengthTicks,
+                                      note.velocity, note.pan));
+
+    // Close the batch so the next edit cannot merge into this undo step.
+    model.getUndoManager().beginNewTransaction();
+    repaint();
+}
+
+void PianoRollPanel::applyRoll (int divisionTicks)
+{
+    if (selection.isEmpty())
+        return;
+    services.project.getUndoManager().beginNewTransaction ("Roll notes");
+    replaceSelection (notetools::rollAll (selectedNotes(), divisionTicks, velocityRamp()));
+}
+
+void PianoRollPanel::applyChop()
+{
+    if (selection.isEmpty())
+        return;
+    services.project.getUndoManager().beginNewTransaction ("Chop notes");
+    replaceSelection (notetools::chopAll (selectedNotes(), snapTicks()));
+}
+
+void PianoRollPanel::applyGlue()
+{
+    if (selection.isEmpty())
+        return;
+    services.project.getUndoManager().beginNewTransaction ("Glue notes");
+    replaceSelection (notetools::glue (selectedNotes()));
+}
+
+void PianoRollPanel::applyStrum (int offsetTicks)
+{
+    if (selection.isEmpty())
+        return;
+
+    auto& undo = services.project.getUndoManager();
+    undo.beginNewTransaction ("Strum notes");
+
+    const auto strummed = notetools::strum (selectedNotes(), offsetTicks);
+    for (int i = 0; i < selection.size(); ++i)
+        selection.getReference (i).setProperty (ids::startTicks, strummed[(size_t) i].startTicks, &undo);
+
+    undo.beginNewTransaction();
+    repaint();
+}
+
+void PianoRollPanel::showToolMenu()
+{
+    juce::PopupMenu divisionMenu;
+    for (int i = 0; i < numRollDivisions; ++i)
+        divisionMenu.addItem (menuRollDivisionBase + i, rollDivisions[i].name, true,
+                              rollDivisions[i].ticks == rollDivisionTicks());
+
+    juce::PopupMenu rampMenu;
+    rampMenu.addItem (menuRampFlat,    "Flat",    true, velocityRamp() == notetools::Ramp::flat);
+    rampMenu.addItem (menuRampRising,  "Rising",  true, velocityRamp() == notetools::Ramp::rising);
+    rampMenu.addItem (menuRampFalling, "Falling", true, velocityRamp() == notetools::Ramp::falling);
+
+    const auto strum = juce::String (strumOffsetTicks()) + " ticks";
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (juce::String (selection.size()) + " note(s) selected");
+    menu.addItem (menuRoll, "Roll " + rollDivBox.getText().fromFirstOccurrenceOf (" ", false, false));
+    menu.addSubMenu ("Roll at", divisionMenu);
+    menu.addSubMenu ("Velocity ramp", rampMenu);
+    menu.addSeparator();
+    menu.addItem (menuChop, "Chop at snap");
+    menu.addItem (menuGlue, "Glue", selection.size() > 1);
+    menu.addSeparator();
+    menu.addItem (menuStrumForward, "Strum later (" + strum + ")", selection.size() > 1);
+    menu.addItem (menuStrumBack,    "Strum earlier (" + strum + ")", selection.size() > 1);
+    menu.addSeparator();
+    menu.addItem (menuDelete, "Delete");
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withMinimumWidth (180),
+        [safe = juce::Component::SafePointer<PianoRollPanel> (this)] (int result)
+        {
+            if (safe != nullptr)
+                safe->handleToolMenu (result);
+        });
+}
+
+void PianoRollPanel::handleToolMenu (int result)
+{
+    if (result >= menuRollDivisionBase)
+    {
+        const int index = result - menuRollDivisionBase;
+        if (index < numRollDivisions)
+        {
+            rollDivBox.setSelectedId (rollDivisions[index].ticks, juce::dontSendNotification);
+            applyRoll (rollDivisions[index].ticks);
+        }
+        return;
+    }
+
+    switch (result)
+    {
+        case menuRoll:         applyRoll (rollDivisionTicks()); break;
+        case menuChop:         applyChop(); break;
+        case menuGlue:         applyGlue(); break;
+        case menuStrumForward: applyStrum (strumOffsetTicks()); break;
+        case menuStrumBack:    applyStrum (-strumOffsetTicks()); break;
+        case menuDelete:       deleteSelected(); break;
+        case menuRampFlat:     rampBox.setSelectedId (1, juce::dontSendNotification); break;
+        case menuRampRising:   rampBox.setSelectedId (2, juce::dontSendNotification); break;
+        case menuRampFalling:  rampBox.setSelectedId (3, juce::dontSendNotification); break;
+        default: break;
+    }
 }
 
 // ---------- painting ----------
@@ -359,11 +572,17 @@ void PianoRollPanel::paintNotes (juce::Graphics& g)
 
     const int currentChId = selectedChannelId();
 
-    // Ghost notes from all other channels.
+    // Ghost notes from other channels, but only from lanes that hold real
+    // piano-roll content: step-sequencer lanes would just be a row of clutter.
     g.setColour (theme::ghostNote);
     for (const auto lane : pattern)
     {
         if (! lane.hasType (ids::LANE) || (int) lane[ids::channelId] == currentChId)
+            continue;
+
+        const auto channel = services.project.getChannelById ((int) lane[ids::channelId]);
+        const int rootNote = channel.isValid() ? (int) channel.getProperty (ids::rootNote, 60) : 60;
+        if (! notetools::laneUsesPianoRoll (lane, rootNote))
             continue;
         for (const auto note : lane)
         {
@@ -488,6 +707,14 @@ void PianoRollPanel::mouseDown (const juce::MouseEvent& e)
 
     if (e.mods.isPopupMenu())
     {
+        // Right-clicking inside the selection offers the tools; anywhere else
+        // keeps the right-drag erase.
+        bool overRightEdge = false;
+        if (auto note = noteAt (pos, overRightEdge); note.isValid() && selection.contains (note))
+        {
+            showToolMenu();
+            return;
+        }
         drag = Drag::erase;
         deleteNoteAt (pos);
         return;
@@ -767,13 +994,32 @@ void PianoRollPanel::timerCallback()
 void PianoRollPanel::resized()
 {
     auto header = headerArea().reduced (6, 4);
-    snapBox.setBounds (header.removeFromLeft (110));
-    header.removeFromLeft (6);
-    chordBox.setBounds (header.removeFromLeft (110));
-    header.removeFromLeft (6);
-    scaleRootBox.setBounds (header.removeFromLeft (80));
-    header.removeFromLeft (4);
-    scaleTypeBox.setBounds (header.removeFromLeft (100));
-    header.removeFromLeft (10);
-    targetLabel.setBounds (header);
+    auto viewRow = header.removeFromTop (headerRowH);
+    snapBox.setBounds (viewRow.removeFromLeft (110));
+    viewRow.removeFromLeft (6);
+    chordBox.setBounds (viewRow.removeFromLeft (110));
+    viewRow.removeFromLeft (6);
+    scaleRootBox.setBounds (viewRow.removeFromLeft (80));
+    viewRow.removeFromLeft (4);
+    scaleTypeBox.setBounds (viewRow.removeFromLeft (100));
+    viewRow.removeFromLeft (10);
+    targetLabel.setBounds (viewRow);
+
+    header.removeFromTop (6);
+    auto toolRow = header.removeFromTop (headerRowH);
+    rollDivBox.setBounds (toolRow.removeFromLeft (92));
+    toolRow.removeFromLeft (4);
+    rollButton.setBounds (toolRow.removeFromLeft (48));
+    toolRow.removeFromLeft (8);
+    rampBox.setBounds (toolRow.removeFromLeft (104));
+    toolRow.removeFromLeft (10);
+    chopButton.setBounds (toolRow.removeFromLeft (48));
+    toolRow.removeFromLeft (4);
+    glueButton.setBounds (toolRow.removeFromLeft (48));
+    toolRow.removeFromLeft (10);
+    strumBox.setBounds (toolRow.removeFromLeft (92));
+    toolRow.removeFromLeft (4);
+    strumBackButton.setBounds (toolRow.removeFromLeft (26));
+    toolRow.removeFromLeft (2);
+    strumForwardButton.setBounds (toolRow.removeFromLeft (26));
 }
