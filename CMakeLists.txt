@@ -3,6 +3,12 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "" FORCE)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 12.0 CACHE STRING "" FORCE)
 
+# Default to an optimised build: an unoptimised real-time audio engine drops
+# buffers, and JUCE's debug assertions fire on benign conditions during playback.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
+endif()
+
 project(Eurydice VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)

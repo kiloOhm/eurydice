@@ -137,6 +137,10 @@ void TransportBar::refreshPanelButtons()
 
 void TransportBar::timerCallback()
 {
+    // Poll rather than relying on toggle callbacks: panels can also be shown
+    // or hidden by their own close button, startup flags, or the API.
+    refreshPanelButtons();
+
     const bool playing = getIsPlaying ? getIsPlaying() : false;
     playButton.setColour (juce::TextButton::textColourOffId,
                           playing ? theme::ledGreen : theme::textPrimary);

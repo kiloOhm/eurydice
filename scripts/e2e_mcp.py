@@ -11,6 +11,7 @@ Usage: python3 scripts/e2e_mcp.py [path/to/Eurydice-binary]
 import json
 import math
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -101,7 +102,21 @@ def main():
     print(f"launching {binary} (control port {PORT})")
     app = subprocess.Popen([binary], env=dict(os.environ, EURYDICE_CONTROL_PORT=PORT),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(3)
+
+    # A freshly built binary can take several seconds to launch (Gatekeeper),
+    # so wait for the control port rather than guessing.
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        if app.poll() is not None:
+            sys.exit(f"app exited during startup with code {app.returncode}")
+        try:
+            socket.create_connection(("127.0.0.1", int(PORT)), timeout=0.5).close()
+            break
+        except OSError:
+            time.sleep(0.3)
+    else:
+        app.terminate()
+        sys.exit(f"app never opened control port {PORT}")
     mcp = McpClient()
     render_path = "/tmp/eurydice-e2e.wav"
 

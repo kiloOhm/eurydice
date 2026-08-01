@@ -18,7 +18,9 @@ Dependencies (JUCE, Rubber Band, GoogleTest) are fetched automatically.
 Prerequisites: Xcode command line tools, `cmake`, `ninja`.
 Optional: `brew install lame` for MP3 export.
 
-Run: `./build/Eurydice_artefacts/Eurydice.app/Contents/MacOS/Eurydice`
+Run: `open build/Eurydice_artefacts/RelWithDebInfo/Eurydice.app`
+
+Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers.
 
 ## What's in it
 
@@ -74,7 +76,8 @@ Time is in ticks: 960 per quarter note, 240 per 16th step, 3840 per bar.
 ## Testing
 
 ```bash
-cmake --build build --target EurydiceTests && ./build/EurydiceTests_artefacts/EurydiceTests
+cmake --build build --target EurydiceTests
+./build/EurydiceTests_artefacts/RelWithDebInfo/EurydiceTests
 ```
 
 81 unit tests over the model, snapshot builder, sequencer timing (sample-accurate
