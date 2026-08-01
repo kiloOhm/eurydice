@@ -202,6 +202,7 @@ void PianoRollPanel::addNoteAt (juce::Point<int> pos)
             case 4: intervals = chordIntervalsMaj7;  n = 4; break;
             case 5: intervals = chordIntervalsMin7;  n = 4; break;
             case 6: intervals = chordIntervalsDom7;  n = 4; break;
+            default: break;
         }
         for (int i = 1; i < n; ++i)   // 0 is the clicked note itself
             if (key + intervals[i] <= 127)
@@ -451,7 +452,7 @@ void PianoRollPanel::paintVelocityLane (juce::Graphics& g)
         {
             const int x = ticksToX ((int) note[ids::startTicks]);
             const float vel = (float) (double) note[ids::velocity];
-            const int h = (int) (vel * (area.getHeight() - 8));
+            const int h = (int) (vel * (float) (area.getHeight() - 8));
             const bool sel = selection.contains (note);
             g.setColour (sel ? theme::accent : theme::noteFill.withAlpha (0.85f));
             g.fillRect (x, area.getBottom() - 4 - h, 5, h + 2);
@@ -751,7 +752,7 @@ void PianoRollPanel::timerCallback()
                 newPlayhead = std::fmod (services.engine.getPositionTicks(), len);
         }
     }
-    if (newPlayhead != playheadTicks)
+    if (! juce::approximatelyEqual (newPlayhead, playheadTicks))
     {
         playheadTicks = newPlayhead;
         repaint (gridArea());

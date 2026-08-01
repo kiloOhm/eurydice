@@ -71,7 +71,7 @@ std::shared_ptr<const juce::AudioBuffer<float>> AudioClipCache::getStretched (co
     stretcher.study (inPtrs, (size_t) numIn, true);
     stretcher.process (inPtrs, (size_t) numIn, true);
 
-    const int avail = (int) stretcher.available();
+    const int avail = stretcher.available();
     auto out = std::make_shared<juce::AudioBuffer<float>> (2, juce::jmax (1, avail));
     float* outPtrs[2] = { out->getWritePointer (0), out->getWritePointer (1) };
     stretcher.retrieve (outPtrs, (size_t) juce::jmax (0, avail));

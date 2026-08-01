@@ -1,4 +1,4 @@
-Status: mostly-done
+Status: done
 
 # Channel rack
 

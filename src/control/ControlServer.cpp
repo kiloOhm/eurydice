@@ -10,12 +10,6 @@ juce::var getOr (const juce::var& params, const char* key, const juce::var& fall
     return fallback;
 }
 
-bool has (const juce::var& params, const char* key)
-{
-    auto* obj = params.getDynamicObject();
-    return obj != nullptr && obj->hasProperty (key);
-}
-
 juce::var makeObj (std::initializer_list<std::pair<juce::String, juce::var>> fields)
 {
     auto* obj = new juce::DynamicObject();
@@ -34,11 +28,11 @@ ControlServer::ControlServer (AppServices& s)
 
     if (listener.createListener (port, "127.0.0.1"))
     {
-        std::cout << "CONTROL_LISTENING " << port << std::endl;
+        std::cout << "CONTROL_LISTENING " << port << "\n";
         startThread();
     }
     else
-        std::cout << "CONTROL_BIND_FAILED " << port << std::endl;
+        std::cout << "CONTROL_BIND_FAILED " << port << "\n";
 }
 
 ControlServer::~ControlServer()

@@ -1,0 +1,27 @@
+# Tuned for a JUCE codebase. Disabled checks and why:
+#   throwing-static-initialization  - juce::Identifier globals (Ids.h) are the
+#                                     framework's intended pattern.
+#   redundant-inline-specifier      - JUCE headers use it pervasively.
+#   for-range-copy / value-param    - ValueTree is a cheap refcounted handle
+#                                     whose mutators are non-const, so const&
+#                                     does not compile where we edit the tree.
+Checks: >
+  bugprone-*,
+  performance-*,
+  readability-container-size-empty,
+  readability-redundant-*,
+  misc-unused-using-decls,
+  clang-analyzer-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-exception-escape,
+  -clang-analyzer-osx.*,
+  -performance-enum-size,
+  -bugprone-throwing-static-initialization,
+  -readability-redundant-inline-specifier,
+  -performance-for-range-copy,
+  -performance-unnecessary-value-param
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/eurydice/src/.*'
+FormatStyle: none

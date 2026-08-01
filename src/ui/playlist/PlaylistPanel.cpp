@@ -214,7 +214,7 @@ void PlaylistPanel::paintTrackHeaders (juce::Graphics& g)
         const bool muted = track[ids::mute];
 
         g.setColour (muted ? theme::ledOff : theme::ledGreen);
-        g.fillEllipse (8.0f, (float) y + trackHeight * 0.5f - 4.0f, 8.0f, 8.0f);
+        g.fillEllipse (8.0f, (float) y + (float) trackHeight * 0.5f - 4.0f, 8.0f, 8.0f);
 
         g.setColour (muted ? theme::textFaint : theme::textPrimary);
         g.setFont (theme::uiFont (11.5f));
@@ -314,7 +314,7 @@ void PlaylistPanel::paintClips (juce::Graphics& g)
 
                     juce::Path curve;
                     const float top = (float) y + 15.0f;
-                    const float bottom = (float) y + trackHeight - 3.0f;
+                    const float bottom = (float) y + (float) trackHeight - 3.0f;
                     bool started = false;
                     for (int px = juce::jmax (x0, gridArea().getX());
                          px <= juce::jmin (x1, gridArea().getRight()); px += 2)
@@ -557,7 +557,7 @@ void PlaylistPanel::timerCallback()
     double newPlayhead = -1.0;
     if (services.project.isSongMode())
         newPlayhead = services.engine.getPositionTicks();
-    if (newPlayhead != playheadTicks)
+    if (! juce::approximatelyEqual (newPlayhead, playheadTicks))
     {
         playheadTicks = newPlayhead;
         repaint();

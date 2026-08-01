@@ -384,10 +384,10 @@ void MixerPanel::showSendMenu()
             if (result < 100)
                 return;
             auto sends = insertTree (selectedInsert).getChildWithName (ids::SENDS);
-            juce::ValueTree send (ids::SEND);
-            send.setProperty (ids::destInsert, result - 100, nullptr);
-            send.setProperty (ids::level, 0.8, nullptr);
-            sends.appendChild (send, &services.project.getUndoManager());
+            juce::ValueTree newSend (ids::SEND);
+            newSend.setProperty (ids::destInsert, result - 100, nullptr);
+            newSend.setProperty (ids::level, 0.8, nullptr);
+            sends.appendChild (newSend, &services.project.getUndoManager());
             rebuildDetail();
         });
 }

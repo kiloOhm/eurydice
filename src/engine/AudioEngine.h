@@ -138,7 +138,7 @@ private:
     void processPreviewEvents (const EngineSnapshot&, int numSamples);
 
     std::atomic<float> masterPeak[2] { 0.0f, 0.0f };
-    std::array<std::atomic<float>, maxInserts * 2> insertPeaks {};
+    std::array<std::atomic<float>, (size_t) maxInserts * 2> insertPeaks {};
     std::atomic<juce::AudioFormatWriter::ThreadedWriter*> recorder { nullptr };
 
     // --- per-block automation overrides (sentinel: < -100 means "none") ---

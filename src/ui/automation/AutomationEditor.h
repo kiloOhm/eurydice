@@ -48,8 +48,9 @@ public:
             const int x = ticksToX (t);
             g.drawVerticalLine (x, (float) area.getY(), (float) area.getBottom());
         }
-        for (float v = 0.0f; v <= 1.01f; v += 0.25f)
-            g.drawHorizontalLine (valueToY (v), (float) area.getX(), (float) area.getRight());
+        for (int step = 0; step <= 4; ++step)
+            g.drawHorizontalLine (valueToY ((float) step * 0.25f),
+                                  (float) area.getX(), (float) area.getRight());
 
         // curve
         auto points = buildPoints();

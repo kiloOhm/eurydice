@@ -39,13 +39,6 @@ MainComponent::MainComponent()
 
     addAndMakeVisible (desktop);
 
-    auto makePanel = [this] (const juce::String& title)
-    {
-        auto panel = std::make_unique<FloatingPanel> (title, std::make_unique<PlaceholderPanel> (title));
-        desktop.addAndMakeVisible (*panel);
-        return panel;
-    };
-
     playlistPanel = std::make_unique<FloatingPanel> ("Playlist",
                                                      std::make_unique<PlaylistPanel> (services));
     desktop.addAndMakeVisible (*playlistPanel);
@@ -83,7 +76,7 @@ MainComponent::MainComponent()
             juce::FileOutputStream out (file);
             juce::PNGImageFormat png;
             png.writeImageToStream (image, out);
-            std::cout << "SCREENSHOT_SAVED " << shotPath << std::endl;
+            std::cout << "SCREENSHOT_SAVED " << shotPath << "\n";
         });
     }
 
@@ -95,8 +88,8 @@ MainComponent::MainComponent()
             for (const auto& d : services.plugins.getKnownPlugins().getTypes())
                 std::cout << "PLUGIN\t" << (d.isInstrument ? "inst" : "fx") << "\t"
                           << d.pluginFormatName << "\t" << d.name << "\t"
-                          << d.createIdentifierString() << std::endl;
-            std::cout << "SCAN_DONE " << services.plugins.getKnownPlugins().getNumTypes() << std::endl;
+                          << d.createIdentifierString() << "\n";
+            std::cout << "SCAN_DONE " << services.plugins.getKnownPlugins().getNumTypes() << "\n";
             juce::JUCEApplication::getInstance()->systemRequestedQuit();
         });
     }
@@ -117,7 +110,7 @@ MainComponent::MainComponent()
                 slot.setProperty (ids::slotIndex, 0, nullptr);
                 slot.setProperty (ids::pluginId, d.createIdentifierString(), nullptr);
                 master.appendChild (slot, nullptr);
-                std::cout << "LOADFX_REQUESTED " << d.name << std::endl;
+                std::cout << "LOADFX_REQUESTED " << d.name << "\n";
                 break;
             }
         });
@@ -133,7 +126,7 @@ MainComponent::MainComponent()
             std::cout << "AUTOPLAY peakL=" << services.engine.getMasterPeak (0)
                       << " peakR=" << services.engine.getMasterPeak (1)
                       << " beats=" << services.engine.getPositionBeats()
-                      << " playing=" << (services.engine.isPlaying() ? 1 : 0) << std::endl;
+                      << " playing=" << (services.engine.isPlaying() ? 1 : 0) << "\n";
         });
     }
 }

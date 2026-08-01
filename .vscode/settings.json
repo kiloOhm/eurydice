@@ -1,0 +1,17 @@
+{
+    // Don't surface CMake FetchContent clones (JUCE, googletest, rubberband)
+    // in the Source Control panel.
+    "git.repositoryScanIgnoredFolders": ["build", "build-cov", "build-*"],
+    "git.ignoredRepositories": [
+        "build/_deps/juce-src",
+        "build/_deps/googletest-src",
+        "build/_deps/rubberband-src",
+        "build-cov/_deps/juce-src",
+        "build-cov/_deps/googletest-src",
+        "build-cov/_deps/rubberband-src"
+    ],
+    "files.watcherExclude": {
+        "**/build/**": true,
+        "**/build-cov/**": true
+    }
+}

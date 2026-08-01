@@ -29,6 +29,7 @@ struct EngineFixture
     EngineFixture()
     {
         generators.setPluginContext (&plugins, [this] { sync.rebuildNow(); });
+        effects.onInstanceReady = [this] { sync.rebuildNow(); };
         generators.setAudioSpec (kSampleRate, kBlockSize);
         effects.setAudioSpec (kSampleRate, kBlockSize);
         audioClips.setEngineSampleRate (kSampleRate);

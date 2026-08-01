@@ -64,7 +64,8 @@ private:
         void closeButtonPressed() override
         {
             auto* self = this;
-            juce::MessageManager::callAsync ([&owner = owner, self] { owner.closeFor (self->plugin.get()); });
+            auto* ownerPtr = &owner;
+            juce::MessageManager::callAsync ([ownerPtr, self] { ownerPtr->closeFor (self->plugin.get()); });
         }
 
         PluginWindowManager& owner;

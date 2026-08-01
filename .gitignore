@@ -17,7 +17,8 @@ mcp/node_modules/
 
 # IDE
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.xcodeproj
 compile_commands.json
 

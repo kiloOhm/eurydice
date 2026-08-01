@@ -19,3 +19,6 @@ One file per work item. Status is the first line of each file: `Status: pending 
 | 13 | [13-browser.md](13-browser.md) | Browser: sample tree with preview, plugin picker |
 | 14 | [14-export.md](14-export.md) | Export: WAV, MP3, stems |
 | 15 | [15-ai-control.md](15-ai-control.md) | AI control: command API + JSON-RPC + MCP bridge |
+| 16 | [16-unit-tests.md](16-unit-tests.md) | Unit tests + coverage gate |
+| 17 | [17-e2e-mcp.md](17-e2e-mcp.md) | E2E test via MCP |
+| 18 | [18-static-analysis.md](18-static-analysis.md) | Static analysis (clang-tidy, cppcheck, Sonar config) |
