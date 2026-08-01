@@ -71,6 +71,7 @@ DECLARE_ID (filterEnvAmt)  // synth: 0..1
 // Pattern
 DECLARE_ID (lengthTicks)
 DECLARE_ID (channelId)     // on LANE
+DECLARE_ID (editedWith)    // on LANE: "steps" | "pianoroll"
 
 // Note (also used as a "step": steps are just notes on the grid)
 DECLARE_ID (key)           // MIDI note number

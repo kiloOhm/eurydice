@@ -230,6 +230,8 @@ void PianoRollPanel::addNoteAt (juce::Point<int> pos)
     if (! lane.isValid())
         return;
 
+    lanes::markEditedWithPianoRoll (lane);
+
     const int key = juce::jlimit (0, 127, yToKey (pos.y));
     const int start = (int) snapDown (xToTicks (pos.x));
 
@@ -326,6 +328,8 @@ std::vector<notetools::Note> PianoRollPanel::selectedNotes() const
 // undo transaction, so the whole swap collapses into one step.
 void PianoRollPanel::replaceSelection (const std::vector<notetools::Note>& notes)
 {
+    lanes::markEditedWithPianoRoll (currentLane (true));
+
     auto lane = currentLane (false);
     if (! lane.isValid())
         return;

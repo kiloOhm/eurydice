@@ -120,6 +120,7 @@ bool ChannelRow::isStepOn (int step) const
 void ChannelRow::setStep (int step, bool on)
 {
     auto lane = model.getOrCreateLane (pattern, getChannelId());
+    lanes::markEditedWithSteps (lane);
     const int tick = step * ids::ticksPerStep;
 
     if (on)

@@ -137,6 +137,10 @@ void StepGraphLane::applyDrag (juce::Point<int> pos)
     const double value = range.min + norm * (range.max - range.min);
     auto& undo = model.getUndoManager();
 
+    // Editing here is step-sequencer work, even when it changes pitch, so the
+    // row must keep showing steps rather than flipping to the note preview.
+    lanes::markEditedWithSteps (note.getParent());
+
     switch (getMode())
     {
         case Mode::velocity: note.setProperty (ids::velocity, value, &undo); break;

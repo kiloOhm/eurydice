@@ -307,3 +307,62 @@ TEST (ProjectModel, InsertsDefaultRouteToMaster)
     // Master has no sends.
     EXPECT_EQ (model.getInsert (0).getChildWithName (ids::SENDS).getNumChildren(), 0);
 }
+
+// ---------------- lane classification ----------------
+
+namespace
+{
+juce::ValueTree makeStepLane()
+{
+    juce::ValueTree lane (ids::LANE);
+    lane.setProperty (ids::channelId, 1, nullptr);
+    for (int step = 0; step < 4; ++step)
+    {
+        juce::ValueTree note (ids::NOTE);
+        note.setProperty (ids::key, 60, nullptr);
+        note.setProperty (ids::startTicks, step * ids::ticksPerStep, nullptr);
+        note.setProperty (ids::lengthTicks, ids::ticksPerStep, nullptr);
+        lane.appendChild (note, nullptr);
+    }
+    return lane;
+}
+}
+
+TEST (LaneClassification, PlainStepLaneIsNotPianoRoll)
+{
+    EXPECT_FALSE (laneUsesPianoRoll (makeStepLane(), 60));
+}
+
+TEST (LaneClassification, HeuristicCatchesOffGridContent)
+{
+    auto lane = makeStepLane();
+    lane.getChild (0).setProperty (ids::startTicks, 120, nullptr);
+    EXPECT_TRUE (laneUsesPianoRoll (lane, 60));
+}
+
+TEST (LaneClassification, ExplicitFlagWinsOverHeuristic)
+{
+    // A step lane whose pitch was nudged in the rack graph lane still reads as
+    // steps — otherwise editing pitch would flip the row to a note preview and
+    // hide the very control being used.
+    auto lane = makeStepLane();
+    lane.getChild (0).setProperty (ids::key, 67, nullptr);
+    EXPECT_TRUE (laneUsesPianoRoll (lane, 60)) << "heuristic alone would say piano roll";
+
+    lanes::markEditedWithSteps (lane);
+    EXPECT_FALSE (laneUsesPianoRoll (lane, 60)) << "the step editor claimed this lane";
+}
+
+TEST (LaneClassification, PianoRollFlagSticksForStepShapedNotes)
+{
+    // Notes drawn in the piano roll that happen to land on the grid at the
+    // root pitch must still count as piano-roll content.
+    auto lane = makeStepLane();
+    lanes::markEditedWithPianoRoll (lane);
+    EXPECT_TRUE (laneUsesPianoRoll (lane, 60));
+}
+
+TEST (LaneClassification, EmptyLaneIsNotPianoRoll)
+{
+    EXPECT_FALSE (laneUsesPianoRoll (juce::ValueTree (ids::LANE), 60));
+}

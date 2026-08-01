@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include "model/Ids.h"
+#include "model/LaneUtils.h"
 
 // Note-editing maths for the piano roll: rolls/ratchets, chop, glue, strum.
 // Pure functions over a plain note struct, so they can be tested without a UI.
@@ -179,17 +180,7 @@ inline std::vector<Note> strum (std::vector<Note> notes, int offsetTicks)
     return notes;
 }
 
-// A lane holds piano-roll content once any note departs from the step grid:
-// an off-grid start, a non-step length, or a pitch other than the channel root.
-inline bool laneUsesPianoRoll (const juce::ValueTree& lane, int rootNote)
-{
-    for (const auto note : lane)
-    {
-        if (! note.hasType (ids::NOTE))                             continue;
-        if ((int) note[ids::startTicks] % ids::ticksPerStep != 0)   return true;
-        if ((int) note[ids::lengthTicks] != ids::ticksPerStep)      return true;
-        if ((int) note[ids::key] != rootNote)                       return true;
-    }
-    return false;
-}
+// Re-exported from the model layer so piano-roll code has one obvious home
+// for it; the single definition lives in model/LaneUtils.h.
+using ::laneUsesPianoRoll;
 } // namespace notetools
