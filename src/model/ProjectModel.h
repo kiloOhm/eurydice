@@ -40,6 +40,11 @@ public:
 
     // --- Patterns ---
     juce::ValueTree addPattern (const juce::String& name);
+    // Deep copy of the pattern, inserted right after the original.
+    juce::ValueTree clonePattern (int patternId);
+    // Also drops playlist clips pointing at it; refuses to remove the last pattern.
+    bool removePattern (int patternId);
+    bool movePattern (int fromIndex, int toIndex);
     juce::ValueTree getPatternById (int patternId) const;
     int numPatterns() const                   { return patterns().getNumChildren(); }
     juce::ValueTree getPattern (int index) const { return patterns().getChild (index); }

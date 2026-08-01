@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "app/AppServices.h"
 #include "ChannelRow.h"
+#include "StepGraphLane.h"
 
 // The FL-style channel rack: pattern selector + swing in the header,
 // one ChannelRow per channel, add-channel button at the bottom.
@@ -29,10 +30,13 @@ private:
     void refreshHeader();
     int rowContainerWidth() const;
     juce::ValueTree activePattern() const;
+    juce::ValueTree selectedChannel() const;
     void showChannelMenu (juce::ValueTree channel);
     void showInsertMenu (juce::ValueTree channel);
     void showAddChannelMenu();
+    void showPatternMenu();
     void openChannelEditor (juce::ValueTree channel);
+    void showPianoRollFor (juce::ValueTree channel);
 
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
     void valueTreeChildAdded (juce::ValueTree&, juce::ValueTree&) override;
@@ -45,9 +49,11 @@ private:
 
     juce::ComboBox patternBox;
     juce::TextButton addPatternButton { "+" };
+    juce::TextButton patternMenuButton { "..." };
     juce::ComboBox lengthBox;
     juce::Slider swingKnob;
     juce::Label swingLabel { {}, "SWING" };
+    juce::TextButton graphButton { "GRAPH" };
 
     struct RowContainer : juce::Component
     {
@@ -62,9 +68,21 @@ private:
         }
     };
 
-    juce::Viewport viewport;
+    // Reports horizontal scrolling so the graph lane can track the step grid.
+    struct SyncViewport : juce::Viewport
+    {
+        std::function<void (juce::Rectangle<int>)> onVisibleAreaChanged;
+        void visibleAreaChanged (const juce::Rectangle<int>& area) override
+        {
+            if (onVisibleAreaChanged)
+                onVisibleAreaChanged (area);
+        }
+    };
+
+    SyncViewport viewport;
     RowContainer rowContainer;
     std::vector<std::unique_ptr<ChannelRow>> rows;
+    StepGraphLane graphLane;
     juce::TextButton addChannelButton { "+ Channel" };
 
     static constexpr int headerHeight = 34;

@@ -1,5 +1,6 @@
 #include "ChannelRow.h"
 #include "app/Theme.h"
+#include "model/LaneUtils.h"
 
 ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
     : model (m), channel (ch)
@@ -136,10 +137,54 @@ void ChannelRow::setStep (int step, bool on)
     repaint (stepsArea());
 }
 
+bool ChannelRow::usesPianoRoll() const
+{
+    return laneUsesPianoRoll (model.getLane (pattern, getChannelId()),
+                              (int) channel.getProperty (ids::rootNote, 60));
+}
+
+void ChannelRow::paintNoteGraph (juce::Graphics& g, juce::Rectangle<int> area) const
+{
+    const auto lane = model.getLane (pattern, getChannelId());
+    const double patternTicks = juce::jmax (1, (int) pattern[ids::lengthTicks]);
+
+    int lowKey = 127, highKey = 0;
+    for (const auto note : lane)
+    {
+        lowKey  = juce::jmin (lowKey,  (int) note[ids::key]);
+        highKey = juce::jmax (highKey, (int) note[ids::key]);
+    }
+    if (highKey <= lowKey)   // a single pitch gets an octave of headroom either way
+    {
+        lowKey  -= 6;
+        highKey += 6;
+    }
+
+    const auto band = area.reduced (0, 4).toFloat();
+    const float noteH = juce::jlimit (3.0f, 7.0f, band.getHeight() / (float) (highKey - lowKey + 1));
+    const float travel = band.getHeight() - noteH;
+
+    const juce::Graphics::ScopedSaveState state (g);
+    g.reduceClipRegion (area);
+    g.setColour (theme::noteFill);
+
+    for (const auto note : lane)
+    {
+        const double start = (int) note[ids::startTicks];
+        const double len   = juce::jmax (1, (int) note[ids::lengthTicks]);
+        const float x = band.getX() + (float) (start / patternTicks) * band.getWidth();
+        const float w = juce::jmax (2.0f, (float) (len / patternTicks) * band.getWidth());
+        const float y = band.getBottom() - noteH
+                        - (float) ((int) note[ids::key] - lowKey) / (float) (highKey - lowKey) * travel;
+        g.fillRoundedRectangle (x, y, w, noteH, 1.0f);
+    }
+}
+
 void ChannelRow::paint (juce::Graphics& g)
 {
     const auto area = stepsArea();
     const int steps = numSteps();
+    const bool pianoRoll = usesPianoRoll();
 
     for (int s = 0; s < steps; ++s)
     {
@@ -147,7 +192,7 @@ void ChannelRow::paint (juce::Graphics& g)
                                           stepWidth, getHeight()).reduced (2, 4);
 
         const bool evenGroup = ((s / 4) % 2) == 0;
-        const bool on = isStepOn (s);
+        const bool on = ! pianoRoll && isStepOn (s);
 
         juce::Colour c = on ? (evenGroup ? theme::stepOn : theme::stepOnDim)
                             : (evenGroup ? theme::stepEvenBg : theme::stepOddBg);
@@ -163,6 +208,9 @@ void ChannelRow::paint (juce::Graphics& g)
             g.drawRoundedRectangle (cell.toFloat(), 3.0f, 1.0f);
         }
     }
+
+    if (pianoRoll)
+        paintNoteGraph (g, area.withWidth (steps * stepWidth));
 }
 
 void ChannelRow::resized()
@@ -202,6 +250,13 @@ void ChannelRow::mouseDown (const juce::MouseEvent& e)
     const int step = stepAt (pos);
     if (step < 0)
         return;
+
+    if (usesPianoRoll())
+    {
+        if (onSelected) onSelected (getChannelId());
+        if (onWantsPianoRoll) onWantsPianoRoll (channel);
+        return;
+    }
 
     dragPaintMode = e.mods.isPopupMenu() ? 0 : 1;
     setStep (step, dragPaintMode == 1);

@@ -25,6 +25,7 @@ public:
     std::function<void (juce::ValueTree channel)> onOpenEditor;
     std::function<void (juce::ValueTree channel)> onWantsContextMenu;
     std::function<void (juce::ValueTree channel)> onWantsInsertMenu;
+    std::function<void (juce::ValueTree channel)> onWantsPianoRoll;
 
     static constexpr int rowHeight   = 30;
     static constexpr int stepWidth   = 26;
@@ -32,11 +33,16 @@ public:
 
     int numSteps() const;
 
+    // True once the lane holds notes the step grid cannot represent; the row
+    // then shows a miniature note graph instead of step cells.
+    bool usesPianoRoll() const;
+
 private:
     juce::Rectangle<int> stepsArea() const;
     int stepAt (juce::Point<int>) const;
     bool isStepOn (int step) const;
     void setStep (int step, bool on);
+    void paintNoteGraph (juce::Graphics&, juce::Rectangle<int> area) const;
 
     ProjectModel& model;
     juce::ValueTree channel;

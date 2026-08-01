@@ -3,7 +3,7 @@
 #include "app/Theme.h"
 
 ChannelRackPanel::ChannelRackPanel (AppServices& s)
-    : services (s)
+    : services (s), graphLane (s.project)
 {
     observedRoot = services.project.getRoot();
     observedRoot.addListener (this);
@@ -27,6 +27,11 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
         refreshHeader();
     };
     addAndMakeVisible (addPatternButton);
+
+    patternMenuButton.setWantsKeyboardFocus (false);
+    patternMenuButton.setTooltip ("Clone, rename, reorder or delete the pattern");
+    patternMenuButton.onClick = [this] { showPatternMenu(); };
+    addAndMakeVisible (patternMenuButton);
 
     lengthBox.addItem ("16 steps", 16);
     lengthBox.addItem ("32 steps", 32);
@@ -56,9 +61,26 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
     swingLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (swingLabel);
 
+    graphButton.setWantsKeyboardFocus (false);
+    graphButton.setClickingTogglesState (true);
+    graphButton.setTooltip ("Show the per-step velocity / pan / pitch graph");
+    graphButton.setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
+    graphButton.onClick = [this]
+    {
+        graphLane.setVisible (graphButton.getToggleState());
+        resized();
+    };
+    addAndMakeVisible (graphButton);
+
     viewport.setViewedComponent (&rowContainer, false);
     viewport.setScrollBarsShown (true, true);
+    viewport.onVisibleAreaChanged = [this] (juce::Rectangle<int> area)
+    {
+        graphLane.setScrollOffset (area.getX());
+    };
     addAndMakeVisible (viewport);
+
+    addChildComponent (graphLane);
 
     addChannelButton.setWantsKeyboardFocus (false);
     addChannelButton.onClick = [this] { showAddChannelMenu(); };
@@ -79,6 +101,12 @@ juce::ValueTree ChannelRackPanel::activePattern() const
     return services.project.getPatternById (observedRoot[ids::activePattern]);
 }
 
+juce::ValueTree ChannelRackPanel::selectedChannel() const
+{
+    auto channel = services.project.getChannelById (observedRoot[ids::selectedChannel]);
+    return channel.isValid() ? channel : services.project.getChannel (0);
+}
+
 void ChannelRackPanel::refreshHeader()
 {
     auto& project = services.project;
@@ -96,6 +124,9 @@ void ChannelRackPanel::refreshHeader()
         lengthBox.setSelectedId ((int) pat[ids::lengthTicks] / ids::ticksPerStep,
                                  juce::dontSendNotification);
     swingKnob.setValue (project.getSwing(), juce::dontSendNotification);
+
+    graphLane.setPattern (pat);
+    graphLane.setChannel (selectedChannel());
 }
 
 void ChannelRackPanel::rebuildRows()
@@ -115,6 +146,7 @@ void ChannelRackPanel::rebuildRows()
         row->onWantsContextMenu = [this] (juce::ValueTree channel) { showChannelMenu (channel); };
         row->onOpenEditor = [this] (juce::ValueTree channel) { openChannelEditor (channel); };
         row->onWantsInsertMenu = [this] (juce::ValueTree channel) { showInsertMenu (channel); };
+        row->onWantsPianoRoll = [this] (juce::ValueTree channel) { showPianoRollFor (channel); };
         rowContainer.addAndMakeVisible (*row);
         rows.push_back (std::move (row));
     }
@@ -167,10 +199,72 @@ void ChannelRackPanel::showAddChannelMenu()
         });
 }
 
+void ChannelRackPanel::showPatternMenu()
+{
+    auto& project = services.project;
+    auto pattern = activePattern();
+    if (! pattern.isValid())
+        return;
+
+    const int index = project.patterns().indexOf (pattern);
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (pattern[ids::name].toString());
+    menu.addItem (1, "Clone");
+    menu.addItem (2, "Rename...");
+    menu.addItem (3, "Delete", project.numPatterns() > 1);
+    menu.addSeparator();
+    menu.addItem (4, "Move left", index > 0);
+    menu.addItem (5, "Move right", index < project.numPatterns() - 1);
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (patternMenuButton),
+        [this, pattern, index] (int result) mutable
+        {
+            if (result == 1)
+            {
+                auto copy = services.project.clonePattern ((int) pattern[ids::id]);
+                services.project.getRoot().setProperty (ids::activePattern,
+                                                        (int) copy[ids::id], nullptr);
+            }
+            else if (result == 2)
+            {
+                auto* window = new juce::AlertWindow ("Rename pattern", {},
+                                                      juce::MessageBoxIconType::NoIcon);
+                window->addTextEditor ("name", pattern[ids::name].toString());
+                window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+                window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+                auto& undo = services.project.getUndoManager();
+                window->enterModalState (true, juce::ModalCallbackFunction::create (
+                    [window, pattern, &undo] (int r) mutable
+                    {
+                        if (r == 1)
+                            pattern.setProperty (ids::name, window->getTextEditorContents ("name"), &undo);
+                        delete window;
+                    }));
+            }
+            else if (result == 3)
+            {
+                services.project.removePattern ((int) pattern[ids::id]);
+            }
+            else if (result == 4 || result == 5)
+            {
+                services.project.movePattern (index, result == 4 ? index - 1 : index + 1);
+                refreshHeader();
+            }
+        });
+}
+
 void ChannelRackPanel::openChannelEditor (juce::ValueTree channel)
 {
     if (onOpenChannelEditor)
         onOpenChannelEditor (channel);
+}
+
+void ChannelRackPanel::showPianoRollFor (juce::ValueTree channel)
+{
+    services.project.getRoot().setProperty (ids::selectedChannel, (int) channel[ids::id], nullptr);
+    if (onShowPianoRoll)
+        onShowPianoRoll();
 }
 
 void ChannelRackPanel::showInsertMenu (juce::ValueTree channel)
@@ -251,10 +345,7 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
         }
         else if (result == 5)
         {
-            services.project.getRoot().setProperty (ids::selectedChannel,
-                                                    (int) channel[ids::id], nullptr);
-            if (onShowPianoRoll)
-                onShowPianoRoll();
+            showPianoRollFor (channel);
         }
         else if (result == 6)
         {
@@ -299,6 +390,17 @@ void ChannelRackPanel::valueTreePropertyChanged (juce::ValueTree& tree, const ju
         for (auto& row : rows)
             if (row->getChannelTree() == tree)
                 row->refreshFromModel();
+        graphLane.repaint();
+    }
+    else if (tree.hasType (ids::NOTE))
+    {
+        graphLane.repaint();
+        for (auto& row : rows)
+            row->repaint();
+    }
+    else if (prop == ids::selectedChannel)
+    {
+        graphLane.setChannel (selectedChannel());
     }
     else if (prop == ids::activePattern || prop == ids::lengthTicks || prop == ids::swing
              || prop == ids::name)
@@ -317,8 +419,11 @@ void ChannelRackPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::Value
     else if (child.hasType (ids::PATTERN))
         refreshHeader();
     else if (child.hasType (ids::NOTE) || child.hasType (ids::LANE))
+    {
         for (auto& row : rows)
             row->repaint();
+        graphLane.repaint();
+    }
 }
 
 void ChannelRackPanel::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child, int)
@@ -356,9 +461,13 @@ void ChannelRackPanel::resized()
     auto r = getLocalBounds();
     auto header = r.removeFromTop (headerHeight).reduced (6, 4);
 
+    graphButton.setBounds (header.removeFromRight (56));
+
     patternBox.setBounds (header.removeFromLeft (150));
     header.removeFromLeft (4);
     addPatternButton.setBounds (header.removeFromLeft (26));
+    header.removeFromLeft (2);
+    patternMenuButton.setBounds (header.removeFromLeft (26));
     header.removeFromLeft (10);
     lengthBox.setBounds (header.removeFromLeft (100));
     header.removeFromLeft (10);
@@ -367,6 +476,9 @@ void ChannelRackPanel::resized()
 
     auto bottom = r.removeFromBottom (30).reduced (6, 3);
     addChannelButton.setBounds (bottom.removeFromLeft (110));
+
+    if (graphLane.isVisible())
+        graphLane.setBounds (r.removeFromBottom (StepGraphLane::laneHeight).reduced (2, 0));
 
     viewport.setBounds (r.reduced (2));
 }

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "model/LaneUtils.h"
 #include "model/ProjectModel.h"
 
 TEST (ProjectModel, DefaultProjectShape)
@@ -137,6 +138,140 @@ TEST (ProjectModel, AutomationDefaults)
     EXPECT_EQ (automation.getNumChildren(), 2);   // two flat points
     EXPECT_DOUBLE_EQ ((double) automation.getChild (0)[ids::value], 0.7);
     EXPECT_TRUE (model.getAutomationById (automation[ids::id]).isValid());
+}
+
+TEST (ProjectModel, ClonePatternIsAnIndependentDeepCopy)
+{
+    ProjectModel model;
+    auto source = model.getPattern (0);
+    const int kickId = model.getChannel (0)[ids::id];
+    const int sourceNotes = model.getLane (source, kickId).getNumChildren();
+    ASSERT_GT (sourceNotes, 0);
+
+    auto copy = model.clonePattern (source[ids::id]);
+    ASSERT_TRUE (copy.isValid());
+    EXPECT_EQ (copy[ids::name].toString(), "Pattern 1 (copy)");
+    EXPECT_NE ((int) copy[ids::id], (int) source[ids::id]);
+    EXPECT_EQ (model.numPatterns(), 2);
+    EXPECT_EQ (model.patterns().indexOf (copy), model.patterns().indexOf (source) + 1);
+
+    auto copiedLane = model.getLane (copy, kickId);
+    ASSERT_TRUE (copiedLane.isValid());
+    ASSERT_EQ (copiedLane.getNumChildren(), sourceNotes);
+
+    // Editing the copy leaves the original untouched.
+    model.addNote (copiedLane, 67, 7 * ids::ticksPerStep, ids::ticksPerStep);
+    copiedLane.getChild (0).setProperty (ids::velocity, 0.11, nullptr);
+    copy.setProperty (ids::lengthTicks, 2 * ids::ticksPerBar, nullptr);
+
+    auto sourceLane = model.getLane (source, kickId);
+    EXPECT_EQ (sourceLane.getNumChildren(), sourceNotes);
+    EXPECT_NE ((double) sourceLane.getChild (0)[ids::velocity], 0.11);
+    EXPECT_EQ ((int) source[ids::lengthTicks], ids::ticksPerBar);
+}
+
+TEST (ProjectModel, CloneRejectsUnknownPattern)
+{
+    ProjectModel model;
+    EXPECT_FALSE (model.clonePattern (987654).isValid());
+    EXPECT_EQ (model.numPatterns(), 1);
+}
+
+TEST (ProjectModel, RemovePatternDropsReferencingClips)
+{
+    ProjectModel model;
+    auto victim = model.addPattern ("Doomed");
+    auto keeper = model.getPattern (0);
+
+    auto doomedClip = model.addPlaylistClip ("pattern", 0, 0, ids::ticksPerBar);
+    doomedClip.setProperty (ids::patternId, (int) victim[ids::id], nullptr);
+    auto keptClip = model.addPlaylistClip ("pattern", 0, ids::ticksPerBar, ids::ticksPerBar);
+    keptClip.setProperty (ids::patternId, (int) keeper[ids::id], nullptr);
+
+    ASSERT_TRUE (model.removePattern (victim[ids::id]));
+    EXPECT_FALSE (model.getPatternById (victim[ids::id]).isValid());
+
+    auto track = model.playlist().getChild (0);
+    ASSERT_EQ (track.getNumChildren(), 1);
+    EXPECT_EQ ((int) track.getChild (0)[ids::patternId], (int) keeper[ids::id]);
+}
+
+TEST (ProjectModel, RemovePatternRefusesTheLastOne)
+{
+    ProjectModel model;
+    ASSERT_EQ (model.numPatterns(), 1);
+    EXPECT_FALSE (model.removePattern (model.getPattern (0)[ids::id]));
+    EXPECT_EQ (model.numPatterns(), 1);
+    EXPECT_FALSE (model.removePattern (987654));
+}
+
+TEST (ProjectModel, RemovingActivePatternSelectsNeighbour)
+{
+    ProjectModel model;
+    auto second = model.addPattern ("Second");
+    model.getRoot().setProperty (ids::activePattern, (int) second[ids::id], nullptr);
+
+    ASSERT_TRUE (model.removePattern (second[ids::id]));
+    const int activeId = model.getRoot()[ids::activePattern];
+    EXPECT_TRUE (model.getPatternById (activeId).isValid());
+    EXPECT_EQ (activeId, (int) model.getPattern (0)[ids::id]);
+}
+
+TEST (ProjectModel, MovePatternReorders)
+{
+    ProjectModel model;
+    const int firstId = model.getPattern (0)[ids::id];
+    const int secondId = model.addPattern ("Second")[ids::id];
+
+    ASSERT_TRUE (model.movePattern (1, 0));
+    EXPECT_EQ ((int) model.getPattern (0)[ids::id], secondId);
+    EXPECT_EQ ((int) model.getPattern (1)[ids::id], firstId);
+
+    EXPECT_FALSE (model.movePattern (0, 0));
+    EXPECT_FALSE (model.movePattern (-1, 0));
+    EXPECT_FALSE (model.movePattern (0, 9));
+    EXPECT_EQ ((int) model.getPattern (0)[ids::id], secondId);
+}
+
+TEST (LaneUtils, PlainStepLaneIsNotPianoRoll)
+{
+    ProjectModel model;
+    auto lane = model.getOrCreateLane (model.getPattern (0), model.getChannel (1)[ids::id]);
+    EXPECT_FALSE (laneUsesPianoRoll (lane, 60));   // empty lane
+
+    for (int step = 0; step < 4; ++step)
+        model.addNote (lane, 60, step * ids::ticksPerStep, ids::ticksPerStep);
+    EXPECT_FALSE (laneUsesPianoRoll (lane, 60));
+}
+
+TEST (LaneUtils, OffGridStartMakesItPianoRoll)
+{
+    ProjectModel model;
+    auto lane = model.getOrCreateLane (model.getPattern (0), model.getChannel (1)[ids::id]);
+    model.addNote (lane, 60, ids::ticksPerStep + 17, ids::ticksPerStep);
+    EXPECT_TRUE (laneUsesPianoRoll (lane, 60));
+}
+
+TEST (LaneUtils, NonStepLengthMakesItPianoRoll)
+{
+    ProjectModel model;
+    auto pattern = model.getPattern (0);
+    auto longLane = model.getOrCreateLane (pattern, model.getChannel (1)[ids::id]);
+    model.addNote (longLane, 60, 0, ids::ticksPerStep * 2);
+    EXPECT_TRUE (laneUsesPianoRoll (longLane, 60));
+
+    auto shortLane = model.getOrCreateLane (pattern, model.getChannel (3)[ids::id]);
+    model.addNote (shortLane, 60, 0, ids::ticksPerStep / 2);
+    EXPECT_TRUE (laneUsesPianoRoll (shortLane, 60));
+}
+
+TEST (LaneUtils, NonRootPitchMakesItPianoRoll)
+{
+    ProjectModel model;
+    auto lane = model.getOrCreateLane (model.getPattern (0), model.getChannel (1)[ids::id]);
+    model.addNote (lane, 67, 0, ids::ticksPerStep);
+    EXPECT_TRUE (laneUsesPianoRoll (lane, 60));
+    EXPECT_FALSE (laneUsesPianoRoll (lane, 67));   // same notes, different root
 }
 
 TEST (ProjectModel, InsertsDefaultRouteToMaster)

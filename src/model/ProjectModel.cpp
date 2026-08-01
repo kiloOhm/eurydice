@@ -132,6 +132,53 @@ juce::ValueTree ProjectModel::addPattern (const juce::String& name)
     return p;
 }
 
+juce::ValueTree ProjectModel::clonePattern (int patternId)
+{
+    auto source = getPatternById (patternId);
+    if (! source.isValid())
+        return {};
+
+    auto copy = source.createCopy();
+    copy.setProperty (ids::id, nextId(), nullptr);
+    copy.setProperty (ids::name, source[ids::name].toString() + " (copy)", nullptr);
+    patterns().addChild (copy, patterns().indexOf (source) + 1, &undo);
+    return copy;
+}
+
+bool ProjectModel::removePattern (int patternId)
+{
+    auto pattern = getPatternById (patternId);
+    if (! pattern.isValid() || numPatterns() <= 1)
+        return false;
+
+    const int index = patterns().indexOf (pattern);
+
+    for (auto track : playlist())
+        for (int i = track.getNumChildren(); --i >= 0;)
+            if (track.getChild (i).hasType (ids::CLIP)
+                && (int) track.getChild (i)[ids::patternId] == patternId)
+                track.removeChild (i, &undo);
+
+    patterns().removeChild (pattern, &undo);
+
+    if ((int) root[ids::activePattern] == patternId)
+        root.setProperty (ids::activePattern,
+                          (int) getPattern (juce::jmin (index, numPatterns() - 1))[ids::id],
+                          nullptr);
+    return true;
+}
+
+bool ProjectModel::movePattern (int fromIndex, int toIndex)
+{
+    if (fromIndex == toIndex
+        || ! juce::isPositiveAndBelow (fromIndex, numPatterns())
+        || ! juce::isPositiveAndBelow (toIndex, numPatterns()))
+        return false;
+
+    patterns().moveChild (fromIndex, toIndex, &undo);
+    return true;
+}
+
 juce::ValueTree ProjectModel::getPatternById (int patternId) const
 {
     return patterns().getChildWithProperty (ids::id, patternId);
