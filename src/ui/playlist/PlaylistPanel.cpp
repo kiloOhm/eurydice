@@ -398,12 +398,25 @@ void PlaylistPanel::mouseDown (const juce::MouseEvent& e)
 
     if (clip.isValid())
     {
-        if (e.getNumberOfClicks() == 2 && clip[ids::clipType].toString() == "automation")
+        if (e.getNumberOfClicks() == 2)
         {
-            auto automation = services.project.getAutomationById (clip[ids::automationId]);
-            if (automation.isValid())
-                AutomationEditor::open (services, automation, clip[ids::lengthTicks]);
-            return;
+            const auto type = clip[ids::clipType].toString();
+            if (type == "automation")
+            {
+                auto automation = services.project.getAutomationById (clip[ids::automationId]);
+                if (automation.isValid())
+                    AutomationEditor::open (services, automation, clip[ids::lengthTicks]);
+                return;
+            }
+            if (type == "pattern")
+            {
+                // FL habit: double-click a clip to edit that pattern.
+                services.project.getRoot().setProperty (ids::activePattern,
+                                                        (int) clip[ids::patternId], nullptr);
+                if (onShowPianoRoll)
+                    onShowPianoRoll();
+                return;
+            }
         }
         dragClip = clip;
         drag = overRightEdge ? Drag::resize : Drag::move;

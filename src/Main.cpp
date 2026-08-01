@@ -21,6 +21,11 @@ public:
 
     void systemRequestedQuit() override
     {
+        // Give the user a chance to save before the app goes away.
+        if (mainWindow != nullptr)
+            if (auto* content = dynamic_cast<MainComponent*> (mainWindow->getContentComponent()))
+                if (! content->okToCloseProject ("quitting"))
+                    return;
         quit();
     }
 
@@ -32,6 +37,7 @@ public:
         {
             setUsingNativeTitleBar (true);
             setContentOwned (new MainComponent(), true);
+            setTitleBarTextCentred (false);
             setResizable (true, false);
             setResizeLimits (960, 600, 10000, 10000);
             centreWithSize (getWidth(), getHeight());

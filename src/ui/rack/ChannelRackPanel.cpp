@@ -1,4 +1,5 @@
 #include "ChannelRackPanel.h"
+#include "ChannelEditor.h"
 #include "app/Theme.h"
 
 ChannelRackPanel::ChannelRackPanel (AppServices& s)
@@ -167,12 +168,8 @@ void ChannelRackPanel::showAddChannelMenu()
 
 void ChannelRackPanel::openChannelEditor (juce::ValueTree channel)
 {
-    if (channel[ids::type].toString() != "plugin")
-        return;   // sampler/synth editors come later
-
-    if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (services.generators.getOrCreate (channel)))
-        if (auto hosted = gen->getPlugin())
-            services.pluginWindows.showEditorFor (hosted, channel[ids::name].toString());
+    if (onOpenChannelEditor)
+        onOpenChannelEditor (channel);
 }
 
 void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
@@ -200,6 +197,9 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
     }
 
     juce::PopupMenu menu;
+    menu.addItem (5, "Piano roll");
+    menu.addItem (6, "Channel settings");
+    menu.addSeparator();
     menu.addItem (1, "Rename...");
     menu.addItem (2, "Delete channel");
     menu.addSeparator();
@@ -226,6 +226,17 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
         else if (result == 2)
         {
             services.project.removeChannel (channel);
+        }
+        else if (result == 5)
+        {
+            services.project.getRoot().setProperty (ids::selectedChannel,
+                                                    (int) channel[ids::id], nullptr);
+            if (onShowPianoRoll)
+                onShowPianoRoll();
+        }
+        else if (result == 6)
+        {
+            openChannelEditor (channel);
         }
         else if (result == 10 || result == 11)
         {

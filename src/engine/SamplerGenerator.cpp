@@ -2,15 +2,57 @@
 
 SamplerGenerator::SamplerGenerator() = default;
 
-void SamplerGenerator::prepare (double sampleRate, int)
+void SamplerGenerator::prepare (double sampleRate, int blockSize)
 {
     deviceSampleRate = sampleRate;
+    for (auto& v : voices)
+    {
+        v.env.setSampleRate (sampleRate);
+        v.filter.prepare ({ sampleRate, (juce::uint32) juce::jmax (1, blockSize), 2 });
+        v.filter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
+        v.active = false;
+    }
 }
 
 void SamplerGenerator::reset()
 {
     for (auto& v : voices)
         v.active = false;
+}
+
+std::shared_ptr<const SamplerGenerator::Sample> SamplerGenerator::getSample() const
+{
+    const juce::SpinLock::ScopedLockType sl (sampleLock);
+    return currentSample;
+}
+
+double SamplerGenerator::getSampleLengthSeconds() const
+{
+    if (auto sample = getSample())
+        return sample->data.getNumSamples() / sample->sourceSampleRate;
+    return 0.0;
+}
+
+std::vector<float> SamplerGenerator::getWaveformOutline (int numBuckets) const
+{
+    std::vector<float> outline;
+    auto sample = getSample();
+    if (sample == nullptr || numBuckets <= 0)
+        return outline;
+
+    const int total = sample->data.getNumSamples();
+    if (total <= 0)
+        return outline;
+
+    outline.reserve ((size_t) numBuckets);
+    const int perBucket = juce::jmax (1, total / numBuckets);
+    for (int b = 0; b < numBuckets; ++b)
+    {
+        const int start = juce::jmin (total - 1, b * perBucket);
+        const int len = juce::jmin (perBucket, total - start);
+        outline.push_back (sample->data.getMagnitude (start, juce::jmax (1, len)));
+    }
+    return outline;
 }
 
 bool SamplerGenerator::loadSampleFile (const juce::File& file)
@@ -151,12 +193,31 @@ void SamplerGenerator::startVoice (int key, float velocity)
     }
 
     const double semis = key - rootNote.load();
-    slot->rate  = std::pow (2.0, semis / 12.0) * sample->sourceSampleRate / deviceSampleRate;
-    slot->pos   = 0.0;
-    slot->gainL = velocity * sampleGain.load();
-    slot->gainR = slot->gainL;
-    slot->sample = std::move (sample);
+    slot->rate     = std::pow (2.0, semis / 12.0) * sample->sourceSampleRate / deviceSampleRate;
+    slot->pos      = 0.0;
+    slot->key      = key;
+    slot->velocity = velocity * p.gain.load();
+    slot->sample   = std::move (sample);
+
+    slot->env.setSampleRate (deviceSampleRate);
+    slot->env.setParameters ({ p.attack.load(), p.decay.load(),
+                               p.sustain.load(), p.release.load() });
+    slot->env.noteOn();
+
+    slot->filter.reset();
+    slot->filter.setCutoffFrequency (juce::jlimit (40.0f, 20000.0f, p.cutoff.load()));
+    slot->filter.setResonance (juce::jmap (p.resonance.load(), 0.707f, 8.0f));
+
     slot->active = true;
+}
+
+void SamplerGenerator::stopVoice (int key)
+{
+    if (p.oneShot.load())
+        return;   // one-shots ignore note-offs, like FL drum channels
+    for (auto& v : voices)
+        if (v.active && v.key == key)
+            v.env.noteOff();
 }
 
 void SamplerGenerator::render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi)
@@ -165,49 +226,69 @@ void SamplerGenerator::render (juce::AudioBuffer<float>& out, const juce::MidiBu
     int segmentStart = 0;
     auto it = midi.begin();
 
-    auto renderSegment = [&] (int from, int to)
-    {
-        if (to <= from)
-            return;
-        auto* l = out.getWritePointer (0);
-        auto* r = out.getWritePointer (1);
-
-        for (auto& v : voices)
-        {
-            if (! v.active)
-                continue;
-            const auto& data = v.sample->data;
-            const float* srcL = data.getReadPointer (0);
-            const float* srcR = data.getReadPointer (1);
-            const int last = data.getNumSamples() - 2;
-
-            for (int i = from; i < to; ++i)
-            {
-                if (v.pos >= last)
-                {
-                    v.active = false;
-                    break;
-                }
-                const int idx = (int) v.pos;
-                const float frac = (float) (v.pos - idx);
-                l[i] += (srcL[idx] + frac * (srcL[idx + 1] - srcL[idx])) * v.gainL;
-                r[i] += (srcR[idx] + frac * (srcR[idx + 1] - srcR[idx])) * v.gainR;
-                v.pos += v.rate;
-            }
-        }
-    };
-
     for (; it != midi.end(); ++it)
     {
         const auto meta = *it;
         const auto msg = meta.getMessage();
         const int pos = juce::jlimit (0, numSamples, meta.samplePosition);
-        renderSegment (segmentStart, pos);
+        renderSegment (out, segmentStart, pos);
         segmentStart = pos;
 
         if (msg.isNoteOn())
             startVoice (msg.getNoteNumber(), msg.getFloatVelocity());
-        // Note-offs ignored: FL one-shot behaviour.
+        else if (msg.isNoteOff())
+            stopVoice (msg.getNoteNumber());
     }
-    renderSegment (segmentStart, numSamples);
+    renderSegment (out, segmentStart, numSamples);
+}
+
+void SamplerGenerator::renderSegment (juce::AudioBuffer<float>& out, int from, int to)
+{
+    if (to <= from)
+        return;
+
+    auto* l = out.getWritePointer (0);
+    auto* r = out.getWritePointer (1);
+    const float cutoffHz = juce::jlimit (40.0f, 20000.0f, p.cutoff.load());
+    const float reso = juce::jmap (p.resonance.load(), 0.707f, 8.0f);
+
+    for (auto& v : voices)
+    {
+        if (! v.active)
+            continue;
+
+        const auto& data = v.sample->data;
+        const float* srcL = data.getReadPointer (0);
+        const float* srcR = data.getReadPointer (1);
+        const int last = data.getNumSamples() - 2;
+
+        v.filter.setCutoffFrequency (cutoffHz);
+        v.filter.setResonance (reso);
+
+        for (int i = from; i < to; ++i)
+        {
+            if (v.pos >= last)
+            {
+                v.active = false;
+                break;
+            }
+
+            const float envValue = v.env.getNextSample();
+            if (! v.env.isActive())
+            {
+                v.active = false;
+                break;
+            }
+
+            const int idx = (int) v.pos;
+            const float frac = (float) (v.pos - idx);
+            const float sl = (srcL[idx] + frac * (srcL[idx + 1] - srcL[idx]));
+            const float sr = (srcR[idx] + frac * (srcR[idx + 1] - srcR[idx]));
+            const float gain = envValue * v.velocity;
+
+            l[i] += v.filter.processSample (0, sl) * gain;
+            r[i] += v.filter.processSample (1, sr) * gain;
+            v.pos += v.rate;
+        }
+    }
 }

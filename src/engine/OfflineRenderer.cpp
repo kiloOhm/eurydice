@@ -13,7 +13,9 @@ std::unique_ptr<juce::AudioFormatWriter> makeWavWriter (const juce::File& file, 
     juce::WavAudioFormat wav;
     auto* writer = wav.createWriterFor (stream.get(), sampleRate, 2, bitDepth, {}, 0);
     if (writer != nullptr)
-        (void) stream.release();   // writer owns it now
+    {
+        [[maybe_unused]] auto* owned = stream.release();   // writer owns it now
+    }
     return std::unique_ptr<juce::AudioFormatWriter> (writer);
 }
 }

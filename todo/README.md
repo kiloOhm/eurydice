@@ -22,3 +22,4 @@ One file per work item. Status is the first line of each file: `Status: pending 
 | 16 | [16-unit-tests.md](16-unit-tests.md) | Unit tests + coverage gate |
 | 17 | [17-e2e-mcp.md](17-e2e-mcp.md) | E2E test via MCP |
 | 18 | [18-static-analysis.md](18-static-analysis.md) | Static analysis (clang-tidy, cppcheck, Sonar config) |
+| 19 | [19-discoverability.md](19-discoverability.md) | Discoverability: menus, channel editors, navigation |

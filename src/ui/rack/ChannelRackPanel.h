@@ -14,6 +14,13 @@ public:
     explicit ChannelRackPanel (AppServices&);
     ~ChannelRackPanel() override;
 
+    // Asks the host to bring the piano roll forward (wired to the command
+    // manager by MainComponent).
+    std::function<void()> onShowPianoRoll;
+
+    // Asks the host to open this channel's editor window.
+    std::function<void (juce::ValueTree)> onOpenChannelEditor;
+
     void paint (juce::Graphics&) override;
     void resized() override;
 

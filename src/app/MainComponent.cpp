@@ -1,170 +1,15 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "MainComponent.h"
 #include "Theme.h"
-#include "ui/common/PlaceholderPanel.h"
-#include "ui/rack/ChannelRackPanel.h"
+#include "AudioRecorder.h"
+#include "control/ControlServer.h"
+#include "engine/OfflineRenderer.h"
+#include "ui/browser/BrowserPanel.h"
+#include "ui/mixer/MixerPanel.h"
 #include "ui/pianoroll/PianoRollPanel.h"
 #include "ui/playlist/PlaylistPanel.h"
-#include "ui/mixer/MixerPanel.h"
-#include "control/ControlServer.h"
-#include "ui/browser/BrowserPanel.h"
-#include "engine/OfflineRenderer.h"
-#include "AudioRecorder.h"
-
-MainComponent::MainComponent()
-{
-    setLookAndFeel (&lookAndFeel);
-    setWantsKeyboardFocus (true);
-
-    controlServer = std::make_unique<ControlServer> (services);
-    midiInput = std::make_unique<MidiInputManager> (services);
-    recorder = std::make_unique<AudioRecorder> (services);
-
-    addAndMakeVisible (transportBar);
-
-    transportBar.onPlay  = [this] { transportPlay(); };
-    transportBar.onStop  = [this] { transportStop(); };
-    transportBar.onRecordToggled = [this]
-    {
-        midiInput->recordArmed.store (! midiInput->recordArmed.load());
-    };
-    transportBar.onTempoChanged   = [this] (double bpm) { services.project.setTempo (bpm); };
-    transportBar.onSongModeChanged = [this] (bool song) { services.project.setSongMode (song); };
-    transportBar.getBeatPosition  = [this] { return services.engine.getPositionBeats(); };
-    transportBar.getIsPlaying     = [this] { return services.engine.isPlaying(); };
-    transportBar.setTempoDisplay (services.project.getTempo());
-
-    browser = std::make_unique<BrowserPanel> (services);
-    addAndMakeVisible (*browser);
-
-    addAndMakeVisible (desktop);
-
-    playlistPanel = std::make_unique<FloatingPanel> ("Playlist",
-                                                     std::make_unique<PlaylistPanel> (services));
-    desktop.addAndMakeVisible (*playlistPanel);
-
-    channelRackPanel = std::make_unique<FloatingPanel> ("Channel Rack",
-                                                        std::make_unique<ChannelRackPanel> (services));
-    desktop.addAndMakeVisible (*channelRackPanel);
-    pianoRollPanel = std::make_unique<FloatingPanel> ("Piano Roll",
-                                                      std::make_unique<PianoRollPanel> (services));
-    desktop.addAndMakeVisible (*pianoRollPanel);
-    mixerPanel = std::make_unique<FloatingPanel> ("Mixer",
-                                                  std::make_unique<MixerPanel> (services));
-    desktop.addAndMakeVisible (*mixerPanel);
-
-    pianoRollPanel->setVisible (false);
-    mixerPanel->setVisible (false);
-
-    setSize (1440, 900);
-
-    // Debug hook: show specific panels at startup (comma list: pianoroll,mixer)
-    const auto showList = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SHOW", "");
-    if (showList.contains ("pianoroll")) pianoRollPanel->bringToFrontAndShow();
-    if (showList.contains ("mixer"))     mixerPanel->bringToFrontAndShow();
-
-    // Debug hook: EURYDICE_SCREENSHOT=<path.png> saves a snapshot of the UI
-    // shortly after launch, for headless visual verification.
-    const auto shotPath = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SCREENSHOT", "");
-    if (shotPath.isNotEmpty())
-    {
-        juce::Timer::callAfterDelay (1500, [this, shotPath]
-        {
-            auto image = createComponentSnapshot (getLocalBounds());
-            juce::File file (shotPath);
-            file.deleteFile();
-            juce::FileOutputStream out (file);
-            juce::PNGImageFormat png;
-            png.writeImageToStream (image, out);
-            std::cout << "SCREENSHOT_SAVED " << shotPath << "\n";
-        });
-    }
-
-    // Debug hook: EURYDICE_SCAN=1 scans plugins, prints them, and quits.
-    if (juce::SystemStats::getEnvironmentVariable ("EURYDICE_SCAN", "") == "1")
-    {
-        services.plugins.startScan ([this]
-        {
-            for (const auto& d : services.plugins.getKnownPlugins().getTypes())
-                std::cout << "PLUGIN\t" << (d.isInstrument ? "inst" : "fx") << "\t"
-                          << d.pluginFormatName << "\t" << d.name << "\t"
-                          << d.createIdentifierString() << "\n";
-            std::cout << "SCAN_DONE " << services.plugins.getKnownPlugins().getNumTypes() << "\n";
-            juce::JUCEApplication::getInstance()->systemRequestedQuit();
-        });
-    }
-
-    // Debug hook: EURYDICE_LOADFX=<name fragment> loads that effect into
-    // master slot 0 (for verifying hosted processing end to end).
-    const auto loadFx = juce::SystemStats::getEnvironmentVariable ("EURYDICE_LOADFX", "");
-    if (loadFx.isNotEmpty())
-    {
-        juce::Timer::callAfterDelay (500, [this, loadFx]
-        {
-            for (const auto& d : services.plugins.getEffects())
-            {
-                if (! d.name.containsIgnoreCase (loadFx))
-                    continue;
-                auto master = services.project.getInsert (0);
-                juce::ValueTree slot (ids::SLOT);
-                slot.setProperty (ids::slotIndex, 0, nullptr);
-                slot.setProperty (ids::pluginId, d.createIdentifierString(), nullptr);
-                master.appendChild (slot, nullptr);
-                std::cout << "LOADFX_REQUESTED " << d.name << "\n";
-                break;
-            }
-        });
-    }
-
-    // Smoke-test hook: EURYDICE_AUTOPLAY=1 plays the default pattern and
-    // prints master peaks so the audio path can be verified headlessly.
-    if (juce::SystemStats::getEnvironmentVariable ("EURYDICE_AUTOPLAY", "") == "1")
-    {
-        juce::Timer::callAfterDelay (800, [this] { services.engine.play(); });
-        juce::Timer::callAfterDelay (2800, [this]
-        {
-            std::cout << "AUTOPLAY peakL=" << services.engine.getMasterPeak (0)
-                      << " peakR=" << services.engine.getMasterPeak (1)
-                      << " beats=" << services.engine.getPositionBeats()
-                      << " playing=" << (services.engine.isPlaying() ? 1 : 0) << "\n";
-        });
-    }
-}
-
-MainComponent::~MainComponent()
-{
-    setLookAndFeel (nullptr);
-}
-
-void MainComponent::paint (juce::Graphics& g)
-{
-    g.fillAll (theme::desktopBg);
-}
-
-void MainComponent::resized()
-{
-    auto r = getLocalBounds();
-    transportBar.setBounds (r.removeFromTop (TransportBar::preferredHeight));
-    browser->setBounds (r.removeFromLeft (240));
-    desktop.setBounds (r);
-
-    if (! initialLayoutDone && desktop.getWidth() > 0)
-    {
-        layoutDefaultPanelPositions();
-        initialLayoutDone = true;
-    }
-}
-
-void MainComponent::layoutDefaultPanelPositions()
-{
-    const int w = desktop.getWidth();
-    const int h = desktop.getHeight();
-
-    playlistPanel->setBounds (juce::jmax (0, w - (int) (w * 0.62f) - 12), 12, (int) (w * 0.62f), (int) (h * 0.55f));
-    channelRackPanel->setBounds (12, 12, 700, 460);
-    pianoRollPanel->setBounds (60, 80, (int) (w * 0.7f), (int) (h * 0.65f));
-    mixerPanel->setBounds (40, h - 340 - 20, w - 80, 340);
-}
+#include "ui/rack/ChannelEditor.h"
+#include "ui/rack/ChannelRackPanel.h"
 
 namespace
 {
@@ -177,6 +22,697 @@ int typingKeyToNote (juce::juce_wchar c)
     if (const int i = highRow.indexOfChar (c); i >= 0)  return 72 + i;
     return -1;
 }
+
+constexpr int recentFilesBaseId = 3000;
+}
+
+MainComponent::MainComponent()
+{
+    // App-wide default so editor windows, dialogs and menus all match.
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    setWantsKeyboardFocus (true);
+
+    juce::PropertiesFile::Options opts;
+    opts.applicationName = "Eurydice";
+    opts.filenameSuffix = "settings";
+    opts.folderName = "Eurydice";
+    opts.osxLibrarySubFolder = "Application Support";
+    settings = std::make_unique<juce::PropertiesFile> (opts);
+    recentFiles.restoreFromString (settings->getValue ("recentFiles"));
+
+    controlServer = std::make_unique<ControlServer> (services);
+    midiInput = std::make_unique<MidiInputManager> (services);
+    recorder = std::make_unique<AudioRecorder> (services);
+
+    fileState.addChangeListener (this);
+
+    // --- transport bar ---
+    addAndMakeVisible (transportBar);
+    transportBar.onPlay  = [this] { transportPlay(); };
+    transportBar.onStop  = [this] { transportStop(); };
+    transportBar.onRecordToggled = [this]
+    {
+        midiInput->recordArmed.store (! midiInput->recordArmed.load());
+    };
+    transportBar.onTempoChanged    = [this] (double bpm) { services.project.setTempo (bpm); };
+    transportBar.onSongModeChanged = [this] (bool song) { services.project.setSongMode (song); };
+    transportBar.getBeatPosition   = [this] { return services.engine.getPositionBeats(); };
+    transportBar.getIsPlaying      = [this] { return services.engine.isPlaying(); };
+    transportBar.onPanelToggled    = [this] (juce::CommandID id)
+    {
+        commandManager.invokeDirectly (id, false);
+    };
+    transportBar.isPanelVisible = [this] (juce::CommandID id)
+    {
+        auto* panel = panelForCommand (id);
+        return id == CommandIDs::viewBrowser ? browserVisible
+                                             : (panel != nullptr && panel->isVisible());
+    };
+    transportBar.setTempoDisplay (services.project.getTempo());
+
+    // --- panels ---
+    browser = std::make_unique<BrowserPanel> (services);
+    addAndMakeVisible (*browser);
+    addAndMakeVisible (desktop);
+
+    auto rack = std::make_unique<ChannelRackPanel> (services);
+    rack->onShowPianoRoll = [this] { commandManager.invokeDirectly (CommandIDs::viewPianoRoll, false); };
+    rack->onOpenChannelEditor = [this] (juce::ValueTree channel)
+    {
+        channelEditors.show (services, channel);
+    };
+    channelRackPanel = std::make_unique<FloatingPanel> ("Channel Rack", std::move (rack));
+
+    auto playlist = std::make_unique<PlaylistPanel> (services);
+    playlist->onShowPianoRoll = [this] { commandManager.invokeDirectly (CommandIDs::viewPianoRoll, false); };
+    playlistPanel = std::make_unique<FloatingPanel> ("Playlist", std::move (playlist));
+
+    pianoRollPanel = std::make_unique<FloatingPanel> ("Piano Roll",
+                                                      std::make_unique<PianoRollPanel> (services));
+    mixerPanel = std::make_unique<FloatingPanel> ("Mixer",
+                                                  std::make_unique<MixerPanel> (services));
+
+    for (auto* panel : { playlistPanel.get(), channelRackPanel.get(),
+                         pianoRollPanel.get(), mixerPanel.get() })
+    {
+        desktop.addAndMakeVisible (*panel);
+        panel->onVisibilityToggled = [this]
+        {
+            transportBar.refreshPanelButtons();
+            commandManager.commandStatusChanged();
+        };
+    }
+
+    pianoRollPanel->setVisible (false);
+    mixerPanel->setVisible (false);
+
+    // --- commands + menu ---
+    commandManager.registerAllCommandsForTarget (this);
+    // Pin the target: without this, commands resolve through keyboard focus
+    // and go dead whenever a plugin editor or dialog is frontmost.
+    commandManager.setFirstCommandTarget (this);
+    addKeyListener (commandManager.getKeyMappings());
+
+   #if JUCE_MAC
+    juce::MenuBarModel::setMacMainMenu (this);
+   #endif
+    setApplicationCommandManagerToWatch (&commandManager);
+
+    updateWindowTitle();
+    setSize (1440, 900);
+
+    // Debug hooks (used by scripts/e2e and screenshot verification).
+    const auto showList = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SHOW", "");
+    if (showList.contains ("pianoroll")) pianoRollPanel->bringToFrontAndShow();
+    if (showList.contains ("mixer"))     mixerPanel->bringToFrontAndShow();
+
+    // EURYDICE_EDITOR=<channel index> opens that channel's editor window.
+    const auto editorIndex = juce::SystemStats::getEnvironmentVariable ("EURYDICE_EDITOR", "");
+    if (editorIndex.isNotEmpty())
+    {
+        juce::Timer::callAfterDelay (400, [this, editorIndex]
+        {
+            auto channel = editorIndex == "synth"
+                               ? services.project.addChannel ("synth", "Lead")
+                               : services.project.getChannel (editorIndex.getIntValue());
+            channelEditors.show (services, channel);
+        });
+    }
+
+    const auto shotPath = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SCREENSHOT", "");
+    if (shotPath.isNotEmpty())
+    {
+        juce::Timer::callAfterDelay (1500, [this, shotPath]
+        {
+            // If a separate editor window is open, capture that instead — it
+            // is what the check is about.
+            juce::Component* target = this;
+            for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+            {
+                auto* window = juce::TopLevelWindow::getTopLevelWindow (i);
+                if (window != nullptr && window->isVisible()
+                    && window != findParentComponentOfClass<juce::DocumentWindow>())
+                    target = window;
+            }
+            auto image = target->createComponentSnapshot (target->getLocalBounds());
+            juce::File file (shotPath);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            juce::PNGImageFormat png;
+            png.writeImageToStream (image, out);
+            std::cout << "SCREENSHOT_SAVED " << shotPath << "\n" << std::flush;
+        });
+    }
+
+    if (juce::SystemStats::getEnvironmentVariable ("EURYDICE_SCAN", "") == "1")
+    {
+        services.plugins.startScan ([this]
+        {
+            for (const auto& d : services.plugins.getKnownPlugins().getTypes())
+                std::cout << "PLUGIN\t" << (d.isInstrument ? "inst" : "fx") << "\t"
+                          << d.pluginFormatName << "\t" << d.name << "\t"
+                          << d.createIdentifierString() << "\n" << std::flush;
+            std::cout << "SCAN_DONE " << services.plugins.getKnownPlugins().getNumTypes() << "\n" << std::flush;
+            juce::JUCEApplication::getInstance()->systemRequestedQuit();
+        });
+    }
+
+    // Debug hook: EURYDICE_UICHECK=1 exercises the menu model and the
+    // channel-editor route, printing what a user would be able to reach.
+    if (juce::SystemStats::getEnvironmentVariable ("EURYDICE_UICHECK", "") == "1")
+    {
+        juce::Timer::callAfterDelay (600, [this]
+        {
+            for (int i = 0; i < getMenuBarNames().size(); ++i)
+            {
+                auto menu = getMenuForIndex (i, getMenuBarNames()[i]);
+                juce::StringArray items;
+                for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
+                    if (it.getItem().text.isNotEmpty())
+                        items.add (it.getItem().text + (it.getItem().isEnabled ? "" : " (disabled)"));
+                std::cout << "MENU " << getMenuBarNames()[i] << ": "
+                          << items.joinIntoString (" | ") << "\n" << std::flush;
+            }
+
+            for (int i = 0; i < services.project.numChannels(); ++i)
+            {
+                auto channel = services.project.getChannel (i);
+                channelEditors.show (services, channel);
+            }
+            int editorWindows = 0;
+            for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+                if (juce::TopLevelWindow::getTopLevelWindow (i)->isVisible())
+                    ++editorWindows;
+            std::cout << "TOPLEVEL_WINDOWS " << editorWindows << "\n" << std::flush;
+
+            commandManager.invokeDirectly (CommandIDs::viewMixer, false);
+            commandManager.invokeDirectly (CommandIDs::viewPianoRoll, false);
+            std::cout << "PANELS mixer=" << (mixerPanel->isVisible() ? 1 : 0)
+                      << " pianoroll=" << (pianoRollPanel->isVisible() ? 1 : 0)
+                      << " title=" << fileState.getWindowTitle() << "\n" << std::flush;
+            juce::JUCEApplication::getInstance()->systemRequestedQuit();
+        });
+    }
+
+    if (juce::SystemStats::getEnvironmentVariable ("EURYDICE_AUTOPLAY", "") == "1")
+    {
+        juce::Timer::callAfterDelay (800, [this] { services.engine.play(); });
+        juce::Timer::callAfterDelay (2800, [this]
+        {
+            std::cout << "AUTOPLAY peakL=" << services.engine.getMasterPeak (0)
+                      << " peakR=" << services.engine.getMasterPeak (1)
+                      << " beats=" << services.engine.getPositionBeats()
+                      << " playing=" << (services.engine.isPlaying() ? 1 : 0) << "\n" << std::flush;
+        });
+    }
+}
+
+MainComponent::~MainComponent()
+{
+   #if JUCE_MAC
+    juce::MenuBarModel::setMacMainMenu (nullptr);
+   #endif
+    fileState.removeChangeListener (this);
+    removeKeyListener (commandManager.getKeyMappings());
+    commandManager.setFirstCommandTarget (nullptr);
+    channelEditors.closeAll();
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+// ---------------- menu bar ----------------
+
+juce::StringArray MainComponent::getMenuBarNames()
+{
+    return { "File", "Edit", "View", "Options" };
+}
+
+juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
+{
+    juce::PopupMenu menu;
+
+    if (index == 0)
+    {
+        menu.addCommandItem (&commandManager, CommandIDs::fileNew);
+        menu.addCommandItem (&commandManager, CommandIDs::fileOpen);
+
+        juce::PopupMenu recentMenu;
+        recentFiles.createPopupMenuItems (recentMenu, recentFilesBaseId, true, true);
+        menu.addSubMenu ("Open Recent", recentMenu, recentFiles.getNumFiles() > 0);
+
+        menu.addSeparator();
+        menu.addCommandItem (&commandManager, CommandIDs::fileSave);
+        menu.addCommandItem (&commandManager, CommandIDs::fileSaveAs);
+        menu.addSeparator();
+        menu.addCommandItem (&commandManager, CommandIDs::fileExport);
+    }
+    else if (index == 1)
+    {
+        menu.addCommandItem (&commandManager, CommandIDs::editUndo);
+        menu.addCommandItem (&commandManager, CommandIDs::editRedo);
+    }
+    else if (index == 2)
+    {
+        menu.addCommandItem (&commandManager, CommandIDs::viewPlaylist);
+        menu.addCommandItem (&commandManager, CommandIDs::viewChannelRack);
+        menu.addCommandItem (&commandManager, CommandIDs::viewPianoRoll);
+        menu.addCommandItem (&commandManager, CommandIDs::viewMixer);
+        menu.addSeparator();
+        menu.addCommandItem (&commandManager, CommandIDs::viewBrowser);
+    }
+    else if (index == 3)
+    {
+        menu.addCommandItem (&commandManager, CommandIDs::transportPlayStop);
+        menu.addCommandItem (&commandManager, CommandIDs::transportRewind);
+        menu.addCommandItem (&commandManager, CommandIDs::transportToggleSongMode);
+        menu.addCommandItem (&commandManager, CommandIDs::transportToggleRecord);
+        menu.addSeparator();
+        menu.addCommandItem (&commandManager, CommandIDs::optionsAudioSettings);
+        menu.addCommandItem (&commandManager, CommandIDs::optionsScanPlugins);
+    }
+
+    return menu;
+}
+
+void MainComponent::menuItemSelected (int menuItemID, int)
+{
+    if (menuItemID >= recentFilesBaseId && menuItemID < recentFilesBaseId + 100)
+    {
+        const auto file = recentFiles.getFile (menuItemID - recentFilesBaseId);
+        if (file.existsAsFile() && okToCloseProject ("opening another project"))
+            loadProjectFile (file);
+    }
+}
+
+// ---------------- commands ----------------
+
+void MainComponent::getAllCommands (juce::Array<juce::CommandID>& commands)
+{
+    commands.addArray ({
+        CommandIDs::fileNew, CommandIDs::fileOpen, CommandIDs::fileSave,
+        CommandIDs::fileSaveAs, CommandIDs::fileExport,
+        CommandIDs::editUndo, CommandIDs::editRedo,
+        CommandIDs::viewPlaylist, CommandIDs::viewChannelRack,
+        CommandIDs::viewPianoRoll, CommandIDs::viewMixer, CommandIDs::viewBrowser,
+        CommandIDs::transportPlayStop, CommandIDs::transportRewind,
+        CommandIDs::transportToggleSongMode, CommandIDs::transportToggleRecord,
+        CommandIDs::optionsAudioSettings, CommandIDs::optionsScanPlugins });
+}
+
+void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& info)
+{
+    const auto cmd = juce::ModifierKeys::commandModifier;
+    const auto shift = juce::ModifierKeys::shiftModifier;
+
+    // Panel toggles get a Cmd+digit primary shortcut (macOS eats bare F-keys
+    // unless the user opts into standard function keys) plus the FL-style
+    // F-key as a secondary binding for muscle memory.
+    auto panelCommand = [&info] (const juce::String& name, bool visible, int digit, int fKey)
+    {
+        info.setInfo (name, "Show or hide the " + name.toLowerCase(), "View", 0);
+        info.addDefaultKeypress ((juce::juce_wchar) ('0' + digit), juce::ModifierKeys::commandModifier);
+        info.addDefaultKeypress (fKey, juce::ModifierKeys::noModifiers);
+        info.setTicked (visible);
+    };
+
+    switch (id)
+    {
+        case CommandIDs::fileNew:
+            info.setInfo ("New Project", "Start an empty project", "File", 0);
+            info.addDefaultKeypress ('n', cmd);
+            break;
+        case CommandIDs::fileOpen:
+            info.setInfo ("Open...", "Open a .eury project", "File", 0);
+            info.addDefaultKeypress ('o', cmd);
+            break;
+        case CommandIDs::fileSave:
+            info.setInfo ("Save", "Save the project", "File", 0);
+            info.addDefaultKeypress ('s', cmd);
+            break;
+        case CommandIDs::fileSaveAs:
+            info.setInfo ("Save As...", "Save the project to a new file", "File", 0);
+            info.addDefaultKeypress ('s', cmd | shift);
+            break;
+        case CommandIDs::fileExport:
+            info.setInfo ("Export Audio...", "Render to WAV/MP3/stems", "File", 0);
+            info.addDefaultKeypress ('r', cmd);
+            break;
+
+        case CommandIDs::editUndo:
+            info.setInfo ("Undo", "Undo the last edit", "Edit", 0);
+            info.addDefaultKeypress ('z', cmd);
+            info.setActive (services.project.getUndoManager().canUndo());
+            break;
+        case CommandIDs::editRedo:
+            info.setInfo ("Redo", "Redo the last undone edit", "Edit", 0);
+            info.addDefaultKeypress ('z', cmd | shift);
+            info.setActive (services.project.getUndoManager().canRedo());
+            break;
+
+        case CommandIDs::viewPlaylist:
+            panelCommand ("Playlist", playlistPanel && playlistPanel->isVisible(), 1, juce::KeyPress::F5Key);
+            break;
+        case CommandIDs::viewChannelRack:
+            panelCommand ("Channel Rack", channelRackPanel && channelRackPanel->isVisible(), 2, juce::KeyPress::F6Key);
+            break;
+        case CommandIDs::viewPianoRoll:
+            panelCommand ("Piano Roll", pianoRollPanel && pianoRollPanel->isVisible(), 3, juce::KeyPress::F7Key);
+            break;
+        case CommandIDs::viewMixer:
+            panelCommand ("Mixer", mixerPanel && mixerPanel->isVisible(), 4, juce::KeyPress::F9Key);
+            break;
+        case CommandIDs::viewBrowser:
+            info.setInfo ("Browser", "Show or hide the browser", "View", 0);
+            info.addDefaultKeypress ('b', cmd);
+            info.setTicked (browserVisible);
+            break;
+
+        case CommandIDs::transportPlayStop:
+            info.setInfo ("Play / Stop", "Start or stop playback", "Transport", 0);
+            info.addDefaultKeypress (juce::KeyPress::spaceKey, juce::ModifierKeys::noModifiers);
+            break;
+        case CommandIDs::transportRewind:
+            info.setInfo ("Rewind to Start", "Move the playhead to the beginning", "Transport", 0);
+            info.addDefaultKeypress (juce::KeyPress::homeKey, juce::ModifierKeys::noModifiers);
+            break;
+        case CommandIDs::transportToggleSongMode:
+            info.setInfo ("Song Mode", "Play the playlist instead of the current pattern", "Transport", 0);
+            info.addDefaultKeypress ('l', cmd);
+            info.setTicked (services.project.isSongMode());
+            break;
+        case CommandIDs::transportToggleRecord:
+            info.setInfo ("Arm Recording", "Record MIDI and audio input while playing", "Transport", 0);
+            info.addDefaultKeypress ('e', cmd);
+            info.setTicked (midiInput != nullptr && midiInput->recordArmed.load());
+            break;
+
+        case CommandIDs::optionsAudioSettings:
+            info.setInfo ("Audio & MIDI Settings...", "Choose the audio device", "Options", 0);
+            info.addDefaultKeypress (',', cmd);
+            break;
+        case CommandIDs::optionsScanPlugins:
+            info.setInfo ("Scan for Plugins", "Search for VST3 and AU plugins", "Options", 0);
+            info.setActive (! services.plugins.isScanning());
+            break;
+        default:
+            break;
+    }
+}
+
+FloatingPanel* MainComponent::panelForCommand (juce::CommandID id) const
+{
+    switch (id)
+    {
+        case CommandIDs::viewPlaylist:    return playlistPanel.get();
+        case CommandIDs::viewChannelRack: return channelRackPanel.get();
+        case CommandIDs::viewPianoRoll:   return pianoRollPanel.get();
+        case CommandIDs::viewMixer:       return mixerPanel.get();
+        default:                          return nullptr;
+    }
+}
+
+bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInfo& info)
+{
+    switch (info.commandID)
+    {
+        case CommandIDs::fileNew:     newProject(); return true;
+        case CommandIDs::fileOpen:    openProjectInteractive(); return true;
+        case CommandIDs::fileSave:    saveProject (false); return true;
+        case CommandIDs::fileSaveAs:  saveProject (true); return true;
+        case CommandIDs::fileExport:  showExportDialog(); return true;
+
+        case CommandIDs::editUndo:
+            services.project.getUndoManager().undo();
+            commandManager.commandStatusChanged();
+            return true;
+        case CommandIDs::editRedo:
+            services.project.getUndoManager().redo();
+            commandManager.commandStatusChanged();
+            return true;
+
+        case CommandIDs::viewPlaylist:
+        case CommandIDs::viewChannelRack:
+        case CommandIDs::viewPianoRoll:
+        case CommandIDs::viewMixer:
+            if (auto* panel = panelForCommand (info.commandID))
+            {
+                panel->toggleVisibility();
+                transportBar.refreshPanelButtons();
+                commandManager.commandStatusChanged();
+            }
+            return true;
+
+        case CommandIDs::viewBrowser:
+            browserVisible = ! browserVisible;
+            browser->setVisible (browserVisible);
+            resized();
+            transportBar.refreshPanelButtons();
+            commandManager.commandStatusChanged();
+            return true;
+
+        case CommandIDs::transportPlayStop:
+            if (services.engine.isPlaying()) transportStop(); else transportPlay();
+            return true;
+        case CommandIDs::transportRewind:
+            services.engine.setPositionTicks (0.0);
+            return true;
+        case CommandIDs::transportToggleSongMode:
+            services.project.setSongMode (! services.project.isSongMode());
+            transportBar.setSongMode (services.project.isSongMode());
+            commandManager.commandStatusChanged();
+            return true;
+        case CommandIDs::transportToggleRecord:
+            midiInput->recordArmed.store (! midiInput->recordArmed.load());
+            transportBar.setRecordArmed (midiInput->recordArmed.load());
+            commandManager.commandStatusChanged();
+            return true;
+
+        case CommandIDs::optionsAudioSettings: showAudioSettings(); return true;
+        case CommandIDs::optionsScanPlugins:
+            services.plugins.startScan ([this] { commandManager.commandStatusChanged(); });
+            commandManager.commandStatusChanged();
+            return true;
+
+        default: return false;
+    }
+}
+
+// ---------------- project files ----------------
+
+bool MainComponent::okToCloseProject (const juce::String& action)
+{
+    if (! fileState.isDirty())
+        return true;
+
+    const int result = juce::AlertWindow::showYesNoCancelBox (
+        juce::MessageBoxIconType::WarningIcon, "Unsaved changes",
+        "\"" + fileState.getDisplayName() + "\" has unsaved changes.\n\nSave before " + action + "?",
+        "Save", "Discard", "Cancel");
+
+    if (result == 0)   // cancel
+        return false;
+    if (result == 1)   // save
+    {
+        saveProject (false);
+        return ! fileState.isDirty();
+    }
+    return true;       // discard
+}
+
+void MainComponent::newProject()
+{
+    if (! okToCloseProject ("starting a new project"))
+        return;
+    services.project.createDefaultProject();
+    services.engineSync.attachToProject();
+    fileState.markNewProject();
+}
+
+void MainComponent::loadProjectFile (const juce::File& file)
+{
+    if (! services.loadProject (file))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+            "Open failed", "Could not read " + file.getFileName());
+        return;
+    }
+    fileState.markLoaded (file);
+    recentFiles.addFile (file);
+    settings->setValue ("recentFiles", recentFiles.toString());
+    settings->saveIfNeeded();
+    menuItemsChanged();
+}
+
+void MainComponent::openProjectInteractive()
+{
+    if (! okToCloseProject ("opening another project"))
+        return;
+
+    auto chooser = std::make_shared<juce::FileChooser> ("Open project",
+        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.eury");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this, chooser] (const juce::FileChooser& fc)
+        {
+            if (fc.getResult().existsAsFile())
+                loadProjectFile (fc.getResult());
+        });
+}
+
+void MainComponent::saveProject (bool forceChooser)
+{
+    const auto existing = fileState.getFile();
+    if (! forceChooser && existing != juce::File())
+    {
+        if (services.saveProject (existing))
+        {
+            fileState.markSaved (existing);
+            recentFiles.addFile (existing);
+            settings->setValue ("recentFiles", recentFiles.toString());
+        }
+        return;
+    }
+
+    auto chooser = std::make_shared<juce::FileChooser> ("Save project",
+        existing != juce::File()
+            ? existing
+            : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                  .getChildFile ("Untitled.eury"),
+        "*.eury");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+        [this, chooser] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (file == juce::File())
+                return;
+            const auto target = file.withFileExtension (".eury");
+            if (services.saveProject (target))
+            {
+                fileState.markSaved (target);
+                recentFiles.addFile (target);
+                settings->setValue ("recentFiles", recentFiles.toString());
+                settings->saveIfNeeded();
+                menuItemsChanged();
+            }
+        });
+}
+
+void MainComponent::showExportDialog()
+{
+    auto chooser = std::make_shared<juce::FileChooser> ("Export render",
+        juce::File::getSpecialLocation (juce::File::userDesktopDirectory)
+            .getChildFile (fileState.getDisplayName() + ".wav"),
+        "*.wav");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+        [this, chooser] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (file == juce::File())
+                return;
+
+            OfflineRenderer::Options options;
+            options.wavFile = file.withFileExtension (".wav");
+            options.renderMp3 = OfflineRenderer::findLameBinary() != juce::File();
+            options.renderStems = false;
+
+            const auto result = OfflineRenderer::render (services.engine, services.project, options);
+            juce::AlertWindow::showMessageBoxAsync (
+                result.ok ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon,
+                "Export",
+                result.ok ? "Rendered:\n" + result.writtenFiles.joinIntoString ("\n")
+                              + (result.error.isNotEmpty() ? "\n\n" + result.error : juce::String())
+                          : result.error);
+        });
+}
+
+void MainComponent::showAudioSettings()
+{
+    auto selector = std::make_unique<juce::AudioDeviceSelectorComponent> (
+        services.engine.getDeviceManager(), 1, 2, 2, 2, true, false, true, false);
+    selector->setSize (480, 400);
+
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned (selector.release());
+    options.dialogTitle = "Audio & MIDI Settings";
+    options.dialogBackgroundColour = theme::panelBg;
+    options.escapeKeyTriggersCloseButton = true;
+    options.resizable = false;
+    options.launchAsync();
+}
+
+// ---------------- transport ----------------
+
+void MainComponent::transportPlay()
+{
+    if (midiInput->recordArmed.load() && services.project.isSongMode()
+        && ! recorder->isRecording())
+        recorder->start();
+    services.engine.play();
+}
+
+void MainComponent::transportStop()
+{
+    services.engine.stop();
+    if (recorder->isRecording())
+        recorder->stopAndPlaceClip();
+}
+
+// ---------------- window / layout ----------------
+
+void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    updateWindowTitle();
+}
+
+void MainComponent::updateWindowTitle()
+{
+    if (auto* window = findParentComponentOfClass<juce::DocumentWindow>())
+        window->setName (fileState.getWindowTitle());
+}
+
+void MainComponent::paint (juce::Graphics& g)
+{
+    g.fillAll (theme::desktopBg);
+}
+
+void MainComponent::resized()
+{
+    auto r = getLocalBounds();
+    transportBar.setBounds (r.removeFromTop (TransportBar::preferredHeight));
+    if (browserVisible)
+        browser->setBounds (r.removeFromLeft (240));
+    desktop.setBounds (r);
+
+    if (! initialLayoutDone && desktop.getWidth() > 0)
+    {
+        layoutDefaultPanelPositions();
+        initialLayoutDone = true;
+        updateWindowTitle();
+    }
+}
+
+// The typing piano. Command shortcuts are handled by the command manager's
+// key listener first, so only unbound plain keys reach here.
+bool MainComponent::keyPressed (const juce::KeyPress& key)
+{
+    if (key.getModifiers().isAnyModifierKeyDown())
+        return false;
+
+    const auto c = (juce::juce_wchar) juce::CharacterFunctions::toLowerCase (
+                       (juce::juce_wchar) key.getTextCharacter());
+
+    if (c == ',') { typingOctaveShift = juce::jmax (typingOctaveShift - 12, -36); return true; }
+    if (c == '.') { typingOctaveShift = juce::jmin (typingOctaveShift + 12,  36); return true; }
+
+    if (const int base = typingKeyToNote (c); base >= 0)
+    {
+        const int note = juce::jlimit (0, 127, base + typingOctaveShift);
+        if (typingKeysDown.find (c) == typingKeysDown.end())
+        {
+            typingKeysDown[c] = note;
+            midiInput->noteOn (note, 0.8f);
+        }
+        return true;
+    }
+    return false;
 }
 
 bool MainComponent::keyStateChanged (bool)
@@ -196,150 +732,17 @@ bool MainComponent::keyStateChanged (bool)
     return handled;
 }
 
-bool MainComponent::keyPressed (const juce::KeyPress& key)
+void MainComponent::layoutDefaultPanelPositions()
 {
-    if (key == juce::KeyPress::spaceKey)
-    {
-        if (services.engine.isPlaying()) transportStop(); else transportPlay();
-        return true;
-    }
+    const int w = desktop.getWidth();
+    const int h = desktop.getHeight();
 
-    // Typing piano (ignore when modifiers are held so shortcuts still work).
-    const auto c = (juce::juce_wchar) juce::CharacterFunctions::toLowerCase (
-                       (juce::juce_wchar) key.getTextCharacter());
-    if (! key.getModifiers().isAnyModifierKeyDown())
-    {
-        if (c == ',') { typingOctaveShift = juce::jmax (typingOctaveShift - 12, -36); return true; }
-        if (c == '.') { typingOctaveShift = juce::jmin (typingOctaveShift + 12,  36); return true; }
+    const auto wf = (float) w;
+    const auto hf = (float) h;
 
-        if (const int base = typingKeyToNote (c); base >= 0)
-        {
-            const int note = juce::jlimit (0, 127, base + typingOctaveShift);
-            if (typingKeysDown.find (c) == typingKeysDown.end())
-            {
-                typingKeysDown[c] = note;
-                midiInput->noteOn (note, 0.8f);
-            }
-            return true;
-        }
-    }
-
-    if (key == juce::KeyPress::F5Key)  { playlistPanel->toggleVisibility();    return true; }
-    if (key == juce::KeyPress::F6Key)  { channelRackPanel->toggleVisibility(); return true; }
-    if (key == juce::KeyPress::F7Key)  { pianoRollPanel->toggleVisibility();   return true; }
-    if (key == juce::KeyPress::F9Key)  { mixerPanel->toggleVisibility();       return true; }
-    if (key == juce::KeyPress::F10Key) { showAudioSettings();                  return true; }
-    if (key == juce::KeyPress ('r', juce::ModifierKeys::commandModifier, 0))
-    {
-        showExportDialog();
-        return true;
-    }
-    if (key == juce::KeyPress ('s', juce::ModifierKeys::commandModifier, 0))
-    {
-        saveProjectInteractive();
-        return true;
-    }
-    if (key == juce::KeyPress ('o', juce::ModifierKeys::commandModifier, 0))
-    {
-        openProjectInteractive();
-        return true;
-    }
-    if (key == juce::KeyPress ('z', juce::ModifierKeys::commandModifier, 0))
-    {
-        services.project.getUndoManager().undo();
-        return true;
-    }
-    if (key == juce::KeyPress ('z', juce::ModifierKeys::commandModifier
-                                     | juce::ModifierKeys::shiftModifier, 0))
-    {
-        services.project.getUndoManager().redo();
-        return true;
-    }
-    return false;
-}
-
-void MainComponent::showExportDialog()
-{
-    auto chooser = std::make_shared<juce::FileChooser> ("Export render",
-        juce::File::getSpecialLocation (juce::File::userDesktopDirectory).getChildFile ("Untitled.wav"),
-        "*.wav");
-    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
-        [this, chooser] (const juce::FileChooser& fc)
-        {
-            const auto file = fc.getResult();
-            if (file == juce::File())
-                return;
-
-            OfflineRenderer::Options opts;
-            opts.wavFile = file.withFileExtension (".wav");
-            opts.renderMp3 = OfflineRenderer::findLameBinary() != juce::File();
-            opts.renderStems = false;
-
-            const auto result = OfflineRenderer::render (services.engine, services.project, opts);
-
-            juce::AlertWindow::showMessageBoxAsync (
-                result.ok ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon,
-                "Export",
-                result.ok ? "Rendered:\n" + result.writtenFiles.joinIntoString ("\n")
-                              + (result.error.isNotEmpty() ? "\n\n" + result.error : juce::String())
-                          : result.error);
-        });
-}
-
-void MainComponent::saveProjectInteractive()
-{
-    auto chooser = std::make_shared<juce::FileChooser> ("Save project",
-        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Untitled.eury"),
-        "*.eury");
-    chooser->launchAsync (juce::FileBrowserComponent::saveMode,
-        [this, chooser] (const juce::FileChooser& fc)
-        {
-            const auto file = fc.getResult();
-            if (file != juce::File())
-                services.saveProject (file.withFileExtension (".eury"));
-        });
-}
-
-void MainComponent::openProjectInteractive()
-{
-    auto chooser = std::make_shared<juce::FileChooser> ("Open project",
-        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.eury");
-    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-        [this, chooser] (const juce::FileChooser& fc)
-        {
-            const auto file = fc.getResult();
-            if (file.existsAsFile())
-                services.loadProject (file);
-        });
-}
-
-void MainComponent::transportPlay()
-{
-    // Armed + song mode = record the input as an audio take.
-    if (midiInput->recordArmed.load() && services.project.isSongMode()
-        && ! recorder->isRecording())
-        recorder->start();
-    services.engine.play();
-}
-
-void MainComponent::transportStop()
-{
-    services.engine.stop();
-    if (recorder->isRecording())
-        recorder->stopAndPlaceClip();
-}
-
-void MainComponent::showAudioSettings()
-{
-    auto selector = std::make_unique<juce::AudioDeviceSelectorComponent> (
-        services.engine.getDeviceManager(), 1, 2, 2, 2, true, false, true, false);
-    selector->setSize (480, 400);
-
-    juce::DialogWindow::LaunchOptions opts;
-    opts.content.setOwned (selector.release());
-    opts.dialogTitle = "Audio & MIDI Settings";
-    opts.dialogBackgroundColour = theme::panelBg;
-    opts.escapeKeyTriggersCloseButton = true;
-    opts.resizable = false;
-    opts.launchAsync();
+    playlistPanel->setBounds (juce::jmax (0, w - (int) (wf * 0.62f) - 12), 12,
+                              (int) (wf * 0.62f), (int) (hf * 0.55f));
+    channelRackPanel->setBounds (12, 12, 700, 460);
+    pianoRollPanel->setBounds (60, 80, (int) (wf * 0.7f), (int) (hf * 0.65f));
+    mixerPanel->setBounds (40, h - 340 - 20, w - 80, 340);
 }

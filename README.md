@@ -28,18 +28,31 @@ Run: `./build/Eurydice_artefacts/Eurydice.app/Contents/MacOS/Eurydice`
 | Piano roll | Draw/paint/move/resize, right-click delete, marquee select, velocity lane, ghost notes from other channels, chord stamp, scale highlighting |
 | Playlist | Free tracks; pattern, audio and automation clips; drag/resize/cross-track move; alt-resize time-stretches audio |
 | Mixer | 32 inserts + master, 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters |
-| Generators | Sampler channel (drop a WAV in) and a built-in 2-osc subtractive synth |
+| Generators | Sampler channel (drop a WAV in, ADSR + lowpass, one-shot or sustained) and a built-in 2-osc subtractive synth, both with editor windows |
 | Plugins | VST3 + AU hosting: background scan, instrument channels, effect slots, native editor windows, state saved in the project |
 | Automation | Right-click any parameter (including plugin params) → automation clip with a tension-curve editor |
 | Audio | Input recording to audio clips; Rubber Band R3 offline time-stretch |
 | MIDI | CoreMIDI input with hot-plug, note recording, FL-style typing keyboard |
 | Export | WAV (16/24-bit), MP3 via LAME, per-insert stems |
 
-### Keyboard
+### Getting around
 
-`Space` play/stop · `F5` playlist · `F6` channel rack · `F7` piano roll ·
-`F9` mixer · `F10` audio settings · `⌘S` save · `⌘O` open · `⌘R` render ·
-`⌘Z`/`⇧⌘Z` undo/redo · `Z`–`M` and `Q`–`P` rows play notes · `,`/`.` shift octave
+Everything is reachable three ways: the **menu bar** (File / Edit / View / Options),
+the **panel buttons** in the transport bar, and keyboard shortcuts.
+
+`⌘1` playlist · `⌘2` channel rack · `⌘3` piano roll · `⌘4` mixer · `⌘B` browser.
+The FL-style `F5`/`F6`/`F7`/`F9` bindings also work, but macOS claims those keys
+for brightness and media by default — either use `Fn`+the key, or turn on
+*Use F1, F2, etc. as standard function keys* in System Settings → Keyboard.
+
+`Space` play/stop · `Home` rewind · `⌘L` song mode · `⌘E` arm recording ·
+`⌘N`/`⌘O`/`⌘S`/`⇧⌘S` project · `⌘R` export · `⌘Z`/`⇧⌘Z` undo/redo ·
+`⌘,` audio settings · `Z`–`M` and `Q`–`P` rows play notes · `,`/`.` shift octave.
+
+Click a channel name to open its editor (sampler: sample slot, root note, ADSR,
+filter, one-shot; synth: oscillators, filter, envelope, keyboard). Right-click a
+channel for piano roll, routing, and automation. Double-click a pattern clip in
+the playlist to edit that pattern.
 
 ## AI control (MCP)
 
@@ -64,10 +77,11 @@ Time is in ticks: 960 per quarter note, 240 per 16th step, 3840 per bar.
 cmake --build build --target EurydiceTests && ./build/EurydiceTests_artefacts/EurydiceTests
 ```
 
-69 unit tests over the model, snapshot builder, sequencer timing (sample-accurate
+81 unit tests over the model, snapshot builder, sequencer timing (sample-accurate
 onsets, swing, song mode), automation curves, generators, renderer, control
-dispatcher, socket framing, and live AU hosting. They never open an audio
-device, so they run anywhere in under a second.
+dispatcher, socket framing, channel parameters, project dirty-tracking, and
+live AU hosting. They never open an audio device, so they run anywhere in under
+a second.
 
 ```bash
 scripts/coverage.sh 80     # llvm-cov with an enforced line-coverage gate
@@ -75,13 +89,14 @@ scripts/e2e_mcp.py         # full workflow through the real MCP bridge
 scripts/static-analysis.sh # clang-tidy + cppcheck
 ```
 
-Coverage of the non-UI core currently sits at **85.5%** lines (gate: 80%).
+Coverage of the non-UI core currently sits at **~85%** lines (gate: 80%).
 The e2e script launches the app, drives it through MCP, and asserts on the
 rendered audio.
 
-Static analysis note: SonarQube's C++ analyzer is a commercial feature, so the
-free clang-tidy + cppcheck pass is the real gate here. `sonar-project.properties`
-documents how to plug the reports into a Sonar server if you want the dashboard.
+Static analysis is clean: zero clang-tidy and cppcheck findings in `src/`.
+SonarQube's C++ analyzer is a commercial feature, so clang-tidy + cppcheck are
+the real gate here; `sonar-project.properties` documents how to plug the reports
+into a Sonar server if you want the dashboard.
 
 ## Layout
 

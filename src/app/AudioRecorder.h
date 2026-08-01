@@ -36,7 +36,7 @@ public:
         auto* writer = wav.createWriterFor (stream.get(), sr, 2, 24, {}, 0);
         if (writer == nullptr)
             return;
-        stream.release();
+        [[maybe_unused]] auto* owned = stream.release();   // the writer owns it now
 
         writeThread.startThread();
         threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (

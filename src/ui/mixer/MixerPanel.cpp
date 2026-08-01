@@ -197,9 +197,9 @@ void MixerPanel::rebuildDetail()
         row->level.setWantsKeyboardFocus (false);
         auto& undo = services.project.getUndoManager();
         auto sendCopy = send;
-        row->level.onValueChange = [row = row.get(), sendCopy, &undo]() mutable
+        row->level.onValueChange = [rowPtr = row.get(), sendCopy, &undo]() mutable
         {
-            sendCopy.setProperty (ids::level, row->level.getValue(), &undo);
+            sendCopy.setProperty (ids::level, rowPtr->level.getValue(), &undo);
         };
         addAndMakeVisible (row->level);
 
@@ -383,11 +383,11 @@ void MixerPanel::showSendMenu()
         {
             if (result < 100)
                 return;
-            auto sends = insertTree (selectedInsert).getChildWithName (ids::SENDS);
+            auto targetSends = insertTree (selectedInsert).getChildWithName (ids::SENDS);
             juce::ValueTree newSend (ids::SEND);
             newSend.setProperty (ids::destInsert, result - 100, nullptr);
             newSend.setProperty (ids::level, 0.8, nullptr);
-            sends.appendChild (newSend, &services.project.getUndoManager());
+            targetSends.appendChild (newSend, &services.project.getUndoManager());
             rebuildDetail();
         });
 }

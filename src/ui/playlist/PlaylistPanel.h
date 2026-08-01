@@ -16,6 +16,9 @@ public:
     explicit PlaylistPanel (AppServices&);
     ~PlaylistPanel() override;
 
+    // Asks the host to bring the piano roll forward.
+    std::function<void()> onShowPianoRoll;
+
     void paint (juce::Graphics&) override;
     void resized() override;
 

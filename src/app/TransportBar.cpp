@@ -43,6 +43,27 @@ TransportBar::TransportBar()
                                                              &patButton, &songButton, &tempoSlider, &positionLabel })
         addAndMakeVisible (c);
 
+    // Visible panel toggles: the discoverable route to every window.
+    const std::vector<std::pair<juce::String, juce::CommandID>> panels {
+        { "PLAYLIST", CommandIDs::viewPlaylist },
+        { "RACK",     CommandIDs::viewChannelRack },
+        { "PIANO",    CommandIDs::viewPianoRoll },
+        { "MIXER",    CommandIDs::viewMixer },
+        { "BROWSER",  CommandIDs::viewBrowser },
+    };
+    for (const auto& [label, command] : panels)
+    {
+        auto entry = std::make_unique<PanelButton>();
+        entry->command = command;
+        entry->button.setButtonText (label);
+        entry->button.setWantsKeyboardFocus (false);
+        entry->button.setClickingTogglesState (false);
+        entry->button.setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
+        entry->button.onClick = [this, command] { if (onPanelToggled) onPanelToggled (command); };
+        addAndMakeVisible (entry->button);
+        panelButtons.push_back (std::move (entry));
+    }
+
     startTimerHz (30);
 }
 
@@ -73,11 +94,45 @@ void TransportBar::resized()
     r.removeFromLeft (16);
 
     positionLabel.setBounds (r.removeFromLeft (130));
+    r.removeFromLeft (16);
+
+    for (auto& entry : panelButtons)
+    {
+        entry->button.setBounds (r.removeFromLeft (72));
+        r.removeFromLeft (3);
+    }
+    refreshPanelButtons();
 }
 
 void TransportBar::setTempoDisplay (double bpm)
 {
     tempoSlider.setValue (bpm, juce::dontSendNotification);
+}
+
+void TransportBar::setSongMode (bool songMode)
+{
+    patButton.setToggleState (! songMode, juce::dontSendNotification);
+    songButton.setToggleState (songMode, juce::dontSendNotification);
+}
+
+void TransportBar::setRecordArmed (bool armed)
+{
+    recordButton.setToggleState (armed, juce::dontSendNotification);
+}
+
+void TransportBar::refreshPanelButtons()
+{
+    if (! isPanelVisible)
+        return;
+    for (auto& entry : panelButtons)
+    {
+        const bool on = isPanelVisible (entry->command);
+        entry->button.setColour (juce::TextButton::buttonColourId,
+                                 on ? theme::accentDim : theme::raised);
+        entry->button.setColour (juce::TextButton::textColourOffId,
+                                 on ? theme::textPrimary : theme::textDim);
+        entry->button.repaint();
+    }
 }
 
 void TransportBar::timerCallback()

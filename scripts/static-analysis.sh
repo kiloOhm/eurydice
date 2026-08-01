@@ -29,8 +29,13 @@ for source in $SOURCES; do
         echo "(clang-tidy crashed or errored on $source — skipped)" | tee -a "$OUT_DIR/clang-tidy.txt"
     fi
 done
-grep -E "warning:|error:" "$OUT_DIR/clang-tidy.txt" | sort | uniq | head -60 || true
-TIDY_ISSUES=$(grep -cE "warning:|error:" "$OUT_DIR/clang-tidy.txt" || true)
+# Findings in our own sources. Homebrew clang-tidy parses a couple of JUCE
+# headers differently from Apple clang and emits clang-diagnostic-error for
+# them; those are tooling artifacts in a dependency, not defects here.
+grep -E "warning:|error:" "$OUT_DIR/clang-tidy.txt" | grep "/src/" | grep -v "_deps/" \
+    | sort -u | tee "$OUT_DIR/clang-tidy-ours.txt" || true
+TIDY_ISSUES=$(wc -l < "$OUT_DIR/clang-tidy-ours.txt" | tr -d " ")
+DEP_NOISE=$(grep -cE "clang-diagnostic-error" "$OUT_DIR/clang-tidy.txt" || true)
 
 echo
 echo "=== cppcheck ==="
@@ -50,5 +55,6 @@ print(f"\ncppcheck issues in src/: {len(errors)}")
 EOF
 
 echo
-echo "clang-tidy issues: ${TIDY_ISSUES}"
+echo "clang-tidy issues in src/: ${TIDY_ISSUES}"
+echo "(ignored: ${DEP_NOISE} parse errors inside JUCE headers — clang-tidy/Apple-clang mismatch)"
 echo "Reports in $OUT_DIR/ (clang-tidy.txt, cppcheck.xml — both importable by SonarQube's sonar-cxx plugin)"

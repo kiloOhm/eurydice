@@ -51,7 +51,19 @@ DECLARE_ID (samplePath)
 DECLARE_ID (rootNote)
 DECLARE_ID (pluginId)      // plugin identifier string from scan DB
 DECLARE_ID (pluginState)   // base64 blob
-DECLARE_ID (params)        // synth/sampler parameter subtree
+
+// Generator parameters (sampler + synth), stored flat on the CHANNEL.
+DECLARE_ID (attack)        // seconds
+DECLARE_ID (decay)
+DECLARE_ID (sustain)       // 0..1
+DECLARE_ID (release)
+DECLARE_ID (cutoff)        // Hz
+DECLARE_ID (resonance)     // 0..1
+DECLARE_ID (oneShot)       // sampler: ignore note-offs
+DECLARE_ID (osc2Detune)    // synth: cents
+DECLARE_ID (osc2Mix)       // synth: 0..1
+DECLARE_ID (oscShape)      // synth: 0 = saw, 1 = square
+DECLARE_ID (filterEnvAmt)  // synth: 0..1
 
 // Pattern
 DECLARE_ID (lengthTicks)

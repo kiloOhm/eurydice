@@ -28,11 +28,11 @@ ControlServer::ControlServer (AppServices& s)
 
     if (listener.createListener (port, "127.0.0.1"))
     {
-        std::cout << "CONTROL_LISTENING " << port << "\n";
+        std::cout << "CONTROL_LISTENING " << port << "\n" << std::flush;
         startThread();
     }
     else
-        std::cout << "CONTROL_BIND_FAILED " << port << "\n";
+        std::cout << "CONTROL_BIND_FAILED " << port << "\n" << std::flush;
 }
 
 ControlServer::~ControlServer()
