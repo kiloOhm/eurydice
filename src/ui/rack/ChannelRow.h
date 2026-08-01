@@ -1,0 +1,52 @@
+#pragma once
+
+#include <juce_gui_basics/juce_gui_basics.h>
+#include "model/ProjectModel.h"
+
+// One row in the channel rack: mute LED, name, pan/vol knobs, step cells.
+class ChannelRow : public juce::Component
+{
+public:
+    ChannelRow (ProjectModel&, juce::ValueTree channel);
+
+    void setPattern (juce::ValueTree pattern);   // which pattern's lane we edit
+    void setPlayStep (int step);                 // -1 = not playing
+    void refreshFromModel();
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+
+    int getChannelId() const { return channel[ids::id]; }
+    juce::ValueTree getChannelTree() const { return channel; }
+
+    std::function<void (int channelId)> onSelected;
+    std::function<void (juce::ValueTree channel)> onOpenEditor;
+    std::function<void (juce::ValueTree channel)> onWantsContextMenu;
+
+    static constexpr int rowHeight   = 30;
+    static constexpr int stepWidth   = 26;
+    static constexpr int fixedLeftWidth = 18 + 4 + 130 + 4 + 26 + 26 + 8;
+
+    int numSteps() const;
+
+private:
+    juce::Rectangle<int> stepsArea() const;
+    int stepAt (juce::Point<int>) const;
+    bool isStepOn (int step) const;
+    void setStep (int step, bool on);
+
+    ProjectModel& model;
+    juce::ValueTree channel;
+    juce::ValueTree pattern;
+
+    juce::TextButton muteLed;
+    juce::TextButton nameButton;
+    juce::Slider panKnob, volKnob;
+
+    int playStep = -1;
+    int dragPaintMode = -1;   // 1 = painting on, 0 = erasing, -1 = idle
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChannelRow)
+};

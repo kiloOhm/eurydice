@@ -1,0 +1,25 @@
+# build trees
+build/
+build-*/
+cmake-build-*/
+
+# coverage & analysis output
+*.profraw
+*.profdata
+coverage/
+analysis/
+
+# node
+mcp/node_modules/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.xcodeproj
+compile_commands.json
+
+# scratch
+*.log

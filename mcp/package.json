@@ -1,0 +1,11 @@
+{
+  "name": "eurydice-mcp",
+  "version": "0.1.0",
+  "description": "MCP server bridging AI clients to the Eurydice DAW control socket",
+  "type": "module",
+  "bin": { "eurydice-mcp": "index.mjs" },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
