@@ -37,6 +37,11 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
     snap->swing    = root[ids::swing];
     snap->songMode = root[ids::songMode];
 
+    snap->loopStartTicks = juce::jmax (0, (int) root[ids::loopStart]);
+    snap->loopEndTicks   = juce::jmax (0, (int) root[ids::loopEnd]);
+    snap->loopEnabled    = (bool) root[ids::loopEnabled]
+                               && snap->loopEndTicks > snap->loopStartTicks;
+
     // --- channels (resolve solo/mute) ---
     const auto channelsTree = model.channels();
     bool anySolo = false;

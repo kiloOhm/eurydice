@@ -96,7 +96,10 @@ private:
                              int tickOffsetToSong, double tps);
     void addNoteOn (int channelIndex, int key, float velocity, int sampleOffset, double offTick);
     void flushNoteOffs (const EngineSnapshot&, double t0, double t1, double tps);
+    void releaseActiveNotes (const EngineSnapshot&, int sampleOffset);
     void allNotesOff (const EngineSnapshot&);
+    void mixAudioClips (const EngineSnapshot&, double t0, double t1, double tps,
+                        int startSample, int numChunkSamples);
 
     juce::AudioDeviceManager deviceManager;
 
@@ -120,6 +123,7 @@ private:
     double sampleRate = 44100.0;
     int blockSize = 512;
     int currentBlockSamples = 0;   // numSamples of the block being processed
+    int blockSampleBase = 0;       // first sample of the sub-range being sequenced
     juce::AudioBuffer<float> channelScratch;
     std::vector<juce::AudioBuffer<float>> insertBus;            // sized maxInserts in prepare
     std::vector<juce::MidiBuffer> channelMidi;                  // sized maxChannels in prepare

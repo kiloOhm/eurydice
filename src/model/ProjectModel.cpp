@@ -14,6 +14,9 @@ void ProjectModel::createDefaultProject()
     root.setProperty (ids::tempo, 140.0, nullptr);
     root.setProperty (ids::swing, 0.0, nullptr);
     root.setProperty (ids::songMode, false, nullptr);
+    root.setProperty (ids::loopStart, 0, nullptr);
+    root.setProperty (ids::loopEnd, 4 * ids::ticksPerBar, nullptr);
+    root.setProperty (ids::loopEnabled, false, nullptr);
     root.setProperty (ids::id, 1, nullptr);   // id counter lives on the root
 
     root.appendChild (juce::ValueTree (ids::CHANNELS), nullptr);
@@ -57,6 +60,21 @@ void ProjectModel::createDefaultProject()
             addNote (hatLane, 60, step * ids::ticksPerStep, ids::ticksPerStep);
     }
     undo.clearUndoHistory();
+}
+
+void ProjectModel::setLoopRange (int startTicks, int endTicks)
+{
+    const int lo = juce::jmax (0, juce::jmin (startTicks, endTicks));
+    const int hi = juce::jmax (0, juce::jmax (startTicks, endTicks));
+    root.setProperty (ids::loopStart, lo, nullptr);
+    root.setProperty (ids::loopEnd, hi, nullptr);
+}
+
+void ProjectModel::clearLoop()
+{
+    root.setProperty (ids::loopEnabled, false, nullptr);
+    root.setProperty (ids::loopStart, 0, nullptr);
+    root.setProperty (ids::loopEnd, 0, nullptr);
 }
 
 juce::ValueTree ProjectModel::makeInsert (int index, const juce::String& name)

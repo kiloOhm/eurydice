@@ -76,13 +76,16 @@ const TIME_HELP = "Time is in ticks: 960/quarter note, 240/16th step, 3840/bar (
 tool("daw_state", "Get the full DAW state: tempo, swing, transport, channels (with ids), patterns, counts. Call this first.", {}, "state.get");
 
 server.tool("daw_transport",
-  "Control the transport: play, stop, seek, or set tempo/swing/songMode. " + TIME_HELP,
+  "Control the transport: play, stop, seek, or set tempo/swing/songMode/loop range. " + TIME_HELP,
   {
     action: z.enum(["play", "stop", "seek", "set"]),
     ticks: z.number().optional().describe("seek target in ticks"),
     tempo: z.number().min(20).max(999).optional(),
     swing: z.number().min(0).max(1).optional(),
     songMode: z.boolean().optional().describe("true = play the playlist, false = loop the active pattern"),
+    loopStart: z.number().min(0).optional().describe("loop range start in ticks"),
+    loopEnd: z.number().min(0).optional().describe("loop range end in ticks; only a range longer than 0 loops"),
+    loopEnabled: z.boolean().optional().describe("wrap back to loopStart when the transport reaches loopEnd"),
   },
   async ({ action, ...rest }) => {
     if (action === "play") return asText(await rpc("transport.play"));

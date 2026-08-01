@@ -17,6 +17,36 @@ void soloNoteAt (EngineFixture& fx, int startTicks, int channelIndex = 0)
     fx.model.addNote (lane, 60, startTicks, ids::ticksPerStep);
     fx.sync.rebuildNow();
 }
+
+void setLoop (EngineFixture& fx, int startTicks, int endTicks, bool enabled)
+{
+    fx.model.setLoopRange (startTicks, endTicks);
+    fx.model.setLoopEnabled (enabled);
+    fx.sync.rebuildNow();
+}
+
+// First sample at or after `from` that rises above the noise floor.
+int firstOnset (const juce::AudioBuffer<float>& buffer, int from)
+{
+    const auto* data = buffer.getReadPointer (0);
+    for (int i = juce::jmax (0, from); i < buffer.getNumSamples(); ++i)
+        if (std::abs (data[i]) > 0.01f)
+            return i;
+    return -1;
+}
+
+// The sample the engine wraps on: the first one whose tick reaches loopEnd.
+int loopWrapSample (const EngineFixture& fx, int loopEndTicks)
+{
+    return (int) std::ceil (loopEndTicks / fx.ticksPerSample());
+}
+
+// How far ahead of an expected onset the search starts. A kick rings for
+// 0.4 s (17,640 samples), so this has to clear the previous one's tail.
+constexpr int kQuietLeadIn = 8192;
+
+// 2.5 bars: the wrap lands mid-block, so a block-aligned wrap would show up.
+constexpr int kLoopEndTicks = 5 * ids::ticksPerBar / 2;
 }
 
 TEST (SequencerEngine, SilentWhenStopped)
@@ -183,6 +213,120 @@ TEST (SequencerEngine, MasterInsertGainAppliedToOutput)
     auto quiet = fx.renderFromStart (4096);
 
     EXPECT_LT (rmsOf (quiet, 0, 4096), rmsOf (loud, 0, 4096) * 0.5f);
+}
+
+TEST (SequencerEngine, LoopWrapsOnTheExactSample)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 0);
+    setLoop (fx, 0, kLoopEndTicks, true);
+
+    const int wrap = loopWrapSample (fx, kLoopEndTicks);
+    ASSERT_NE (wrap % test::kBlockSize, 0) << "test needs a wrap inside a block";
+
+    auto out = fx.renderFromStart (wrap + 4096);
+    const int onset = firstOnset (out, wrap - kQuietLeadIn);
+    EXPECT_GE (onset, wrap) << "note fired before the loop point";
+    EXPECT_LT (onset, wrap + 128) << "wrap was quantised to the block boundary";
+}
+
+TEST (SequencerEngine, LoopStartNoteRetriggersOnEveryPass)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 0);
+    setLoop (fx, 0, kLoopEndTicks, true);
+
+    const int wrap = loopWrapSample (fx, kLoopEndTicks);
+    auto out = fx.renderFromStart (2 * wrap + 4096);
+
+    const int firstPass = firstOnset (out, wrap - kQuietLeadIn);
+    EXPECT_GE (firstPass, wrap);
+    EXPECT_LT (firstPass, wrap + 128);
+
+    const int secondPass = firstOnset (out, 2 * wrap - kQuietLeadIn);
+    EXPECT_GE (secondPass, 2 * wrap);
+    EXPECT_LT (secondPass, 2 * wrap + 128);
+}
+
+TEST (SequencerEngine, LoopKeepsThePositionInsideTheRange)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 0);
+    setLoop (fx, ids::ticksPerBar, kLoopEndTicks, true);
+
+    fx.renderFromStart (loopWrapSample (fx, kLoopEndTicks) + 4096);
+
+    const double pos = fx.engine.getPositionTicks();
+    EXPECT_GE (pos, (double) ids::ticksPerBar);
+    EXPECT_LT (pos, (double) kLoopEndTicks);
+}
+
+TEST (SequencerEngine, DisabledLoopPlaysStraightThrough)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 0);
+    setLoop (fx, 0, kLoopEndTicks, false);
+
+    const int wrap = loopWrapSample (fx, kLoopEndTicks);
+    const int nextBar = (int) (3 * ids::ticksPerBar / fx.ticksPerSample());
+
+    auto out = fx.renderFromStart (nextBar + 4096);
+    const int onset = firstOnset (out, wrap - kQuietLeadIn);
+    EXPECT_GE (onset, nextBar) << "wrapped even though the loop is off";
+    EXPECT_LT (onset, nextBar + 128);
+}
+
+TEST (SequencerEngine, ZeroLengthLoopIsIgnored)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 0);
+    setLoop (fx, ids::ticksPerBar, ids::ticksPerBar, true);
+
+    auto snap = fx.engine.getPendingSnapshot();
+    ASSERT_NE (snap, nullptr);
+    EXPECT_FALSE (snap->loopEnabled);
+
+    // Pattern mode still retriggers at the pattern length.
+    const int bar = (int) (ids::ticksPerBar / fx.ticksPerSample());
+    auto out = fx.renderFromStart (bar + 4096);
+    const int onset = firstOnset (out, bar - kQuietLeadIn);
+    EXPECT_GE (onset, bar);
+    EXPECT_LT (onset, bar + 128);
+}
+
+TEST (SequencerEngine, InvertedLoopRangeIsNormalised)
+{
+    EngineFixture fx;
+    setLoop (fx, kLoopEndTicks, ids::ticksPerBar, true);
+
+    auto snap = fx.engine.getPendingSnapshot();
+    ASSERT_NE (snap, nullptr);
+    EXPECT_TRUE (snap->loopEnabled);
+    EXPECT_EQ (snap->loopStartTicks, ids::ticksPerBar);
+    EXPECT_EQ (snap->loopEndTicks, kLoopEndTicks);
+}
+
+TEST (SequencerEngine, LoopWrapsInSongMode)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 0);
+
+    const int patId = fx.model.getRoot()[ids::activePattern];
+    auto clip = fx.model.addPlaylistClip ("pattern", 0, ids::ticksPerBar, ids::ticksPerBar);
+    clip.setProperty (ids::patternId, patId, nullptr);
+    fx.model.setSongMode (true);
+    setLoop (fx, 0, 2 * ids::ticksPerBar, true);
+
+    const int bar = (int) (ids::ticksPerBar / fx.ticksPerSample());
+    const int wrap = loopWrapSample (fx, 2 * ids::ticksPerBar);
+
+    auto out = fx.renderFromStart (wrap + bar + 4096);
+    EXPECT_LT (rmsOf (out, 0, bar - 256), 1.0e-5f) << "audio before the clip";
+
+    // Second pass hits the clip again one bar after the wrap.
+    const int onset = firstOnset (out, wrap + bar - kQuietLeadIn);
+    EXPECT_GE (onset, wrap + bar);
+    EXPECT_LT (onset, wrap + bar + 128);
 }
 
 TEST (SequencerEngine, PreviewNoteProducesAudioWhileStopped)

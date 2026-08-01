@@ -37,6 +37,9 @@ DECLARE_ID (colour)
 DECLARE_ID (tempo)
 DECLARE_ID (swing)         // 0..1 global swing
 DECLARE_ID (songMode)
+DECLARE_ID (loopStart)       // transport loop range, in ticks
+DECLARE_ID (loopEnd)
+DECLARE_ID (loopEnabled)
 DECLARE_ID (activePattern)   // id of the pattern selected in the rack
 DECLARE_ID (selectedChannel) // id of the channel focused for piano roll / typing keys
 

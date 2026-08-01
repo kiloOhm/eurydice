@@ -72,6 +72,18 @@ juce::ValueTree PlaylistPanel::clipAt (juce::Point<int> pos, bool& overRightEdge
     return {};
 }
 
+bool PlaylistPanel::loopRangeBounds (int& x0, int& x1) const
+{
+    const int startTicks = services.project.getLoopStart();
+    const int endTicks   = services.project.getLoopEnd();
+    if (endTicks <= startTicks)
+        return false;
+
+    x0 = ticksToX (startTicks);
+    x1 = ticksToX (endTicks);
+    return true;
+}
+
 void PlaylistPanel::addClipAt (juce::Point<int> pos)
 {
     auto& project = services.project;
@@ -129,6 +141,12 @@ void PlaylistPanel::paint (juce::Graphics& g)
         }
     }
 
+    if (int x0 = 0, x1 = 0; loopRangeBounds (x0, x1))
+    {
+        g.setColour (theme::accent.withAlpha (services.project.isLoopEnabled() ? 0.08f : 0.03f));
+        g.fillRect (x0, area.getY(), juce::jmax (2, x1 - x0), area.getHeight());
+    }
+
     paintClips (g);
 
     // playhead
@@ -162,6 +180,16 @@ void PlaylistPanel::paintRuler (juce::Graphics& g)
     g.saveState();
     g.reduceClipRegion (area);
     g.setFont (theme::uiFont (10.0f));
+
+    if (int x0 = 0, x1 = 0; loopRangeBounds (x0, x1))
+    {
+        const bool enabled = services.project.isLoopEnabled();
+        g.setColour (theme::accent.withAlpha (enabled ? 0.30f : 0.10f));
+        g.fillRect (x0, area.getY(), juce::jmax (2, x1 - x0), area.getHeight());
+        g.setColour (theme::accent.withAlpha (enabled ? 0.9f : 0.4f));
+        g.drawVerticalLine (x0, (float) area.getY(), (float) area.getBottom());
+        g.drawVerticalLine (x1, (float) area.getY(), (float) area.getBottom());
+    }
 
     const double firstBar = std::floor (scrollTicks / ids::ticksPerBar) * ids::ticksPerBar;
     for (double t = firstBar; ; t += ids::ticksPerBar)
@@ -345,8 +373,17 @@ void PlaylistPanel::mouseDown (const juce::MouseEvent& e)
 
     if (rulerArea().contains (pos))
     {
+        if (e.mods.isPopupMenu())
+        {
+            services.project.clearLoop();
+            repaint();
+            return;
+        }
+        // Stays a seek until the mouse travels sideways; only then does it
+        // become a loop-range drag, so plain clicks keep seeking.
         drag = Drag::seek;
-        services.engine.setPositionTicks (snapDown (xToTicks (pos.x)));
+        loopAnchorTicks = snapDown (xToTicks (pos.x));
+        services.engine.setPositionTicks (loopAnchorTicks);
         return;
     }
 
@@ -437,8 +474,24 @@ void PlaylistPanel::mouseDrag (const juce::MouseEvent& e)
     switch (drag)
     {
         case Drag::seek:
-            services.engine.setPositionTicks (snapDown (xToTicks (pos.x)));
+            if (std::abs (e.getDistanceFromDragStartX()) <= 3)
+            {
+                services.engine.setPositionTicks (snapDown (xToTicks (pos.x)));
+                return;
+            }
+            drag = Drag::loop;
+            [[fallthrough]];
+
+        case Drag::loop:
+        {
+            const double here = snapDown (xToTicks (pos.x));
+            const int start = (int) juce::jmin (loopAnchorTicks, here);
+            const int end   = (int) juce::jmax (loopAnchorTicks, here);
+            services.project.setLoopRange (start, end > start ? end : start + snap());
+            services.project.setLoopEnabled (true);
+            repaint();
             return;
+        }
 
         case Drag::erase:
         {
@@ -547,9 +600,13 @@ void PlaylistPanel::mouseWheelMove (const juce::MouseEvent& e, const juce::Mouse
 
 // ---------- listeners / timer ----------
 
-void PlaylistPanel::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier&)
+void PlaylistPanel::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property)
 {
-    if (tree.hasType (ids::CLIP) || tree.hasType (ids::TRACK) || tree.hasType (ids::PATTERN))
+    const bool loopChanged = property == ids::loopStart || property == ids::loopEnd
+                                 || property == ids::loopEnabled;
+
+    if (tree.hasType (ids::CLIP) || tree.hasType (ids::TRACK) || tree.hasType (ids::PATTERN)
+        || (tree.hasType (ids::PROJECT) && loopChanged))
         repaint();
 }
 

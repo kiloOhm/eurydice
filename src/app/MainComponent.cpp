@@ -56,8 +56,13 @@ MainComponent::MainComponent()
     };
     transportBar.onTempoChanged    = [this] (double bpm) { services.project.setTempo (bpm); };
     transportBar.onSongModeChanged = [this] (bool song) { services.project.setSongMode (song); };
+    transportBar.onLoopToggled     = [this]
+    {
+        commandManager.invokeDirectly (CommandIDs::transportToggleLoop, false);
+    };
     transportBar.getBeatPosition   = [this] { return services.engine.getPositionBeats(); };
     transportBar.getIsPlaying      = [this] { return services.engine.isPlaying(); };
+    transportBar.getLoopEnabled    = [this] { return services.project.isLoopEnabled(); };
     transportBar.onPanelToggled    = [this] (juce::CommandID id)
     {
         commandManager.invokeDirectly (id, false);
@@ -308,6 +313,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         menu.addCommandItem (&commandManager, CommandIDs::transportPlayStop);
         menu.addCommandItem (&commandManager, CommandIDs::transportRewind);
         menu.addCommandItem (&commandManager, CommandIDs::transportToggleSongMode);
+        menu.addCommandItem (&commandManager, CommandIDs::transportToggleLoop);
         menu.addCommandItem (&commandManager, CommandIDs::transportToggleRecord);
         menu.addSeparator();
         menu.addCommandItem (&commandManager, CommandIDs::optionsAudioSettings);
@@ -340,6 +346,7 @@ void MainComponent::getAllCommands (juce::Array<juce::CommandID>& commands)
         CommandIDs::viewResetLayout,
         CommandIDs::transportPlayStop, CommandIDs::transportRewind,
         CommandIDs::transportToggleSongMode, CommandIDs::transportToggleRecord,
+        CommandIDs::transportToggleLoop,
         CommandIDs::optionsAudioSettings, CommandIDs::optionsScanPlugins });
 }
 
@@ -434,6 +441,11 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.addDefaultKeypress ('e', cmd);
             info.setTicked (midiInput != nullptr && midiInput->recordArmed.load());
             break;
+        case CommandIDs::transportToggleLoop:
+            info.setInfo ("Toggle Loop", "Loop the range marked in the playlist ruler", "Transport", 0);
+            info.addDefaultKeypress ('l', cmd | shift);
+            info.setTicked (services.project.isLoopEnabled());
+            break;
 
         case CommandIDs::optionsAudioSettings:
             info.setInfo ("Audio & MIDI Settings...", "Choose the audio device", "Options", 0);
@@ -521,6 +533,10 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
         case CommandIDs::transportToggleRecord:
             midiInput->recordArmed.store (! midiInput->recordArmed.load());
             transportBar.setRecordArmed (midiInput->recordArmed.load());
+            commandManager.commandStatusChanged();
+            return true;
+        case CommandIDs::transportToggleLoop:
+            services.project.setLoopEnabled (! services.project.isLoopEnabled());
             commandManager.commandStatusChanged();
             return true;
 

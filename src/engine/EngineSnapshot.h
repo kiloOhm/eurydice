@@ -116,6 +116,12 @@ struct EngineSnapshot
     bool   songMode = false;
     int    activePatternIndex = 0;
 
+    // Loop range. loopEnabled is only ever true for a positive-length range,
+    // so the audio thread can trust it without re-validating.
+    bool   loopEnabled = false;
+    int    loopStartTicks = 0;
+    int    loopEndTicks = 0;
+
     std::vector<PatternSnapshot> patterns;
     std::vector<ChannelSnapshot> channels;
     std::vector<InsertSnapshot>  inserts;      // index 0 = master
