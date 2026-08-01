@@ -120,6 +120,49 @@ TEST_F (DispatcherFixture, PatternCreateAndSelect)
     EXPECT_CONTROL_ERROR (call ("pattern.select", R"({"patternId": 424242})"));
 }
 
+TEST_F (DispatcherFixture, PatternCloneCopiesNotes)
+{
+    const int sourceId = services.project.getRoot()[ids::activePattern];
+    const auto chId = juce::String (firstChannelId());
+
+    const auto cloned = call ("pattern.clone", R"({"patternId": )" + juce::String (sourceId) + "}");
+    const int copyId = cloned["id"];
+    EXPECT_NE (copyId, sourceId);
+    EXPECT_EQ (services.project.numPatterns(), 2);
+
+    auto copiedNotes = call ("notes.get", R"({"patternId": )" + juce::String (copyId)
+                                              + R"(, "channelId": )" + chId + "}");
+    EXPECT_EQ (copiedNotes.getArray()->size(), 4);
+
+    // The copy is independent: clearing it leaves the original alone.
+    call ("notes.clear", R"({"patternId": )" + juce::String (copyId)
+              + R"(, "channelId": )" + chId + "}");
+    EXPECT_EQ (call ("notes.get", R"({"patternId": )" + juce::String (sourceId)
+                         + R"(, "channelId": )" + chId + "}").getArray()->size(), 4);
+
+    EXPECT_CONTROL_ERROR (call ("pattern.clone", R"({"patternId": 424242})"));
+}
+
+TEST_F (DispatcherFixture, PatternRemoveDropsClipsAndKeepsTheLastPattern)
+{
+    const int firstId = services.project.getRoot()[ids::activePattern];
+    const int secondId = call ("pattern.create", R"({"name": "P2"})")["id"];
+
+    call ("playlist.addClip", R"({"track": 0, "patternId": )" + juce::String (secondId)
+                                  + R"(, "start": 0})");
+    ASSERT_EQ (call ("playlist.get")[0]["clips"].getArray()->size(), 1);
+
+    call ("pattern.remove", R"({"patternId": )" + juce::String (secondId) + "}");
+    EXPECT_FALSE (services.project.getPatternById (secondId).isValid());
+    EXPECT_EQ (call ("playlist.get")[0]["clips"].getArray()->size(), 0);
+    EXPECT_EQ ((int) services.project.getRoot()[ids::activePattern], firstId);
+
+    // The last pattern cannot go, and unknown ids are rejected.
+    EXPECT_CONTROL_ERROR (call ("pattern.remove", R"({"patternId": )" + juce::String (firstId) + "}"));
+    EXPECT_CONTROL_ERROR (call ("pattern.remove", R"({"patternId": 424242})"));
+    EXPECT_EQ (services.project.numPatterns(), 1);
+}
+
 TEST_F (DispatcherFixture, PlaylistAddAndClear)
 {
     const int patId = services.project.getRoot()[ids::activePattern];

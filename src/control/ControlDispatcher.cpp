@@ -118,6 +118,17 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
             p.setProperty (ids::lengthTicks, (int) getOr (params, "lengthTicks", ids::ticksPerBar), nullptr);
         return makeObj ({ { "id", (int) p[ids::id] } });
     }
+    if (method == "pattern.clone")
+    {
+        auto copy = project.clonePattern ((int) requirePattern (params)[ids::id]);
+        return makeObj ({ { "id", (int) copy[ids::id] } });
+    }
+    if (method == "pattern.remove")
+    {
+        if (! project.removePattern ((int) requirePattern (params)[ids::id]))
+            throw ControlError { "cannot remove the last remaining pattern" };
+        return true;
+    }
     if (method == "pattern.select")
     {
         auto p = requirePattern (params);

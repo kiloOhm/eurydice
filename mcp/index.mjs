@@ -120,6 +120,14 @@ tool("daw_pattern_create", "Create a pattern. " + TIME_HELP,
 tool("daw_pattern_select", "Make a pattern the active one (shown in rack/piano roll, looped in pattern mode).",
   { patternId: z.number() }, "pattern.select");
 
+tool("daw_pattern_clone",
+  "Duplicate a pattern with all its notes, named '<name> (copy)' and placed right after the original. patternId defaults to the active pattern.",
+  { patternId: z.number().optional() }, "pattern.clone");
+
+tool("daw_pattern_remove",
+  "Delete a pattern and every playlist clip that references it. Fails if it is the last remaining pattern. patternId defaults to the active pattern.",
+  { patternId: z.number().optional() }, "pattern.remove");
+
 tool("daw_notes_get", "List a channel's notes in a pattern. patternId defaults to the active pattern.",
   { patternId: z.number().optional(), channelId: z.number() }, "notes.get");
 
