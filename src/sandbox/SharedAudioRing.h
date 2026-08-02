@@ -213,7 +213,7 @@ private:
     float* slotBase (int region, juce::int64 seq) const
     {
         auto* floats = reinterpret_cast<float*> (static_cast<char*> (base) + sizeof (RingHeader));
-        const size_t slot = (size_t) (region + (int) (seq & 1));
+        const auto slot = (size_t) region + (size_t) (seq & 1);
         return floats + slot * RingHeader::maxChannels * maxBlock;
     }
 
