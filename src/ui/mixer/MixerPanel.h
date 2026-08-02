@@ -72,6 +72,7 @@ private:
 
     // detail column
     int selectedInsert = 0;
+    int healthTick = 0;
     juce::Label detailName;
     std::array<juce::TextButton, 10> effectSlots;
     juce::TextButton addSendButton { "+ Send" };

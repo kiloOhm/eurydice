@@ -37,6 +37,9 @@ public:
 
         generators.setPluginContext (&plugins, [this] { engineSync.rebuildNow(); });
         effects.onInstanceReady = [this] { engineSync.rebuildNow(); };
+        // Drop a dead helper's effect out of the chain right away; the slot
+        // shows [crashed] and offers a restart.
+        effects.onSandboxCrashed = [this] (int, int, juce::String) { engineSync.rebuildNow(); };
 
         updateAudioSpec();
         engine.getDeviceManager().addChangeListener (this);
@@ -128,6 +131,16 @@ public:
         }
 
         effects.forEach ([this] (int insertIndex, int slotIndex, const HostedPlugin& plugin)
+        {
+            auto insert = project.getInsert (insertIndex);
+            for (auto slot : insert)
+                if (slot.hasType (ids::SLOT) && (int) slot[ids::slotIndex] == slotIndex)
+                    slot.setProperty (ids::pluginState, plugin.getStateBase64(), nullptr);
+        });
+
+        // Sandboxed state crosses the process boundary; this doubles as the
+        // checkpoint a crashed slot restarts from.
+        effects.forEachSandboxed ([this] (int insertIndex, int slotIndex, SandboxedPlugin& plugin)
         {
             auto insert = project.getInsert (insertIndex);
             for (auto slot : insert)

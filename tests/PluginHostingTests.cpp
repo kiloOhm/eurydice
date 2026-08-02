@@ -37,7 +37,8 @@ TEST (PluginHosting, EffectPoolLoadsAndProcesses)
     EXPECT_EQ (fx.effects.getReady (0, 0, pluginId, {}), nullptr);
     pumpUntil ([&fx] { return fx.effects.peek (0, 0) != nullptr; }, 15000);
 
-    auto hosted = fx.effects.getReady (0, 0, pluginId, {});
+    ASSERT_NE (fx.effects.getReady (0, 0, pluginId, {}), nullptr);
+    auto hosted = fx.effects.peek (0, 0);
     ASSERT_NE (hosted, nullptr);
     EXPECT_EQ (hosted->getDescription().name, delay->name);
 

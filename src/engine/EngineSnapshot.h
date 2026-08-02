@@ -64,11 +64,16 @@ struct AutomationPoint
 struct AutomationSnapshot
 {
     enum class Kind { channelVolume, channelPan, insertVolume, insertPan,
-                      pluginParam, generatorParam, builtinParam };
+                      pluginParam, generatorParam, builtinParam, sandboxParam };
     Kind kind = Kind::channelVolume;
     int  channelIndex = -1;                       // for channel* kinds
     int  insertIndex = -1;                        // for insert* kinds
     juce::AudioProcessorParameter* param = nullptr;   // pluginParam
+
+    // sandboxParam: the plugin lives in a helper process; values go through
+    // the shared-memory ring's RT-safe event slots instead of a pointer.
+    std::shared_ptr<class SandboxedPlugin> sandboxed;
+    int sandboxParamIndex = -1;
     // Type-erased so one field can pin a hosted plugin, a generator or a
     // built-in effect for as long as the snapshot lives.
     std::shared_ptr<void> keepAlive;

@@ -48,6 +48,13 @@ public:
     void showEditor (const juce::String& title);
     juce::String getName() const { return pluginName; }
 
+    // Parameter names reported by the child at load (first 128); the
+    // automation menu lists these and setParameter targets their indices.
+    const juce::StringArray& getParamNames() const { return paramNames; }
+
+    // Re-prepares the child after a device/sample-rate change.
+    void prepareChild (double sampleRate, int blockSize);
+
     void shutdown();   // polite quit, then SIGKILL after a grace period
 
     // Tests need the pid to simulate a plugin crash (SIGKILL the helper).
@@ -60,6 +67,7 @@ private:
 
     sandbox::SharedAudioRing ring;
     juce::String pluginName;
+    juce::StringArray paramNames;
     pid_t childPid = -1;
     int toChildFd = -1;     // we write commands here
     int fromChildFd = -1;   // we read replies here

@@ -205,6 +205,7 @@ MainComponent::MainComponent()
     opts.osxLibrarySubFolder = "Application Support";
     settings = std::make_unique<juce::PropertiesFile> (opts);
     recentFiles.restoreFromString (settings->getValue ("recentFiles"));
+    services.effects.setSandboxEnabled (settings->getBoolValue ("sandboxEffects", false));
 
     controlServer = std::make_unique<ControlServer> (services);
     midiInput = std::make_unique<MidiInputManager> (services);
@@ -667,6 +668,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         menu.addSeparator();
         menu.addCommandItem (&commandManager, CommandIDs::optionsAudioSettings);
         menu.addCommandItem (&commandManager, CommandIDs::optionsScanPlugins);
+        menu.addSeparator();
+        menu.addCommandItem (&commandManager, CommandIDs::optionsSandboxEffects);
     }
 
     return menu;
@@ -727,7 +730,8 @@ void MainComponent::getAllCommands (juce::Array<juce::CommandID>& commands)
         CommandIDs::transportToggleLoop, CommandIDs::transportToggleAutomationWrite,
         CommandIDs::transportToggleLoop, CommandIDs::transportToggleMetronome,
         CommandIDs::transportCountIn,
-        CommandIDs::optionsAudioSettings, CommandIDs::optionsScanPlugins });
+        CommandIDs::optionsAudioSettings, CommandIDs::optionsScanPlugins,
+        CommandIDs::optionsSandboxEffects });
 }
 
 void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& info)
@@ -857,6 +861,12 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setInfo ("Scan for Plugins", "Search for VST3 and AU plugins", "Options", 0);
             info.setActive (! services.plugins.isScanning());
             break;
+        case CommandIDs::optionsSandboxEffects:
+            info.setInfo ("Sandbox Plugin Effects",
+                          "Load effect plugins in a separate process so a crash can't take "
+                          "the DAW down. Applies to effects loaded from now on.", "Options", 0);
+            info.setTicked (services.effects.isSandboxEnabled());
+            break;
         default:
             break;
     }
@@ -967,6 +977,13 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
         case CommandIDs::optionsAudioSettings: showAudioSettings(); return true;
         case CommandIDs::optionsScanPlugins:
             services.plugins.startScan ([this] { commandManager.commandStatusChanged(); });
+            commandManager.commandStatusChanged();
+            return true;
+
+        case CommandIDs::optionsSandboxEffects:
+            services.effects.setSandboxEnabled (! services.effects.isSandboxEnabled());
+            settings->setValue ("sandboxEffects", services.effects.isSandboxEnabled());
+            settings->saveIfNeeded();
             commandManager.commandStatusChanged();
             return true;
 

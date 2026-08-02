@@ -289,6 +289,16 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
                     valid = true;
                 }
             }
+            else if (auto sandboxed = effects.peekSandboxed (targetId, slot))
+            {
+                if (paramIndex >= 0 && paramIndex < sandboxed->getParamNames().size())
+                {
+                    as.kind = AutomationSnapshot::Kind::sandboxParam;
+                    as.sandboxed = sandboxed;
+                    as.sandboxParamIndex = paramIndex;
+                    valid = true;
+                }
+            }
         }
 
         if (! valid)

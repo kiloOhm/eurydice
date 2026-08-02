@@ -182,7 +182,12 @@ private:
                 }
                 instance = std::move (created);
                 prepare (sampleRate, blockSize);
-                reply (okReply ({ { "name", instance->getName() } }));
+                juce::Array<juce::var> paramNames;
+                const auto& params = instance->getParameters();
+                for (int i = 0; i < juce::jmin (params.size(), 128); ++i)
+                    paramNames.add (params[i]->getName (48));
+                reply (okReply ({ { "name", instance->getName() },
+                                  { "params", juce::var (paramNames) } }));
             });
     }
 

@@ -56,14 +56,18 @@ the active work.
 
 ## Big rocks (schedule deliberately)
 
-- **Plugin sandboxing** — stage 1 shipped: `EurydiceHelper` hosts one plugin
-  per process; audio rides a shared-memory ring (one-block latency, the DAW's
-  audio thread never blocks — a stalled or dead child degrades to silence);
-  control/state/editor run over stdin/stdout JSON; SIGKILLing the helper
-  mid-stream is a passing test. Stage 2 remaining: wire SandboxedPlugin into
-  EffectPool behind an Options toggle (default off), crashed-slot UI with
-  one-click restart from last state, param-automation proxying via the ring's
-  event slots (in place, unwired), and instrument channels.
+- **Plugin sandboxing** — stages 1+2 shipped for effects: Options → "Sandbox
+  Plugin Effects" (default off, persisted) loads new effect slots in an
+  EurydiceHelper process each. Audio rides a shared-memory ring (one-block
+  latency; the audio thread never blocks — a dead child degrades to silence);
+  a crashed helper flags the slot "[crashed]", drops out of the chain, and
+  the slot menu offers "Restart crashed plugin" from the last captured state.
+  Param automation proxies through the ring's RT-safe event slots; state
+  saves cross the process boundary; editors open in the helper's own window.
+  Engine-level test: sandboxed AUDelay renders in the chain, SIGKILL, health
+  check flags it, restart brings it back. Remaining: sandboxed *instrument*
+  channels (generator path), per-plugin (not global) opt-in, and MIDI/latency
+  polish for the instrument case.
 - **JUCE upgrade / input-device rework** — retire the CoreAudio combiner
   workaround (see engine debt below).
 - **Time signatures beyond 4/4** — foundational, invasive, low value for the

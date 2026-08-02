@@ -32,7 +32,7 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 | Mixer | Master + as many inserts as you add (`+` in the mixer or the routing menus), 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters, per-insert renaming |
 | Effects | Six built-ins: oversampled clipper, filter with envelope follower + synced LFO, 4-band EQ, compressor with external sidechain, tempo-synced delay, reverb |
 | Generators | Sampler channel (drop a WAV in, ADSR + lowpass, one-shot or sustained, start/end trim, reverse, pitch envelope, drive), a built-in 2-osc subtractive synth, and a synthesised kick channel (swept body, click, noise, drive) — all with editor windows |
-| Plugins | VST3 + AU hosting: background scan, instrument channels, effect slots, native editor windows, state saved in the project |
+| Plugins | VST3 + AU hosting: background scan, instrument channels, effect slots, native editor windows, state saved in the project; optional per-process sandboxing for effects (Options menu) so a crashing plugin can't take the DAW down |
 | Automation | Right-click any knob or fader → automation clip with a tension-curve editor; arm `AUTO` (playlist header) to record moves live |
 | Transport | Loop range (drag the playlist ruler, `LOOP` in the playlist header), metronome with count-in, per-pattern swing |
 | Samples | Browser previews on click, double-click sends to the rack; a royalty-free SampleRadar drum library (934 hits) lives in `~/Music/Samples` |

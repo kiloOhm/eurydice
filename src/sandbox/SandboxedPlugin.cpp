@@ -123,6 +123,9 @@ bool SandboxedPlugin::launch (const juce::String& pluginId, double sampleRate, i
         return false;
     }
     pluginName = loaded["name"].toString();
+    if (const auto* names = loaded["params"].getArray())
+        for (const auto& name : *names)
+            paramNames.add (name.toString());
 
     if (initialStateBase64.isNotEmpty())
         setStateFromBase64 (initialStateBase64);
@@ -213,6 +216,15 @@ void SandboxedPlugin::setStateFromBase64 (const juce::String& base64)
     auto* obj = new juce::DynamicObject();
     obj->setProperty ("cmd", "setState");
     obj->setProperty ("state", base64);
+    sendCommand (juce::var (obj), 5000);
+}
+
+void SandboxedPlugin::prepareChild (double sampleRate, int blockSize)
+{
+    auto* obj = new juce::DynamicObject();
+    obj->setProperty ("cmd", "prepare");
+    obj->setProperty ("sampleRate", sampleRate);
+    obj->setProperty ("blockSize", blockSize);
     sendCommand (juce::var (obj), 5000);
 }
 

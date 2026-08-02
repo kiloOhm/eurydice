@@ -33,5 +33,6 @@ enum
 
     optionsAudioSettings,
     optionsScanPlugins,
+    optionsSandboxEffects,
 };
 }

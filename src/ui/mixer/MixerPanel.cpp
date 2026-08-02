@@ -221,6 +221,8 @@ void MixerPanel::rebuildDetail()
                 label = prefix + desc->name;
             else
                 label = "(missing)";
+            if (services.effects.isCrashed (selectedInsert, slot))
+                label = "[crashed] " + label;
         }
         effectSlots[(size_t) slot].setButtonText (label);
     }
@@ -316,6 +318,14 @@ void MixerPanel::showStripMenu (int insertIndex)
             for (int i = 0; i < juce::jmin (params.size(), 64); ++i)
                 paramMenu.addItem (1000 + slot * 100 + i, params[i]->getName (48));
             automationMenu.addSubMenu (hosted->getDescription().name, paramMenu);
+        }
+        else if (auto sandboxed = services.effects.peekSandboxed (insertIndex, slot))
+        {
+            juce::PopupMenu paramMenu;
+            const auto& names = sandboxed->getParamNames();
+            for (int i = 0; i < juce::jmin (names.size(), 64); ++i)
+                paramMenu.addItem (1000 + slot * 100 + i, names[i]);
+            automationMenu.addSubMenu (sandboxed->getName(), paramMenu);
         }
     }
 
@@ -457,6 +467,8 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
     juce::PopupMenu menu;
     if (filled)
     {
+        if (services.effects.isCrashed (selectedInsert, slotIndex))
+            menu.addItem (5, "Restart crashed plugin");
         menu.addItem (1, "Show editor");
         menu.addItem (2, "Bypass", true, (bool) slotTree[ids::bypass]);
         menu.addItem (3, "Remove");
@@ -503,6 +515,14 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
                 auto slot = getSlotTree (selectedInsert, slotIndex, false);
                 if (slot.isValid())
                     slot.getParent().removeChild (slot, &undo);
+                rebuildDetail();
+            }
+            else if (result == 5)
+            {
+                // Relaunch from the last state the project captured.
+                const auto slot = getSlotTree (selectedInsert, slotIndex, false);
+                services.effects.restartSandboxed (selectedInsert, slotIndex,
+                    slot.isValid() ? slot[ids::pluginState].toString() : juce::String());
                 rebuildDetail();
             }
             else if (result == 4)
@@ -560,8 +580,15 @@ void MixerPanel::showEditorForSlot (int slotIndex)
     }
 
     if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
+    {
         services.pluginWindows.showEditorFor (plugin, insertName + " / "
                                                           + plugin->getDescription().name);
+        return;
+    }
+
+    // Sandboxed: the editor lives in the helper's own window.
+    if (auto sandboxed = services.effects.peekSandboxed (selectedInsert, slotIndex))
+        sandboxed->showEditor (insertName + " / " + sandboxed->getName());
 }
 
 void MixerPanel::showSendMenu()
@@ -674,6 +701,13 @@ void MixerPanel::rebuildStrips()
 
 void MixerPanel::timerCallback()
 {
+    if (++healthTick >= 24)
+    {
+        healthTick = 0;
+        if (services.effects.checkHealth())
+            rebuildDetail();   // crashed slots get their label
+    }
+
     if (auto* viewed = stripViewport.getViewedComponent())
     {
         juce::ignoreUnused (viewed);

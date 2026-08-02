@@ -180,3 +180,78 @@ TEST (SandboxHelper, HostsARealPluginOutOfProcess)
     EXPECT_TRUE (plugin.isAlive());
     plugin.shutdown();
 }
+
+#include "TestHelpers.h"
+
+TEST (SandboxPool, SandboxedEffectRendersInTheEngineAndSurvivesCrash)
+{
+    if (! SandboxedPlugin::findHelperBinary().existsAsFile())
+        GTEST_SKIP() << "helper unavailable";
+
+    test::EngineFixture fx;
+    juce::String delayId;
+    for (const auto& d : fx.plugins.getEffects())
+        if (d.name.containsIgnoreCase ("AUDelay"))
+            delayId = d.createIdentifierString();
+    if (delayId.isEmpty())
+        GTEST_SKIP() << "plugin database empty — run a scan from the app first";
+
+    // Sandbox mode on: the slot loads out of process through the normal path.
+    fx.effects.setSandboxEnabled (true);
+    juce::ValueTree slot (ids::SLOT);
+    slot.setProperty (ids::slotIndex, 0, nullptr);
+    slot.setProperty (ids::pluginId, delayId, nullptr);
+    fx.model.getInsert (0).appendChild (slot, nullptr);
+    fx.sync.rebuildNow();
+
+    const auto deadline = juce::Time::getMillisecondCounter() + 20000;
+    while (fx.effects.peekSandboxed (0, 0) == nullptr
+           && juce::Time::getMillisecondCounter() < deadline)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    auto sandboxed = fx.effects.peekSandboxed (0, 0);
+    ASSERT_NE (sandboxed, nullptr) << "sandboxed load timed out";
+    EXPECT_EQ (fx.effects.peek (0, 0), nullptr) << "must not also load in-process";
+    fx.sync.rebuildNow();
+    ASSERT_EQ ((int) fx.engine.getPendingSnapshot()->inserts[0].effects.size(), 1);
+
+    // The default beat through the sandboxed delay must be audible. The child
+    // needs wall-clock time to process, so render in paced slices.
+    fx.engine.stop();
+    fx.engine.setPositionTicks (0.0);
+    fx.engine.play();
+    juce::AudioBuffer<float> out (2, test::kBlockSize);
+    float peak = 0.0f;
+    for (int b = 0; b < 60; ++b)
+    {
+        float* ptrs[2] = { out.getWritePointer (0), out.getWritePointer (1) };
+        fx.engine.processBlockOffline (ptrs, 2, test::kBlockSize);
+        peak = juce::jmax (peak, out.getMagnitude (0, 0, test::kBlockSize));
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+    EXPECT_GT (peak, 1.0e-4f);
+
+    // Crash the helper: the engine keeps rendering (the slot goes silent),
+    // health-check flags it, and a restart brings the plugin back.
+    ::kill (sandboxed->getChildPid(), SIGKILL);
+    std::this_thread::sleep_for (std::chrono::milliseconds (100));   // SIGKILL is async
+    for (int b = 0; b < 20; ++b)
+    {
+        float* ptrs[2] = { out.getWritePointer (0), out.getWritePointer (1) };
+        fx.engine.processBlockOffline (ptrs, 2, test::kBlockSize);
+    }
+    EXPECT_TRUE (fx.effects.checkHealth());
+    EXPECT_TRUE (fx.effects.isCrashed (0, 0));
+    fx.sync.rebuildNow();
+    EXPECT_EQ ((int) fx.engine.getPendingSnapshot()->inserts[0].effects.size(), 0)
+        << "a crashed slot must drop out of the chain";
+
+    fx.effects.restartSandboxed (0, 0, {});
+    const auto deadline2 = juce::Time::getMillisecondCounter() + 20000;
+    while (fx.effects.peekSandboxed (0, 0) == nullptr
+           && juce::Time::getMillisecondCounter() < deadline2)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    ASSERT_NE (fx.effects.peekSandboxed (0, 0), nullptr) << "restart timed out";
+    EXPECT_FALSE (fx.effects.isCrashed (0, 0));
+    EXPECT_TRUE (fx.effects.peekSandboxed (0, 0)->isAlive());
+    fx.engine.stop();
+}

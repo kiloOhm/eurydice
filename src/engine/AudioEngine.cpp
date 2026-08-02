@@ -1,5 +1,6 @@
 #include "AudioEngine.h"
 #include "model/Ids.h"
+#include "sandbox/SandboxedPlugin.h"
 
 AudioEngine::AudioEngine()
 {
@@ -555,6 +556,12 @@ void AudioEngine::applyAutomation (const EngineSnapshot& snap, double tick)
             case AutomationSnapshot::Kind::pluginParam:
                 if (automation.param != nullptr)
                     automation.param->setValueNotifyingHost (value);
+                break;
+            case AutomationSnapshot::Kind::sandboxParam:
+                // Queued into the ring's event slots; the child applies them
+                // before its next block. RT-safe on this side.
+                if (automation.sandboxed != nullptr)
+                    automation.sandboxed->setParameter (automation.sandboxParamIndex, value);
                 break;
             case AutomationSnapshot::Kind::generatorParam:
                 if (automation.genParam != nullptr)
