@@ -44,14 +44,15 @@ std::shared_ptr<const juce::AudioBuffer<float>> AudioClipCache::getResampled (co
 }
 
 std::shared_ptr<const juce::AudioBuffer<float>> AudioClipCache::getStretched (const juce::String& path,
-                                                                              double ratio)
+                                                                              double ratio,
+                                                                              StretchMode mode)
 {
     ratio = juce::jlimit (0.1, 10.0, ratio);
 
     if (std::abs (ratio - 1.0) < 1.0e-3)
         return getResampled (path);
 
-    const auto key = path + "|" + juce::String (ratio, 4);
+    const auto key = path + "|" + juce::String (ratio, 4) + "|" + juce::String ((int) mode);
     if (auto it = stretched.find (key); it != stretched.end())
         return it->second;
 
@@ -60,9 +61,13 @@ std::shared_ptr<const juce::AudioBuffer<float>> AudioClipCache::getStretched (co
         return nullptr;
 
     using RB = RubberBand::RubberBandStretcher;
-    RB stretcher ((size_t) engineSampleRate, 2,
-                  RB::OptionProcessOffline | RB::OptionEngineFiner | RB::OptionChannelsTogether,
-                  ratio, 1.0);
+    int options = RB::OptionProcessOffline | RB::OptionEngineFiner | RB::OptionChannelsTogether;
+    if (mode == StretchMode::percussive)
+        options |= RB::OptionTransientsCrisp | RB::OptionWindowShort;
+    else if (mode == StretchMode::formant)
+        options |= RB::OptionFormantPreserved;
+
+    RB stretcher ((size_t) engineSampleRate, 2, options, ratio, 1.0);
 
     const int numIn = raw->getNumSamples();
     stretcher.setExpectedInputDuration ((size_t) numIn);

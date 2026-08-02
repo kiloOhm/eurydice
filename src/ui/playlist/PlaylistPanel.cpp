@@ -440,12 +440,17 @@ void PlaylistPanel::mouseDown (const juce::MouseEvent& e)
 
     if (e.mods.isPopupMenu())
     {
-        // Automation clips get a menu instead: they are the only way into the
-        // curve editor besides a double-click, so erasing on right-click was
-        // costing people work.
+        // Automation and audio clips get a menu instead of the eraser:
+        // automation because the menu is the way into the curve editor,
+        // audio because stretch options live there.
         if (clip.isValid() && clip[ids::clipType].toString() == "automation")
         {
             showAutomationClipMenu (clip);
+            return;
+        }
+        if (clip.isValid() && clip[ids::clipType].toString() == "audio")
+        {
+            showAudioClipMenu (clip);
             return;
         }
 
@@ -697,6 +702,56 @@ void PlaylistPanel::showAutomationClipMenu (juce::ValueTree clip)
             clip.setProperty (ids::muted, ! (bool) clip[ids::muted], &undo);
         else if (result == 3)
             clip.getParent().removeChild (clip, &undo);
+        repaint();
+    });
+}
+
+void PlaylistPanel::showAudioClipMenu (juce::ValueTree clip)
+{
+    const int mode = clip[ids::stretchMode];
+
+    juce::PopupMenu stretchMenu;
+    stretchMenu.addItem (10, "Smooth", true, mode == 0);
+    stretchMenu.addItem (11, "Percussive", true, mode == 1);
+    stretchMenu.addItem (12, "Formant preserved", true, mode == 2);
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (juce::File (clip[ids::audioPath].toString()).getFileName());
+    menu.addSubMenu ("Stretch mode", stretchMenu);
+    menu.addItem (2, "Follow tempo (re-stretch on tempo change)", true,
+                  (bool) clip[ids::followTempo]);
+    menu.addSeparator();
+    menu.addItem (3, (bool) clip[ids::muted] ? "Unmute clip" : "Mute clip");
+    menu.addItem (4, "Delete clip");
+
+    menu.showMenuAsync ({}, [this, clip] (int result) mutable
+    {
+        auto& project = services.project;
+        auto& undo = project.getUndoManager();
+        if (result >= 10 && result <= 12)
+        {
+            const undoGesture::Scoped step (project, "Stretch mode");
+            clip.setProperty (ids::stretchMode, result - 10, &undo);
+        }
+        else if (result == 2)
+        {
+            const bool follow = ! (bool) clip[ids::followTempo];
+            const undoGesture::Scoped step (project, "Follow tempo");
+            clip.setProperty (ids::followTempo, follow, &undo);
+            // Turning it on snaps the clip to the current tempo right away.
+            if (follow)
+                services.stretchFollower.refit (clip, &undo);
+        }
+        else if (result == 3)
+        {
+            const undoGesture::Scoped step (project, "Mute clip");
+            clip.setProperty (ids::muted, ! (bool) clip[ids::muted], &undo);
+        }
+        else if (result == 4)
+        {
+            const undoGesture::Scoped step (project, "Delete clip");
+            clip.getParent().removeChild (clip, &undo);
+        }
         repaint();
     });
 }

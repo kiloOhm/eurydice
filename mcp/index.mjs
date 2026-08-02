@@ -171,11 +171,14 @@ tool("daw_playlist_add_clip",
   }, "playlist.addClip");
 
 tool("daw_playlist_set_clip",
-  "Move, resize or mute an existing playlist clip. index counts clips within the track in the order daw_playlist_get reports them. " + TIME_HELP,
+  "Move, resize or mute an existing playlist clip. index counts clips within the track in the order daw_playlist_get reports them. " +
+  "Audio clips also take stretchMode (0 smooth, 1 percussive, 2 formant preserved) and followTempo (re-stretch on tempo change; enabling it refits the clip immediately). " + TIME_HELP,
   {
     track: z.number(), index: z.number(),
     start: z.number().optional(), length: z.number().optional(),
     muted: z.boolean().optional(),
+    stretchMode: z.number().optional().describe("audio clips: 0 smooth, 1 percussive, 2 formant preserved"),
+    followTempo: z.boolean().optional().describe("audio clips: keep musical length across tempo changes"),
   }, "playlist.setClip");
 
 tool("daw_playlist_clear", "Clear all clips (or one track's).", { track: z.number().optional() }, "playlist.clear");

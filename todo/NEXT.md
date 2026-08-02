@@ -31,7 +31,18 @@ the active work.
    channels.
 7. Browser drag-and-drop onto rack and playlist (double-click works today).
 8. Loop-record takes and comping.
-9. Realtime time-stretch (Rubber Band is offline-only today).
+9. ~~Time-stretch modes~~ — shipped the pragmatic version: per-clip stretch
+   mode (Smooth / Percussive / Formant preserved, on the CLIP tree, playlist
+   right-click menu) and an opt-in per-clip "Follow tempo" flag —
+   StretchFollower recomputes the ratio on tempo change (coalesced per
+   message-loop tick) so tick lengths stay musically constant.
+   TRUE realtime stretching in the audio callback stays open, and is a real
+   project: RubberBandStretcher has an OptionProcessRealTime mode, but it
+   allocates/locks internally unless carefully pre-primed, needs per-clip
+   stretcher instances owned outside the snapshot, latency compensation
+   (R3 realtime reports ~2k+ samples startDelay), and a feeder thread. The
+   offline cache is the right call until clips get a dedicated worker-thread
+   render pipeline.
 
 ## Big rocks (schedule deliberately)
 

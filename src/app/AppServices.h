@@ -6,6 +6,7 @@
 #include "engine/GeneratorPool.h"
 #include "engine/EngineSync.h"
 #include "engine/AudioClipCache.h"
+#include "engine/StretchFollower.h"
 #include "plugins/PluginManager.h"
 #include "plugins/EffectPool.h"
 #include "plugins/PluginGenerator.h"
@@ -91,6 +92,7 @@ public:
         if (! project.loadFromFile (file))
             return false;
         engineSync.attachToProject();
+        stretchFollower.attachToProject();
         return true;
     }
 
@@ -99,6 +101,7 @@ public:
         closeAllEditors();
         project.createDefaultProject();
         engineSync.attachToProject();
+        stretchFollower.attachToProject();
     }
 
     void closeAllEditors()
@@ -141,6 +144,7 @@ public:
     AudioClipCache      audioClips;
     AudioEngine         engine;
     EngineSync          engineSync;
+    StretchFollower     stretchFollower { project, audioClips };
     PluginWindowManager pluginWindows;
     AutomationWriter    automationWriter { project, engine };
     BuiltinEffectWindows builtinEditors;
