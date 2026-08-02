@@ -42,7 +42,10 @@ FloatingPanel::FloatingPanel (const juce::String& t, std::unique_ptr<juce::Compo
 
     if (resizable)
     {
-        resizer = std::make_unique<juce::ResizableCornerComponent> (this, &constrainer);
+        // Grab any edge or corner to resize; the border only hit-tests within
+        // its thickness, so the content underneath stays clickable.
+        resizer = std::make_unique<juce::ResizableBorderComponent> (this, &constrainer);
+        resizer->setBorderThickness (juce::BorderSize<int> (5));
         addAndMakeVisible (*resizer);
     }
 
@@ -142,7 +145,7 @@ void FloatingPanel::resized()
     content->setBounds (bounds.reduced (1));
 
     if (resizer != nullptr)
-        resizer->setBounds (getWidth() - 14, getHeight() - 14, 14, 14);
+        resizer->setBounds (getLocalBounds());
 }
 
 // ---------------- interaction ----------------

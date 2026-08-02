@@ -26,6 +26,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void childBoundsChanged (juce::Component*) override;
     bool keyPressed (const juce::KeyPress&) override;
     bool keyStateChanged (bool isKeyDown) override;
 
@@ -90,6 +91,10 @@ private:
 
     TransportBar transportBar;
     std::unique_ptr<juce::Component> browser;
+    // Drag handle on the browser's right edge; width persists in settings.
+    std::unique_ptr<juce::ResizableEdgeComponent> browserResizer;
+    juce::ComponentBoundsConstrainer browserConstrainer;
+    int browserWidth = 240;
     juce::Component desktop;
 
     std::unique_ptr<FloatingPanel> playlistPanel;

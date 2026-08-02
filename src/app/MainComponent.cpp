@@ -260,6 +260,13 @@ MainComponent::MainComponent()
     // --- panels ---
     browser = std::make_unique<BrowserPanel> (services);
     addAndMakeVisible (*browser);
+
+    browserWidth = settings->getIntValue ("browserWidth", 240);
+    browserConstrainer.setMinimumWidth (170);
+    browserConstrainer.setMaximumWidth (520);
+    browserResizer = std::make_unique<juce::ResizableEdgeComponent> (
+        browser.get(), &browserConstrainer, juce::ResizableEdgeComponent::rightEdge);
+    addAndMakeVisible (*browserResizer);
     addAndMakeVisible (desktop);
 
     auto rack = std::make_unique<ChannelRackPanel> (services);
@@ -290,6 +297,27 @@ MainComponent::MainComponent()
 
     services.onSnapshotRequested = [this] (const juce::File& file) { return writeSnapshot (file); };
     services.onCloseChannelEditors = [this] { channelEditors.closeAll(); };
+    services.onShowPanelRequested = [this] (const juce::String& name)
+    {
+        FloatingPanel* panel = name == "playlist"  ? playlistPanel.get()
+                             : name == "rack"      ? channelRackPanel.get()
+                             : name == "pianoroll" ? pianoRollPanel.get()
+                             : name == "mixer"     ? mixerPanel.get()
+                             : nullptr;
+        if (panel != nullptr)
+        {
+            panel->bringToFrontAndShow();
+            transportBar.refreshPanelButtons();
+            return true;
+        }
+        if (name == "browser")
+        {
+            if (! browserVisible)
+                commandManager.invokeDirectly (CommandIDs::viewBrowser, false);
+            return true;
+        }
+        return false;
+    };
 
     // Creating an automation clip used to be silent; show where it landed.
     services.onAutomationClipCreated = [this] (juce::ValueTree clip)
@@ -547,6 +575,7 @@ MainComponent::~MainComponent()
     services.onAutomationClipCreated = nullptr;
     services.onSnapshotRequested = nullptr;
     services.onCloseChannelEditors = nullptr;
+    services.onShowPanelRequested = nullptr;
     fileState.removeChangeListener (this);
     removeKeyListener (commandManager.getKeyMappings());
     commandManager.setFirstCommandTarget (nullptr);
@@ -1249,7 +1278,13 @@ void MainComponent::resized()
     auto r = getLocalBounds();
     transportBar.setBounds (r.removeFromTop (TransportBar::preferredHeight));
     if (browserVisible)
-        browser->setBounds (r.removeFromLeft (240));
+        browser->setBounds (r.removeFromLeft (browserWidth));
+    if (browserResizer != nullptr)
+    {
+        browserResizer->setVisible (browserVisible);
+        if (browserVisible)
+            browserResizer->setBounds (browser->getRight() - 3, r.getY(), 6, r.getHeight());
+    }
     desktop.setBounds (r);
 
     if (! initialLayoutDone && desktop.getWidth() > 0)
@@ -1257,6 +1292,19 @@ void MainComponent::resized()
         layoutDefaultPanelPositions();
         initialLayoutDone = true;
         updateWindowTitle();
+    }
+}
+
+void MainComponent::childBoundsChanged (juce::Component* child)
+{
+    // The browser's edge handle resizes the browser directly; fold the new
+    // width back into the layout so the desktop reflows with it.
+    if (child == browser.get() && browserVisible
+        && browser->getWidth() != browserWidth && browser->getWidth() > 0)
+    {
+        browserWidth = browser->getWidth();
+        settings->setValue ("browserWidth", browserWidth);
+        resized();
     }
 }
 

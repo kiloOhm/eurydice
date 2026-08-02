@@ -64,7 +64,7 @@ private:
     juce::TextButton closeButton { "x" };
     juce::ComponentDragger dragger;
     SnappingConstrainer constrainer { *this };
-    std::unique_ptr<juce::ResizableCornerComponent> resizer;
+    std::unique_ptr<juce::ResizableBorderComponent> resizer;
 
     // Set on mouse-down in the title bar and held until mouse-up. Must not be
     // recomputed from the event: MouseEvent::getMouseDownPosition() is
