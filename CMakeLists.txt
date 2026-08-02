@@ -49,6 +49,8 @@ file(GLOB_RECURSE EURYDICE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
 )
+# The helper has its own JUCE application entry point.
+list(REMOVE_ITEM EURYDICE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/sandbox/HostMain.cpp)
 
 target_sources(Eurydice PRIVATE
     ${EURYDICE_SOURCES}
@@ -94,6 +96,46 @@ target_link_libraries(Eurydice PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+
+# ---------------- plugin sandbox helper ----------------
+# One plugin per process: a crashing VST kills this, not the DAW. Audio rides
+# a shared-memory ring (src/sandbox/SharedAudioRing.h); control is JSON lines
+# over stdin/stdout.
+juce_add_gui_app(EurydiceHelper
+    PRODUCT_NAME "EurydiceHelper"
+    COMPANY_NAME "Eurydice"
+    BUNDLE_ID "dev.eurydice.helper"
+    PLUGINHOST_AU TRUE
+)
+
+target_sources(EurydiceHelper PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sandbox/HostMain.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins/PluginManager.cpp
+)
+
+target_include_directories(EurydiceHelper PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_compile_definitions(EurydiceHelper PRIVATE
+    JUCE_PLUGINHOST_VST3=1
+    JUCE_PLUGINHOST_AU=1
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_APPLICATION_NAME_STRING="EurydiceHelper"
+    JUCE_APPLICATION_VERSION_STRING="0.1.0"
+    JUCE_MODAL_LOOPS_PERMITTED=1
+)
+
+target_link_libraries(EurydiceHelper PRIVATE
+    juce::juce_audio_processors
+    juce::juce_audio_utils
+    juce::juce_gui_extra
+    juce::juce_recommended_config_flags
+)
+
+# The DAW spawns the helper, so building one should build the other.
+add_dependencies(Eurydice EurydiceHelper)
 
 # ---------------- tests ----------------
 option(EURYDICE_BUILD_TESTS "Build unit tests" ON)

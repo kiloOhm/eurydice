@@ -56,8 +56,14 @@ the active work.
 
 ## Big rocks (schedule deliberately)
 
-- **Plugin sandboxing** — out-of-process hosting so a crashing VST can't take
-  the DAW down. Largest reliability win, largest change.
+- **Plugin sandboxing** — stage 1 shipped: `EurydiceHelper` hosts one plugin
+  per process; audio rides a shared-memory ring (one-block latency, the DAW's
+  audio thread never blocks — a stalled or dead child degrades to silence);
+  control/state/editor run over stdin/stdout JSON; SIGKILLing the helper
+  mid-stream is a passing test. Stage 2 remaining: wire SandboxedPlugin into
+  EffectPool behind an Options toggle (default off), crashed-slot UI with
+  one-click restart from last state, param-automation proxying via the ring's
+  event slots (in place, unwired), and instrument channels.
 - **JUCE upgrade / input-device rework** — retire the CoreAudio combiner
   workaround (see engine debt below).
 - **Time signatures beyond 4/4** — foundational, invasive, low value for the
