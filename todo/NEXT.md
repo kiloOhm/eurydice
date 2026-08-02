@@ -22,15 +22,15 @@ hardcore / frenchcore.
 
 ## P1 — needed for these genres specifically
 
-- **Built-in effects.** The mixer has slots but Eurydice ships zero effects, so
-  a fresh install can only change gain. Minimum viable set, in genre order:
-  clipper/distortion, filter (with envelope + LFO for risers), parametric EQ,
-  compressor with an external sidechain input, delay, reverb. Free VSTs cover
-  a lot of this (see `docs/free-plugins.md`), but stock effects matter for
-  projects that must open on another machine.
-- **Sidechain ducking.** Insert-to-insert routing exists in the engine, but
-  there is no UI for "duck this bus from the kick", which is the defining
-  sound of the genre.
+- ~~Built-in effects~~ — clipper (4 curves, up to 8x oversampling), filter
+  (LP/HP/BP with envelope follower and tempo-synced LFO), 4-band parametric EQ
+  with HP/LP sweeps, compressor with an external sidechain, tempo-synced
+  ping-pong delay and an algorithmic reverb. Under "Built-in" in the mixer's
+  slot menu; parameters live on the SLOT tree, so they save, undo and automate
+  like everything else.
+- **Sidechain ducking presets.** The compressor takes any insert as its
+  sidechain source, but there is still no one-click "duck this bus from the
+  kick" — you pick the source from a combo in the compressor editor.
 - **Kick design tooling.** For hardcore/frenchcore the kick *is* the track.
   The sampler needs sample-start offset, a pitch envelope (for the classic
   downward kick tail), reverse, and a distortion stage. A dedicated kick

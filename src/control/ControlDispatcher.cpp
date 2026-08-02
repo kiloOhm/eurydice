@@ -355,10 +355,12 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         if (! ins.isValid())
             throw ControlError { "unknown insert" };
         const auto pluginId = getOr (params, "pluginId", "").toString();
-        if (! services.plugins.findByIdentifier (pluginId))
+        const auto* builtin = fx::findBuiltin (pluginId);
+        if (builtin == nullptr && ! services.plugins.findByIdentifier (pluginId))
             throw ControlError { "unknown pluginId (use plugins.list)" };
 
         services.effects.remove (insertIndex, slotIndex);
+        services.builtinEffects.remove (insertIndex, slotIndex);
         juce::ValueTree slotTree;
         for (auto child : ins)
             if (child.hasType (ids::SLOT) && (int) child[ids::slotIndex] == slotIndex)
@@ -370,6 +372,8 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
             ins.appendChild (slotTree, &undo);
         }
         slotTree.setProperty (ids::pluginId, pluginId, &undo);
+        if (builtin != nullptr)
+            BuiltinEffect::writeDefaults (slotTree, builtin->specs, &undo);
         return true;
     }
     if (method == "mixer.removeEffect")
@@ -380,6 +384,7 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         if (! ins.isValid())
             throw ControlError { "unknown insert" };
         services.effects.remove (insertIndex, slotIndex);
+        services.builtinEffects.remove (insertIndex, slotIndex);
         for (int i = ins.getNumChildren(); --i >= 0;)
             if (ins.getChild (i).hasType (ids::SLOT) && (int) ins.getChild (i)[ids::slotIndex] == slotIndex)
                 ins.removeChild (i, &undo);
@@ -390,6 +395,9 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     if (method == "plugins.list")
     {
         juce::Array<juce::var> out;
+        for (const auto& entry : fx::builtinEffects())
+            out.add (makeObj ({ { "name", entry.name }, { "format", "Built-in" },
+                                { "isInstrument", false }, { "id", entry.id } }));
         for (const auto& d : services.plugins.getKnownPlugins().getTypes())
             out.add (makeObj ({ { "name", d.name }, { "format", d.pluginFormatName },
                                 { "isInstrument", d.isInstrument },
@@ -420,9 +428,10 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     if (method == "automation.create")
     {
         const auto targetType = getOr (params, "targetType", "").toString();
-        if (targetType != "channel" && targetType != "insert"
-            && targetType != "plugin-channel" && targetType != "plugin-insert")
-            throw ControlError { "targetType must be channel|insert|plugin-channel|plugin-insert" };
+        if (targetType != "channel" && targetType != "insert" && targetType != "plugin-channel"
+            && targetType != "plugin-insert" && targetType != "builtin-insert")
+            throw ControlError { "targetType must be channel|insert|plugin-channel|plugin-insert"
+                                 "|builtin-insert" };
 
         auto automation = services.createAutomationWithClip (
             targetType,

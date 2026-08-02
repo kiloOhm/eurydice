@@ -44,6 +44,8 @@ private:
     void rebuildDetail();
     void showSendMenu();
     void showEffectSlotMenu (int slotIndex);
+    void showEditorForSlot (int slotIndex);
+    void clearSlot (int slotIndex);
     void showStripMenu (int insertIndex);
     juce::ValueTree getSlotTree (int insertIndex, int slotIndex, bool createIfMissing);
 

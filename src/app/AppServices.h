@@ -9,6 +9,7 @@
 #include "plugins/EffectPool.h"
 #include "plugins/PluginGenerator.h"
 #include "plugins/PluginWindowManager.h"
+#include "ui/mixer/BuiltinEffectEditor.h"
 
 // Owns the long-lived application services and wires them together.
 // Constructed once by MainComponent and passed by reference to panels.
@@ -19,7 +20,7 @@ public:
     // the engine still works via its offline path.
     explicit AppServices (bool openAudioDevice = true)
         : effects (plugins),
-          engineSync (project, generators, effects, audioClips, engine)
+          engineSync (project, generators, effects, builtinEffects, audioClips, engine)
     {
         if (openAudioDevice)
         {
@@ -109,10 +110,12 @@ public:
     PluginManager       plugins;
     GeneratorPool       generators;
     EffectPool          effects;
+    BuiltinEffectPool   builtinEffects;
     AudioClipCache      audioClips;
     AudioEngine         engine;
     EngineSync          engineSync;
     PluginWindowManager pluginWindows;
+    BuiltinEffectWindows builtinEditors;
 
 private:
     void updateAudioSpec()
@@ -123,6 +126,8 @@ private:
                                      device->getCurrentBufferSizeSamples());
             effects.setAudioSpec (device->getCurrentSampleRate(),
                                   device->getCurrentBufferSizeSamples());
+            builtinEffects.setAudioSpec (device->getCurrentSampleRate(),
+                                         device->getCurrentBufferSizeSamples());
             audioClips.setEngineSampleRate (device->getCurrentSampleRate());
         }
     }

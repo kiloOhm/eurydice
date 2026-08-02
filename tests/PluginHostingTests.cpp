@@ -46,7 +46,7 @@ TEST (PluginHosting, EffectPoolLoadsAndProcesses)
     bus.clear();
     bus.setSample (0, 0, 1.0f);
     bus.setSample (1, 0, 1.0f);
-    hosted->processEffect (bus, test::kBlockSize);
+    hosted->process (bus, test::kBlockSize, {});
     EXPECT_TRUE (std::isfinite (bus.getMagnitude (0, 0, test::kBlockSize)));
 
     // State round-trip.

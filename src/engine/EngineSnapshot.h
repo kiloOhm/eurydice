@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include "Generator.h"
+#include "effects/BuiltinEffect.h"
 #include "plugins/HostedPlugin.h"
 
 // Immutable snapshot of everything the audio thread needs to play.
@@ -48,7 +49,7 @@ struct InsertSnapshot
     float pan = 0.0f;
     bool  mute = false;
     std::vector<SendSnapshot> sends;
-    std::vector<std::shared_ptr<HostedPlugin>> effects;   // in slot order, bypassed ones omitted
+    std::vector<std::shared_ptr<Effect>> effects;   // in slot order, bypassed ones omitted
 };
 
 struct AutomationPoint
@@ -60,12 +61,14 @@ struct AutomationPoint
 
 struct AutomationSnapshot
 {
-    enum class Kind { channelVolume, channelPan, insertVolume, insertPan, pluginParam };
+    enum class Kind { channelVolume, channelPan, insertVolume, insertPan, pluginParam, builtinParam };
     Kind kind = Kind::channelVolume;
     int  channelIndex = -1;                       // for channel* kinds
     int  insertIndex = -1;                        // for insert* kinds
     juce::AudioProcessorParameter* param = nullptr;   // pluginParam
-    std::shared_ptr<HostedPlugin> keepAlive;          // pins param's owner
+    BuiltinEffect* builtinEffect = nullptr;           // builtinParam
+    const fx::ParamSpec* builtinSpec = nullptr;       // builtinParam; static storage
+    std::shared_ptr<void> keepAlive;                  // pins the target's owner
     std::vector<AutomationPoint> points;              // sorted by posTicks
 
     float valueAt (double localTicks) const

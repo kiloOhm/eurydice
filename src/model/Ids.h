@@ -103,6 +103,44 @@ DECLARE_ID (posTicks)      // on POINT (relative to clip start)
 DECLARE_ID (value)         // 0..1 normalised
 DECLARE_ID (tension)       // -1..1 curve tension to next point
 
+// Built-in effect parameters, stored flat on the SLOT tree. All prefixed "fx"
+// so they never collide with the generator parameters above.
+DECLARE_ID (fxMix)          // 0..1 dry/wet, shared by every effect
+DECLARE_ID (fxDrive)
+DECLARE_ID (fxCurve)
+DECLARE_ID (fxOversample)   // index: 1x / 2x / 4x / 8x
+DECLARE_ID (fxOutput)       // dB trim
+DECLARE_ID (fxFilterType)
+DECLARE_ID (fxCutoff)
+DECLARE_ID (fxResonance)
+DECLARE_ID (fxEnvAmount)
+DECLARE_ID (fxEnvAttack)
+DECLARE_ID (fxEnvRelease)
+DECLARE_ID (fxLfoAmount)
+DECLARE_ID (fxLfoRate)      // sync division index
+DECLARE_ID (fxLfoShape)
+DECLARE_ID (fxHpFreq)
+DECLARE_ID (fxLpFreq)
+DECLARE_ID (fxBandType1)  DECLARE_ID (fxBandFreq1)  DECLARE_ID (fxBandGain1)  DECLARE_ID (fxBandQ1)
+DECLARE_ID (fxBandType2)  DECLARE_ID (fxBandFreq2)  DECLARE_ID (fxBandGain2)  DECLARE_ID (fxBandQ2)
+DECLARE_ID (fxBandType3)  DECLARE_ID (fxBandFreq3)  DECLARE_ID (fxBandGain3)  DECLARE_ID (fxBandQ3)
+DECLARE_ID (fxBandType4)  DECLARE_ID (fxBandFreq4)  DECLARE_ID (fxBandGain4)  DECLARE_ID (fxBandQ4)
+DECLARE_ID (fxThreshold)
+DECLARE_ID (fxRatio)
+DECLARE_ID (fxAttack)
+DECLARE_ID (fxRelease)
+DECLARE_ID (fxKnee)
+DECLARE_ID (fxMakeup)
+DECLARE_ID (fxSidechain)    // source insert index, -1 = internal
+DECLARE_ID (fxScHpFreq)
+DECLARE_ID (fxDivision)
+DECLARE_ID (fxFeedback)
+DECLARE_ID (fxPingPong)
+DECLARE_ID (fxPreDelay)
+DECLARE_ID (fxSize)
+DECLARE_ID (fxDamping)
+DECLARE_ID (fxWidth)
+
 #undef DECLARE_ID
 
 inline constexpr int ticksPerQuarter = 960;

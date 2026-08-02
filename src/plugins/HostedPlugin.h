@@ -1,23 +1,24 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "effects/Effect.h"
 
 // RT-safe wrapper around an AudioPluginInstance that adapts our stereo buses
 // to whatever channel layout the plugin wants. Created and prepared on the
 // message thread; process* methods are called on the audio thread.
-class HostedPlugin
+class HostedPlugin : public Effect
 {
 public:
     HostedPlugin (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::PluginDescription& d)
         : instance (std::move (inst)), description (d) {}
 
-    ~HostedPlugin()
+    ~HostedPlugin() override
     {
         if (prepared)
             instance->releaseResources();
     }
 
-    void prepare (double sampleRate, int blockSize)
+    void prepare (double sampleRate, int blockSize) override
     {
         if (prepared)
             instance->releaseResources();
@@ -34,8 +35,9 @@ public:
     }
 
     // Effects: process the stereo bus in place.
-    void processEffect (juce::AudioBuffer<float>& stereoBus, int numSamples)
+    void process (juce::AudioBuffer<float>& stereoBus, int numSamples, const Context& context) override
     {
+        juce::ignoreUnused (context);
         if (! prepared)
             return;
 
@@ -71,7 +73,7 @@ public:
         out.addFrom (1, 0, scratch, outs > 1 ? 1 : 0, 0, numSamples);
     }
 
-    void resetPlayback()
+    void reset() override
     {
         if (prepared)
             instance->reset();

@@ -225,6 +225,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 
     const double tps = (snap->tempo / 60.0) * (double) ids::ticksPerQuarter / sampleRate; // ticks per sample
     const bool isPlayingNow = playing.load (std::memory_order_relaxed);
+    const double blockStartTick = tickPos;
 
     if (isPlayingNow)
     {
@@ -312,6 +313,11 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     }
 
     // --- process inserts in topological order (master index 0 comes last) ---
+    Effect::Context effectContext;
+    effectContext.tempo = snap->tempo;
+    effectContext.ppqPosition = blockStartTick / (double) ids::ticksPerQuarter;
+    effectContext.playing = isPlayingNow;
+
     for (int idx : snap->insertOrder)
     {
         if (idx < 0 || idx >= numInserts)
@@ -320,7 +326,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
         auto& bus = insertBus[(size_t) idx];
 
         for (const auto& effect : ins.effects)
-            effect->processEffect (bus, numSamples);
+        {
+            const int sidechain = effect->getSidechainInsert();
+            effectContext.sidechain = (sidechain >= 0 && sidechain < numInserts && sidechain != idx)
+                                          ? &insertBus[(size_t) sidechain] : nullptr;
+            effect->process (bus, numSamples, effectContext);
+        }
 
         const float vol = insertVolAuto[(size_t) idx] > -100.0f ? insertVolAuto[(size_t) idx] : ins.volume;
         const float bal = insertPanAuto[(size_t) idx] > -100.0f ? insertPanAuto[(size_t) idx] : ins.pan;
@@ -418,6 +429,15 @@ void AudioEngine::applyAutomation (const EngineSnapshot& snap, double tick)
             case AutomationSnapshot::Kind::pluginParam:
                 if (automation.param != nullptr)
                     automation.param->setValueNotifyingHost (value);
+                break;
+            case AutomationSnapshot::Kind::builtinParam:
+                if (automation.builtinEffect != nullptr && automation.builtinSpec != nullptr)
+                {
+                    const auto& spec = *automation.builtinSpec;
+                    const juce::NormalisableRange<double> range (spec.minValue, spec.maxValue,
+                                                                 0.0, spec.skew);
+                    automation.builtinEffect->setParameter (spec.id, range.convertFrom0to1 (value));
+                }
                 break;
         }
     }
