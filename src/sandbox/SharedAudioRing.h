@@ -1,5 +1,6 @@
 #pragma once
 
+#include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_core/juce_core.h>
 #include <atomic>
 #include <fcntl.h>
@@ -41,9 +42,16 @@ struct RingHeader
 
     static constexpr int maxChannels = 2;
     static constexpr int maxParamEvents = 64;
+    static constexpr int maxMidiEvents = 128;
 
     struct ParamEvent { juce::int32 index; float value; };
     ParamEvent paramEvents[maxParamEvents];
+
+    // Per-slot MIDI for instrument hosting (short messages only; sysex is
+    // dropped). Written before inputSeq is released, read after acquire.
+    struct MidiEvent { juce::int32 offset; juce::uint8 size; juce::uint8 data[3]; };
+    juce::int32 midiCount[2] = { 0, 0 };
+    MidiEvent midiEvents[2][maxMidiEvents];
 };
 
 class SharedAudioRing
@@ -137,6 +145,32 @@ public:
         }
         header()->inputLen[seq & 1].store (numSamples, std::memory_order_relaxed);
         header()->inputSeq.store (seq, std::memory_order_release);
+        ::sem_post (sem);
+    }
+
+    // Instrument path: zeroed input + the block's MIDI. Same publish contract
+    // as publishInput.
+    void publishMidiInput (juce::int64 seq, const juce::MidiBuffer& midi, int numSamples)
+    {
+        auto* head = header();
+        const auto slot = (size_t) (seq & 1);
+        juce::int32 count = 0;
+        for (const auto meta : midi)
+        {
+            if (count >= RingHeader::maxMidiEvents || meta.numBytes > 3)
+                continue;
+            auto& event = head->midiEvents[slot][(size_t) count];
+            event.offset = juce::jlimit (0, juce::jmax (0, numSamples - 1), meta.samplePosition);
+            event.size = (juce::uint8) meta.numBytes;
+            std::memcpy (event.data, meta.data, (size_t) meta.numBytes);
+            ++count;
+        }
+        head->midiCount[slot] = count;
+
+        for (int ch = 0; ch < RingHeader::maxChannels; ++ch)
+            std::memset (inputSlot (seq, ch), 0, (size_t) numSamples * sizeof (float));
+        head->inputLen[slot].store (numSamples, std::memory_order_relaxed);
+        head->inputSeq.store (seq, std::memory_order_release);
         ::sem_post (sem);
     }
 

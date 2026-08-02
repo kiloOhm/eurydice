@@ -181,12 +181,14 @@ private:
                     return;
                 }
                 instance = std::move (created);
+                isInstrument = instance->acceptsMidi();
                 prepare (sampleRate, blockSize);
                 juce::Array<juce::var> paramNames;
                 const auto& params = instance->getParameters();
                 for (int i = 0; i < juce::jmin (params.size(), 128); ++i)
                     paramNames.add (params[i]->getName (48));
                 reply (okReply ({ { "name", instance->getName() },
+                                  { "instrument", isInstrument.load() },
                                   { "params", juce::var (paramNames) } }));
             });
     }
@@ -270,9 +272,20 @@ private:
             else if (instance != nullptr && prepared)
             {
                 applyPendingParams();
+                midiScratch.clear();
+                if (isInstrument)
+                {
+                    const auto slot = (size_t) (seq & 1);
+                    const int midiCount = juce::jlimit (0, sandbox::RingHeader::maxMidiEvents,
+                                                        (int) head->midiCount[slot]);
+                    for (int i = 0; i < midiCount; ++i)
+                    {
+                        const auto& event = head->midiEvents[slot][(size_t) i];
+                        midiScratch.addEvent (event.data, event.size, event.offset);
+                    }
+                }
                 juce::AudioBuffer<float> view (scratch.getArrayOfWritePointers(),
                                                scratch.getNumChannels(), 0, numSamples);
-                midiScratch.clear();
                 instance->processBlock (view, midiScratch);
             }
 
@@ -345,6 +358,7 @@ private:
     std::atomic<bool> processingEnabled { false };
     bool prepared = false;
     bool testGain = false;
+    std::atomic<bool> isInstrument { false };
 };
 
 START_JUCE_APPLICATION (HelperApp)

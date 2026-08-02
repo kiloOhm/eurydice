@@ -206,6 +206,7 @@ MainComponent::MainComponent()
     settings = std::make_unique<juce::PropertiesFile> (opts);
     recentFiles.restoreFromString (settings->getValue ("recentFiles"));
     services.effects.setSandboxEnabled (settings->getBoolValue ("sandboxEffects", false));
+    services.generators.setSandboxEnabled (services.effects.isSandboxEnabled());
 
     controlServer = std::make_unique<ControlServer> (services);
     midiInput = std::make_unique<MidiInputManager> (services);
@@ -862,9 +863,10 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setActive (! services.plugins.isScanning());
             break;
         case CommandIDs::optionsSandboxEffects:
-            info.setInfo ("Sandbox Plugin Effects",
-                          "Load effect plugins in a separate process so a crash can't take "
-                          "the DAW down. Applies to effects loaded from now on.", "Options", 0);
+            info.setInfo ("Sandbox Plugins",
+                          "Load plugins (effects and instruments) in separate processes so a "
+                          "crash can't take the DAW down. Applies to plugins loaded from now on.",
+                          "Options", 0);
             info.setTicked (services.effects.isSandboxEnabled());
             break;
         default:
@@ -982,6 +984,7 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
 
         case CommandIDs::optionsSandboxEffects:
             services.effects.setSandboxEnabled (! services.effects.isSandboxEnabled());
+            services.generators.setSandboxEnabled (services.effects.isSandboxEnabled());
             settings->setValue ("sandboxEffects", services.effects.isSandboxEnabled());
             settings->saveIfNeeded();
             commandManager.commandStatusChanged();

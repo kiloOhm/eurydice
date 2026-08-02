@@ -40,6 +40,11 @@ public:
     // RT-safe: queues a normalised parameter change for the child's next block.
     void setParameter (int parameterIndex, float normalisedValue);
 
+    // Instrument path (audio thread): sends the block's MIDI, ADDS the child's
+    // previous block into `out` (same one-block latency contract as process).
+    void renderInstrument (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi);
+    bool isInstrument() const { return instrument; }
+
     // ---- supervision / control (message thread) ----
     bool isAlive();
     juce::int64 overrunCount() const { return overruns.load (std::memory_order_relaxed); }
@@ -68,6 +73,8 @@ private:
     sandbox::SharedAudioRing ring;
     juce::String pluginName;
     juce::StringArray paramNames;
+    bool instrument = false;
+    juce::AudioBuffer<float> instrumentScratch { 2, sandbox::SharedAudioRing::maxBlock };
     pid_t childPid = -1;
     int toChildFd = -1;     // we write commands here
     int fromChildFd = -1;   // we read replies here

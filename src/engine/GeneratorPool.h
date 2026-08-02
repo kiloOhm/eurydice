@@ -2,6 +2,7 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <juce_data_structures/juce_data_structures.h>
 #include "Generator.h"
 
@@ -29,6 +30,19 @@ public:
 
     void remove (int channelId) { pool.erase (channelId); }
 
+    // Plugin channels created from now on load in a helper process.
+    void setSandboxEnabled (bool enabled) { sandboxEnabled = enabled; }
+    bool isSandboxEnabled() const         { return sandboxEnabled; }
+
+    // Message thread. True when a helper died this call; the crashed
+    // generator keeps rendering silence until restartSandboxed().
+    bool checkSandboxHealth();
+    bool isSandboxCrashed (int channelId) const
+    {
+        return crashedChannels.count (channelId) > 0;
+    }
+    void restartSandboxed (const juce::ValueTree& channel);
+
     // Called after device init / device change; re-prepares everything.
     void setAudioSpec (double newSampleRate, int newBlockSize);
 
@@ -36,9 +50,15 @@ public:
     int getBlockSize() const noexcept     { return blockSize; }
 
 private:
+    void launchSandboxedInstrument (std::shared_ptr<class SandboxedGenerator>,
+                                    const juce::String& pluginId,
+                                    const juce::String& stateBase64);
+
     std::map<int, std::shared_ptr<Generator>> pool;
     PluginManager* pluginManager = nullptr;
     std::function<void()> onPluginReady;
+    bool sandboxEnabled = false;
+    std::set<int> crashedChannels;
     double sampleRate = 44100.0;
     int blockSize = 512;
 };

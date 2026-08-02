@@ -123,6 +123,7 @@ bool SandboxedPlugin::launch (const juce::String& pluginId, double sampleRate, i
         return false;
     }
     pluginName = loaded["name"].toString();
+    instrument = (bool) loaded["instrument"];
     if (const auto* names = loaded["params"].getArray())
         for (const auto& name : *names)
             paramNames.add (name.toString());
@@ -171,6 +172,28 @@ void SandboxedPlugin::process (juce::AudioBuffer<float>& stereoBus, int numSampl
         stereoBus.clear (0, n);
         if (seq > 0)
             overruns.fetch_add (1, std::memory_order_relaxed);
+    }
+    ++seq;
+}
+
+void SandboxedPlugin::renderInstrument (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi)
+{
+    if (! ring.isOpen() || childGone.load (std::memory_order_relaxed))
+        return;   // adds nothing; the channel is simply silent
+
+    const int n = juce::jmin (out.getNumSamples(), sandbox::SharedAudioRing::maxBlock);
+    ring.publishMidiInput (seq, midi, n);
+
+    float* outs[2] = { instrumentScratch.getWritePointer (0),
+                       instrumentScratch.getWritePointer (1) };
+    if (ring.readOutput (seq - 1, outs, 2, n))
+    {
+        out.addFrom (0, 0, instrumentScratch, 0, 0, n);
+        out.addFrom (juce::jmin (1, out.getNumChannels() - 1), 0, instrumentScratch, 1, 0, n);
+    }
+    else if (seq > 0)
+    {
+        overruns.fetch_add (1, std::memory_order_relaxed);
     }
     ++seq;
 }

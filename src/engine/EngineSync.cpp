@@ -4,6 +4,7 @@
 static_assert (ProjectModel::maxInserts == AudioEngine::maxInserts,
                "the model's insert cap must match the engine's preallocated buses");
 #include "plugins/PluginGenerator.h"
+#include "sandbox/SandboxedGenerator.h"
 #include <map>
 
 EngineSync::EngineSync (ProjectModel& m, GeneratorPool& g, EffectPool& fx,
@@ -243,20 +244,37 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
         else if (targetType == "plugin-channel")
         {
             const auto channel = model.getChannelById (targetId);
-            if (channel.isValid())
-                if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (generators.getOrCreate (channel)))
-                    if (auto hosted = gen->getPlugin())
+            const auto generator = channel.isValid() ? generators.getOrCreate (channel)
+                                                     : nullptr;
+            if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (generator))
+            {
+                if (auto hosted = gen->getPlugin())
+                {
+                    const int paramIndex = paramId.getIntValue();
+                    const auto& params = hosted->getInstance()->getParameters();
+                    if (paramIndex >= 0 && paramIndex < params.size())
                     {
-                        const int paramIndex = paramId.getIntValue();
-                        const auto& params = hosted->getInstance()->getParameters();
-                        if (paramIndex >= 0 && paramIndex < params.size())
-                        {
-                            as.kind = AutomationSnapshot::Kind::pluginParam;
-                            as.param = params[paramIndex];
-                            as.keepAlive = hosted;
-                            valid = true;
-                        }
+                        as.kind = AutomationSnapshot::Kind::pluginParam;
+                        as.param = params[paramIndex];
+                        as.keepAlive = hosted;
+                        valid = true;
                     }
+                }
+            }
+            else if (auto sandboxGen = std::dynamic_pointer_cast<SandboxedGenerator> (generator))
+            {
+                if (auto sandboxed = sandboxGen->getPlugin())
+                {
+                    const int paramIndex = paramId.getIntValue();
+                    if (paramIndex >= 0 && paramIndex < sandboxed->getParamNames().size())
+                    {
+                        as.kind = AutomationSnapshot::Kind::sandboxParam;
+                        as.sandboxed = sandboxed;
+                        as.sandboxParamIndex = paramIndex;
+                        valid = true;
+                    }
+                }
+            }
         }
         else if (targetType == "builtin-insert")
         {

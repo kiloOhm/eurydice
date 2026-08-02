@@ -10,6 +10,7 @@
 #include "plugins/PluginManager.h"
 #include "plugins/EffectPool.h"
 #include "plugins/PluginGenerator.h"
+#include "sandbox/SandboxedGenerator.h"
 #include "plugins/PluginWindowManager.h"
 #include "ui/mixer/BuiltinEffectEditor.h"
 
@@ -125,9 +126,18 @@ public:
             auto channel = project.getChannel (i);
             if (channel[ids::type].toString() != "plugin")
                 continue;
-            if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (generators.getOrCreate (channel)))
+            const auto generator = generators.getOrCreate (channel);
+            if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (generator))
+            {
                 if (auto hosted = gen->getPlugin())
                     channel.setProperty (ids::pluginState, hosted->getStateBase64(), nullptr);
+            }
+            else if (auto sandboxGen = std::dynamic_pointer_cast<SandboxedGenerator> (generator))
+            {
+                if (auto sandboxed = sandboxGen->getPlugin(); sandboxed != nullptr
+                                                              && sandboxed->isAlive())
+                    channel.setProperty (ids::pluginState, sandboxed->getStateBase64(), nullptr);
+            }
         }
 
         effects.forEach ([this] (int insertIndex, int slotIndex, const HostedPlugin& plugin)

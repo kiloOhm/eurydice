@@ -2,6 +2,7 @@
 #include "engine/SamplerGenerator.h"
 #include "model/UndoGesture.h"
 #include "plugins/PluginGenerator.h"
+#include "sandbox/SandboxedGenerator.h"
 #include "model/ChannelParams.h"
 #include "ui/automation/AutomationMenu.h"
 
@@ -500,6 +501,31 @@ void ChannelEditorManager::show (AppServices& services, juce::ValueTree channel)
 
     if (type == "plugin")
     {
+        if (services.generators.isSandboxCrashed (channelId))
+        {
+            juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon,
+                name, "The plugin crashed. Restart it?", "Restart", "Cancel", nullptr,
+                juce::ModalCallbackFunction::create ([&services, channel] (int result) mutable
+                {
+                    if (result == 1)
+                        services.generators.restartSandboxed (channel);
+                }));
+            return;
+        }
+        if (auto sandboxGen = std::dynamic_pointer_cast<SandboxedGenerator> (
+                services.generators.getOrCreate (channel)))
+        {
+            if (auto sandboxed = sandboxGen->getPlugin())
+            {
+                // The editor opens in the helper's own window (no shell piano
+                // there; the typing keyboard still plays via the preview path).
+                sandboxed->showEditor (name + " / " + sandboxed->getName());
+            }
+            else
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
+                    name, "The plugin is still loading (or failed to load). Try again in a moment.");
+            return;
+        }
         if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (services.generators.getOrCreate (channel)))
         {
             if (auto hosted = gen->getPlugin())

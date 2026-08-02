@@ -6,6 +6,7 @@
 #include "model/Ids.h"
 #include "plugins/PluginManager.h"
 #include "plugins/PluginGenerator.h"
+#include "sandbox/SandboxedGenerator.h"
 
 namespace
 {
@@ -131,37 +132,104 @@ std::shared_ptr<Generator> GeneratorPool::getOrCreate (const juce::ValueTree& ch
     }
     else if (type == "plugin" && pluginManager != nullptr)
     {
-        auto pluginGen = std::make_shared<PluginGenerator>();
-        pluginGen->prepare (sampleRate, blockSize);
-        gen = pluginGen;
-
         const auto pluginId = channel[ids::pluginId].toString();
         const auto stateBase64 = channel[ids::pluginState].toString();
-        if (auto desc = pluginManager->findByIdentifier (pluginId))
+
+        if (sandboxEnabled)
         {
-            pluginManager->createInstance (*desc, sampleRate, blockSize,
-                [pluginGen, desc, stateBase64, rebuild = onPluginReady]
-                (std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error)
-                {
-                    juce::ignoreUnused (error);
-                    if (instance == nullptr)
+            auto sandboxGen = std::make_shared<SandboxedGenerator>();
+            gen = sandboxGen;
+            launchSandboxedInstrument (sandboxGen, pluginId, stateBase64);
+        }
+        else
+        {
+            auto pluginGen = std::make_shared<PluginGenerator>();
+            pluginGen->prepare (sampleRate, blockSize);
+            gen = pluginGen;
+
+            if (auto desc = pluginManager->findByIdentifier (pluginId))
+            {
+                pluginManager->createInstance (*desc, sampleRate, blockSize,
+                    [pluginGen, desc, stateBase64, rebuild = onPluginReady]
+                    (std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error)
                     {
-                        DBG ("Instrument load failed: " + error);
-                        return;
-                    }
-                    auto hosted = std::make_shared<HostedPlugin> (std::move (instance), *desc);
-                    if (stateBase64.isNotEmpty())
-                        hosted->setStateFromBase64 (stateBase64);
-                    pluginGen->setPlugin (std::move (hosted));
-                    if (rebuild)
-                        rebuild();
-                });
+                        juce::ignoreUnused (error);
+                        if (instance == nullptr)
+                        {
+                            DBG ("Instrument load failed: " + error);
+                            return;
+                        }
+                        auto hosted = std::make_shared<HostedPlugin> (std::move (instance), *desc);
+                        if (stateBase64.isNotEmpty())
+                            hosted->setStateFromBase64 (stateBase64);
+                        pluginGen->setPlugin (std::move (hosted));
+                        if (rebuild)
+                            rebuild();
+                    });
+            }
         }
     }
 
     if (gen != nullptr)
         pool[chId] = gen;
     return gen;
+}
+
+void GeneratorPool::launchSandboxedInstrument (std::shared_ptr<SandboxedGenerator> generator,
+                                               const juce::String& pluginId,
+                                               const juce::String& stateBase64)
+{
+    const double sr = sampleRate;
+    const int bs = blockSize;
+    juce::Thread::launch ([generator, pluginId, stateBase64, sr, bs, rebuild = onPluginReady]
+    {
+        auto sandboxed = std::make_shared<SandboxedPlugin>();
+        juce::String error;
+        const bool ok = sandboxed->launch (pluginId, sr, bs, stateBase64, error);
+        juce::MessageManager::callAsync ([generator, sandboxed, ok, error, rebuild]
+        {
+            if (! ok)
+            {
+                DBG ("Sandboxed instrument load failed: " + error);
+                return;
+            }
+            generator->setPlugin (sandboxed);
+            if (rebuild)
+                rebuild();
+        });
+    });
+}
+
+bool GeneratorPool::checkSandboxHealth()
+{
+    bool anyDied = false;
+    for (auto& [channelId, gen] : pool)
+    {
+        auto* sandboxGen = dynamic_cast<SandboxedGenerator*> (gen.get());
+        if (sandboxGen == nullptr || crashedChannels.count (channelId) > 0)
+            continue;
+        if (auto plugin = sandboxGen->getPlugin(); plugin != nullptr && ! plugin->isAlive())
+        {
+            crashedChannels.insert (channelId);
+            anyDied = true;
+        }
+    }
+    return anyDied;
+}
+
+void GeneratorPool::restartSandboxed (const juce::ValueTree& channel)
+{
+    const int channelId = channel[ids::id];
+    auto it = pool.find (channelId);
+    auto* sandboxGen = it != pool.end() ? dynamic_cast<SandboxedGenerator*> (it->second.get())
+                                        : nullptr;
+    if (sandboxGen == nullptr)
+        return;
+    crashedChannels.erase (channelId);
+    sandboxGen->setPlugin (nullptr);   // silence while the relaunch runs
+    launchSandboxedInstrument (std::static_pointer_cast<SandboxedGenerator> (it->second),
+                               channel[ids::pluginId].toString(),
+                               channel[ids::pluginState].toString());
 }
 
 void GeneratorPool::setAudioSpec (double newSampleRate, int newBlockSize)

@@ -65,9 +65,14 @@ the active work.
   Param automation proxies through the ring's RT-safe event slots; state
   saves cross the process boundary; editors open in the helper's own window.
   Engine-level test: sandboxed AUDelay renders in the chain, SIGKILL, health
-  check flags it, restart brings it back. Remaining: sandboxed *instrument*
-  channels (generator path), per-plugin (not global) opt-in, and MIDI/latency
-  polish for the instrument case.
+  check flags it, restart brings it back. Stage 3 shipped instruments too:
+  MIDI rides per-slot event arrays in the ring, plugin channels load in a
+  helper when the option is on (SandboxedGenerator), a dead instrument goes
+  silent and is flagged (rack context menu / channel editor click offer the
+  restart), and the whole loop — play, SIGKILL, silence, restart, play — is
+  an engine-level test with a real instrument. Remaining polish: per-plugin
+  (not global) opt-in, latency reporting for the one-block delay, sysex and
+  >64-param automation for sandboxed plugins.
 - **JUCE upgrade / input-device rework** — retire the CoreAudio combiner
   workaround (see engine debt below).
 - **Time signatures beyond 4/4** — foundational, invasive, low value for the

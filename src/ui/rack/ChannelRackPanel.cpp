@@ -468,6 +468,9 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
     colourMenu.addItem (20, "None", true, currentColour.isEmpty());
 
     juce::PopupMenu menu;
+    if (channel[ids::type].toString() == "plugin"
+        && services.generators.isSandboxCrashed ((int) channel[ids::id]))
+        menu.addItem (60, "Restart crashed plugin");
     menu.addItem (5, "Piano roll");
     menu.addItem (6, "Channel settings");
     menu.addSeparator();
@@ -560,6 +563,10 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
                 juce::String (paramIndex),
                 channel[ids::name].toString() + " " + paramName, current);
         }
+        else if (result == 60)
+        {
+            services.generators.restartSandboxed (channel);
+        }
         else if (result == newInsertMenuId)
         {
             const undoGesture::Scoped step (project, "Route channel");
@@ -638,6 +645,13 @@ void ChannelRackPanel::valueTreeChildOrderChanged (juce::ValueTree& parent, int,
 
 void ChannelRackPanel::timerCallback()
 {
+    if (++sandboxHealthTick >= 30)
+    {
+        sandboxHealthTick = 0;
+        if (services.generators.checkSandboxHealth())
+            services.engineSync.rebuildNow();   // dead instrument leaves the mix
+    }
+
     int step = -1;
     if (services.engine.isPlaying() && ! services.project.isSongMode())
     {

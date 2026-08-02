@@ -255,3 +255,91 @@ TEST (SandboxPool, SandboxedEffectRendersInTheEngineAndSurvivesCrash)
     EXPECT_TRUE (fx.effects.peekSandboxed (0, 0)->isAlive());
     fx.engine.stop();
 }
+
+#include "sandbox/SandboxedGenerator.h"
+
+TEST (SandboxPool, SandboxedInstrumentPlaysNotesAndSurvivesCrash)
+{
+    if (! SandboxedPlugin::findHelperBinary().existsAsFile())
+        GTEST_SKIP() << "helper unavailable";
+
+    test::EngineFixture fx;
+    juce::String instrumentId;
+    for (const auto& d : fx.plugins.getInstruments())
+    {
+        instrumentId = d.createIdentifierString();
+        break;
+    }
+    if (instrumentId.isEmpty())
+        GTEST_SKIP() << "no instruments in plugin database";
+
+    fx.generators.setSandboxEnabled (true);
+    auto channel = fx.model.addChannel ("plugin", "SandboxSynth");
+    channel.setProperty (ids::pluginId, instrumentId, nullptr);
+
+    // A whole-bar note so the paced render below has something to play.
+    auto pattern = fx.model.getPattern (0);
+    auto lane = fx.model.getOrCreateLane (pattern, channel[ids::id]);
+    fx.model.addNote (lane, 48, 0, 16 * ids::ticksPerStep);
+    fx.sync.rebuildNow();
+
+    auto generator = fx.generators.getOrCreate (channel);
+    auto* sandboxGen = dynamic_cast<SandboxedGenerator*> (generator.get());
+    ASSERT_NE (sandboxGen, nullptr) << "sandbox mode must create a SandboxedGenerator";
+
+    const auto deadline = juce::Time::getMillisecondCounter() + 30000;
+    while (sandboxGen->getPlugin() == nullptr
+           && juce::Time::getMillisecondCounter() < deadline)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    auto sandboxed = sandboxGen->getPlugin();
+    ASSERT_NE (sandboxed, nullptr) << "sandboxed instrument load timed out";
+    EXPECT_TRUE (sandboxed->isInstrument());
+
+    const auto pacedPeak = [&fx] (int blocks)
+    {
+        juce::AudioBuffer<float> out (2, test::kBlockSize);
+        float peak = 0.0f;
+        for (int b = 0; b < blocks; ++b)
+        {
+            float* ptrs[2] = { out.getWritePointer (0), out.getWritePointer (1) };
+            fx.engine.processBlockOffline (ptrs, 2, test::kBlockSize);
+            peak = juce::jmax (peak, out.getMagnitude (0, 0, test::kBlockSize));
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        }
+        return peak;
+    };
+
+    fx.engine.stop();
+    fx.engine.setPositionTicks (0.0);
+    fx.engine.play();
+    EXPECT_GT (pacedPeak (60), 1.0e-4f) << "sandboxed instrument made no sound";
+
+    // Crash it: the engine keeps running, the channel goes silent (allow the
+    // default kick/hat channels' output — mute them for a clean reading).
+    for (int i = 0; i < 4; ++i)
+        fx.model.getChannel (i).setProperty (ids::mute, true, nullptr);
+    fx.sync.rebuildNow();
+
+    ::kill (sandboxed->getChildPid(), SIGKILL);
+    std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    EXPECT_TRUE (fx.generators.checkSandboxHealth());
+    EXPECT_TRUE (fx.generators.isSandboxCrashed ((int) channel[ids::id]));
+    EXPECT_LT (pacedPeak (20), 1.0e-6f) << "crashed instrument must be silent";
+
+    // Restart brings it back through the same channel.
+    fx.generators.restartSandboxed (channel);
+    const auto deadline2 = juce::Time::getMillisecondCounter() + 30000;
+    while ((sandboxGen->getPlugin() == nullptr || ! sandboxGen->getPlugin()->isAlive())
+           && juce::Time::getMillisecondCounter() < deadline2)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    ASSERT_NE (sandboxGen->getPlugin(), nullptr) << "restart timed out";
+    EXPECT_FALSE (fx.generators.isSandboxCrashed ((int) channel[ids::id]));
+
+    // Sound returns at the next note-on: the note that was held when the old
+    // child died is gone with it, so rewind to fire it again.
+    fx.engine.stop();
+    fx.engine.setPositionTicks (0.0);
+    fx.engine.play();
+    EXPECT_GT (pacedPeak (60), 1.0e-4f) << "restarted instrument made no sound";
+    fx.engine.stop();
+}

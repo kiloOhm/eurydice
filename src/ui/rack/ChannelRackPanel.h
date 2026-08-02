@@ -73,6 +73,7 @@ private:
 
     AppServices& services;
     juce::ValueTree observedRoot;
+    int sandboxHealthTick = 0;
 
     juce::ComboBox patternBox;
     juce::TextButton addPatternButton { "+" };
