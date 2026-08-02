@@ -27,8 +27,11 @@ the active work.
 
 ## Then — workflow depth
 
-6. Channel drag-reorder, colours, grouping — the rack gets unwieldy past ~10
-   channels.
+6. ~~Channel drag-reorder + colours~~ — shipped: vertical drag on the name
+   area reorders (amber insertion line, viewport autoscroll, one undo step;
+   engine/automation follow by id, pinned by a test); right-click → Colour
+   gives 8 swatches + None, tinting the row. Grouping proper was not built —
+   colours are the lightweight version; revisit if racks still feel unwieldy.
 7. ~~Browser drag-and-drop onto rack and playlist~~ — shipped: browser rows
    (and Finder files) drop onto the rack — a sampler row swallows the sample,
    anywhere else inserts a new sampler channel — and onto the playlist as
