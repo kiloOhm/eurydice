@@ -29,7 +29,10 @@ the active work.
 
 6. Channel drag-reorder, colours, grouping — the rack gets unwieldy past ~10
    channels.
-7. Browser drag-and-drop onto rack and playlist (double-click works today).
+7. ~~Browser drag-and-drop onto rack and playlist~~ — shipped: browser rows
+   (and Finder files) drop onto the rack — a sampler row swallows the sample,
+   anywhere else inserts a new sampler channel — and onto the playlist as
+   bar-snapped audio clips, with hover indicators and one undo step per drop.
 8. ~~Loop-record takes and comping~~ — shipped: recording with the loop armed
    splits the file into one take per pass (pure tick math after the fact, see
    src/app/TakeSplitter.h); the latest pass lands unmuted, earlier passes

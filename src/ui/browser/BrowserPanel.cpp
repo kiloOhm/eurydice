@@ -1,6 +1,7 @@
 #include "BrowserPanel.h"
 #include "app/Theme.h"
 #include "plugins/PluginManager.h"
+#include "ui/common/SampleDrop.h"
 
 BrowserPanel::BrowserPanel (AppServices& s)
     : services (s)
@@ -40,6 +41,9 @@ BrowserPanel::BrowserPanel (AppServices& s)
     dirContents = std::make_unique<juce::DirectoryContentsList> (&audioFilter, scanThread);
     fileTree = std::make_unique<juce::FileTreeComponent> (*dirContents);
     fileTree->addListener (this);
+    // Lets rows be dragged onto the rack and playlist (MainComponent is the
+    // DragAndDropContainer).
+    fileTree->setDragAndDropDescription (sampledrop::browserDragDescription);
     fileTree->setColour (juce::TreeView::backgroundColourId, juce::Colours::transparentBlack);
     addAndMakeVisible (*fileTree);
 
