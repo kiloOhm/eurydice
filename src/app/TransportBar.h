@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Commands.h"
+#include "ui/common/IconButton.h"
 
 // Top strip: play/stop/record, pattern/song mode, BPM, position readout.
 // Wired to the engine through std::function hooks so it stays engine-agnostic.
@@ -48,9 +49,9 @@ public:
 private:
     void timerCallback() override;
 
-    juce::TextButton playButton  { juce::CharPointer_UTF8 ("\xe2\x96\xb6") };
-    juce::TextButton stopButton  { juce::CharPointer_UTF8 ("\xe2\x96\xa0") };
-    juce::TextButton recordButton { juce::CharPointer_UTF8 ("\xe2\x97\x8f") };
+    IconButton playButton   { "play", icons::play() };
+    IconButton stopButton   { "stop", icons::stop() };
+    IconButton recordButton { "record", icons::record(), theme::record };
     juce::TextButton patButton  { "PAT" };
     juce::TextButton songButton { "SONG" };
     juce::TextButton metronomeButton { "CLICK" };
@@ -58,7 +59,12 @@ private:
     juce::Slider tempoSlider;
     juce::Label positionLabel;
 
-    struct PanelButton { juce::TextButton button; juce::CommandID command; };
+    struct PanelButton
+    {
+        PanelButton (const juce::String& name, juce::Path icon) : button (name, std::move (icon)) {}
+        IconButton button;
+        juce::CommandID command {};
+    };
     std::vector<std::unique_ptr<PanelButton>> panelButtons;
     std::vector<int> separatorX;   // group separators, computed in resized()
 

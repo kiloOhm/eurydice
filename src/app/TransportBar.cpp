@@ -3,18 +3,22 @@
 
 TransportBar::TransportBar()
 {
-    playButton.setWantsKeyboardFocus (false);
-    stopButton.setWantsKeyboardFocus (false);
-    recordButton.setWantsKeyboardFocus (false);
     patButton.setWantsKeyboardFocus (false);
     songButton.setWantsKeyboardFocus (false);
 
+    playButton.setTooltip ("Play (Space)");
+    playButton.setIconColour (theme::textPrimary);
     playButton.onClick   = [this] { if (onPlay) onPlay(); };
+    stopButton.setTooltip ("Stop; a second press rewinds to the start (Space while playing)");
+    stopButton.setIconColour (theme::textPrimary);
     stopButton.onClick   = [this] { if (onStop) onStop(); };
+    recordButton.setTooltip ("Arm recording: MIDI notes go into the pattern, audio input to a clip");
+    recordButton.setIconColour (theme::record);
     recordButton.setClickingTogglesState (true);
-    recordButton.setColour (juce::TextButton::buttonOnColourId, theme::record);
     recordButton.onClick = [this] { if (onRecordToggled) onRecordToggled(); };
 
+    patButton.setTooltip ("Pattern mode: loop the pattern selected in the channel rack");
+    songButton.setTooltip ("Song mode: play the playlist arrangement");
     patButton.setClickingTogglesState (true);
     songButton.setClickingTogglesState (true);
     patButton.setRadioGroupId (100);
@@ -50,6 +54,7 @@ TransportBar::TransportBar()
     tempoSlider.setColour (juce::Slider::trackColourId, theme::raised);
     tempoSlider.setVelocityBasedMode (true);
     tempoSlider.setVelocityModeParameters (0.5, 1, 0.09, false);
+    tempoSlider.setTooltip ("Tempo: drag to change, double-click to reset to 140");
     tempoSlider.onValueChange = [this] { if (onTempoChanged) onTempoChanged (tempoSlider.getValue()); };
 
     positionLabel.setFont (theme::uiFont (15.0f, true));
@@ -63,24 +68,27 @@ TransportBar::TransportBar()
                                                              &positionLabel })
         addAndMakeVisible (c);
 
-    // Visible panel toggles: the discoverable route to every window.
-    const std::vector<std::pair<juce::String, juce::CommandID>> panels {
-        { "PLAYLIST", CommandIDs::viewPlaylist },
-        { "RACK",     CommandIDs::viewChannelRack },
-        { "PIANO",    CommandIDs::viewPianoRoll },
-        { "MIXER",    CommandIDs::viewMixer },
-        { "BROWSER",  CommandIDs::viewBrowser },
+    // Visible panel toggles: the discoverable route to every window. Compact
+    // icons; the tooltip carries the name and shortcut.
+    struct PanelSpec { const char* name; const char* tip; juce::Path icon; juce::CommandID command; };
+    const PanelSpec panels[] = {
+        { "playlist", "Playlist (F5)",     icons::playlist(), CommandIDs::viewPlaylist },
+        { "rack",     "Channel Rack (F6)", icons::rack(),     CommandIDs::viewChannelRack },
+        { "piano",    "Piano Roll (F7)",   icons::piano(),    CommandIDs::viewPianoRoll },
+        { "mixer",    "Mixer (F9)",        icons::mixer(),    CommandIDs::viewMixer },
+        { "browser",  "Browser",           icons::browser(),  CommandIDs::viewBrowser },
     };
-    for (const auto& [label, command] : panels)
+    for (const auto& spec : panels)
     {
-        auto entry = std::make_unique<PanelButton>();
-        entry->command = command;
-        entry->button.setButtonText (label);
-        entry->button.setWantsKeyboardFocus (false);
+        auto entry = std::make_unique<PanelButton> (spec.name, spec.icon);
+        entry->command = spec.command;
+        entry->button.setTooltip (juce::String (spec.tip) + " — right-click for window options");
         entry->button.setClickingTogglesState (false);
-        entry->button.setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
-        entry->button.onClick = [this, command] { if (onPanelToggled) onPanelToggled (command); };
-        // TextButton eats right-clicks, so listen in and handle them here.
+        entry->button.onClick = [this, command = spec.command]
+        {
+            if (onPanelToggled) onPanelToggled (command);
+        };
+        // Buttons eat right-clicks, so listen in and handle them here.
         entry->button.addMouseListener (this, false);
         addAndMakeVisible (entry->button);
         panelButtons.push_back (std::move (entry));
@@ -147,7 +155,7 @@ void TransportBar::resized()
 
     for (auto& entry : panelButtons)
     {
-        entry->button.setBounds (r.removeFromLeft (72));
+        entry->button.setBounds (r.removeFromLeft (34));
         r.removeFromLeft (3);
     }
     refreshPanelButtons();
@@ -179,14 +187,8 @@ void TransportBar::refreshPanelButtons()
     if (! isPanelVisible)
         return;
     for (auto& entry : panelButtons)
-    {
-        const bool on = isPanelVisible (entry->command);
-        entry->button.setColour (juce::TextButton::buttonColourId,
-                                 on ? theme::accentDim : theme::raised);
-        entry->button.setColour (juce::TextButton::textColourOffId,
-                                 on ? theme::textPrimary : theme::textDim);
-        entry->button.repaint();
-    }
+        entry->button.setToggleState (isPanelVisible (entry->command),
+                                      juce::dontSendNotification);
 }
 
 void TransportBar::timerCallback()
@@ -206,8 +208,7 @@ void TransportBar::timerCallback()
         tempoSlider.setValue (getTempo(), juce::dontSendNotification);
 
     const bool playing = getIsPlaying ? getIsPlaying() : false;
-    playButton.setColour (juce::TextButton::textColourOffId,
-                          playing ? theme::ledGreen : theme::textPrimary);
+    playButton.setIconColour (playing ? theme::ledGreen : theme::textPrimary);
 
     double beats = getBeatPosition ? getBeatPosition() : 0.0;
     const int bar  = (int) (beats / 4.0) + 1;
@@ -215,5 +216,4 @@ void TransportBar::timerCallback()
     const int tick = (int) (std::fmod (beats, 1.0) * 100.0);
     positionLabel.setText (juce::String::formatted ("%3d : %d : %02d", bar, beat, tick),
                            juce::dontSendNotification);
-    playButton.repaint();
 }

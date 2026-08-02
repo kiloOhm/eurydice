@@ -72,6 +72,9 @@ private:
     FloatingPanel* panelForCommand (juce::CommandID) const;
 
     EurydiceLookAndFeel lookAndFeel;
+    // Desktop-parented so tooltips show over editor and plugin windows too.
+    // Without an instance, every setTooltip() in the app is silently inert.
+    juce::TooltipWindow tooltipWindow { nullptr, 600 };
     AppServices services;
     ProjectFileState fileState { services.project };
     AutoSaver autoSave { services.project, fileState };

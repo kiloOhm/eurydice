@@ -27,6 +27,7 @@ FloatingPanel::FloatingPanel (const juce::String& t, std::unique_ptr<juce::Compo
     addAndMakeVisible (*content);
 
     closeButton.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+    closeButton.setTooltip ("Hide panel");
     closeButton.setWantsKeyboardFocus (false);
     closeButton.onClick = [this]
     {

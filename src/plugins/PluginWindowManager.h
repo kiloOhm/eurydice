@@ -13,7 +13,10 @@ public:
     PluginWindowManager() = default;
     ~PluginWindowManager() { windows.clear(); }
 
-    void showEditorFor (const std::shared_ptr<HostedPlugin>& plugin, const juce::String& title)
+    // Pass a NoteSink for instruments so the shell can offer its piano;
+    // effects leave it empty.
+    void showEditorFor (const std::shared_ptr<HostedPlugin>& plugin, const juce::String& title,
+                        PluginEditorShell::NoteSink notes = {})
     {
         if (plugin == nullptr || plugin->getInstance() == nullptr)
             return;
@@ -25,7 +28,7 @@ public:
                 return;
             }
 
-        windows.push_back (std::make_unique<Window> (*this, plugin, title));
+        windows.push_back (std::make_unique<Window> (*this, plugin, title, std::move (notes)));
         if (typingKeys != nullptr)
             windows.back()->addKeyListener (typingKeys);
     }
@@ -47,7 +50,8 @@ public:
 private:
     struct Window : juce::DocumentWindow
     {
-        Window (PluginWindowManager& ownerRef, std::shared_ptr<HostedPlugin> p, const juce::String& title)
+        Window (PluginWindowManager& ownerRef, std::shared_ptr<HostedPlugin> p, const juce::String& title,
+                PluginEditorShell::NoteSink notes)
             : juce::DocumentWindow (title, theme::panelHeader, closeButton),
               owner (ownerRef), plugin (std::move (p))
         {
@@ -55,7 +59,8 @@ private:
 
             // The editor sits inside a JUCE shell (header strip + native
             // view), so we have somewhere to put custom UI around plugins.
-            auto shell = std::make_unique<PluginEditorShell> (*plugin->getInstance(), title);
+            auto shell = std::make_unique<PluginEditorShell> (*plugin->getInstance(), title,
+                                                              std::move (notes));
             const auto w = shell->getWidth(), h = shell->getHeight();
             setContentOwned (shell.release(), true);
             setResizable (true, false);

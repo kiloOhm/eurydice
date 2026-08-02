@@ -45,6 +45,7 @@ BrowserPanel::BrowserPanel (AppServices& s)
     addAndMakeVisible (folderBox);
 
     addFolderButton.setWantsKeyboardFocus (false);
+    addFolderButton.setTooltip ("Add a sample folder");
     addFolderButton.onClick = [this] { addFolder(); };
     addAndMakeVisible (addFolderButton);
 

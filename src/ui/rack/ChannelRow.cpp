@@ -6,6 +6,7 @@
 ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
     : model (m), channel (ch)
 {
+    muteLed.setTooltip ("Channel on/off");
     muteLed.setClickingTogglesState (true);
     muteLed.setWantsKeyboardFocus (false);
     muteLed.onClick = [this]
@@ -14,6 +15,7 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
         channel.setProperty (ids::mute, ! muteLed.getToggleState(), &model.getUndoManager());
     };
 
+    nameButton.setTooltip ("Open the channel editor — right-click for channel options");
     nameButton.setWantsKeyboardFocus (false);
     nameButton.onClick = [this]
     {

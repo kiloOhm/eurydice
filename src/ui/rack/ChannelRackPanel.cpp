@@ -38,9 +38,11 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
         for (auto& row : rows)
             row->setPattern (activePattern());
     };
+    patternBox.setTooltip ("Active pattern");
     addAndMakeVisible (patternBox);
 
     addPatternButton.setWantsKeyboardFocus (false);
+    addPatternButton.setTooltip ("New pattern");
     addPatternButton.onClick = [this]
     {
         auto& project = services.project;
@@ -55,6 +57,7 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
     patternMenuButton.onClick = [this] { showPatternMenu(); };
     addAndMakeVisible (patternMenuButton);
 
+    lengthBox.setTooltip ("Pattern length");
     lengthBox.addItem ("16 steps", 16);
     lengthBox.addItem ("32 steps", 32);
     lengthBox.addItem ("64 steps", 64);
@@ -115,6 +118,7 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
     addChildComponent (graphLane);
 
     addChannelButton.setWantsKeyboardFocus (false);
+    addChannelButton.setTooltip ("Add a sampler, synth, kick or plugin channel");
     addChannelButton.onClick = [this] { showAddChannelMenu(); };
     addAndMakeVisible (addChannelButton);
 

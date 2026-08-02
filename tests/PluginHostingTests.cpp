@@ -1,5 +1,6 @@
 #include "TestHelpers.h"
 #include "plugins/PluginGenerator.h"
+#include "plugins/PluginEditorShell.h"
 
 // Hosting tests use Apple Audio Units from the machine's plugin database
 // (populated by a scan from the app). They skip cleanly when the database
@@ -141,4 +142,47 @@ TEST (PluginHosting, ScanListsAndPersistence)
         EXPECT_FALSE (d.isInstrument);
     EXPECT_FALSE (manager.isScanning());
     EXPECT_TRUE (PluginManager::getAppDataDir().isDirectory());
+}
+
+TEST (PluginHosting, EditorShellPianoToggle)
+{
+    test::EngineFixture fx;
+    juce::PluginDescription instrument;
+    bool haveInstrument = false;
+    for (const auto& d : fx.plugins.getInstruments())
+    {
+        instrument = d;
+        haveInstrument = true;
+        break;
+    }
+    if (! haveInstrument)
+        GTEST_SKIP() << "no instruments in plugin database";
+
+    auto channel = fx.model.addChannel ("plugin", instrument.name);
+    channel.setProperty (ids::pluginId, instrument.createIdentifierString(), nullptr);
+    fx.sync.rebuildNow();
+
+    auto generator = fx.generators.getOrCreate (channel);
+    auto* pluginGen = dynamic_cast<PluginGenerator*> (generator.get());
+    ASSERT_NE (pluginGen, nullptr);
+    const auto deadline = juce::Time::getMillisecondCounter() + 15000;
+    while (pluginGen->getPlugin() == nullptr && juce::Time::getMillisecondCounter() < deadline)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    auto hosted = pluginGen->getPlugin();
+    ASSERT_NE (hosted, nullptr);
+
+    int ons = 0, offs = 0;
+    PluginEditorShell shell (*hosted->getInstance(), "Bass / Test",
+                             { [&ons] (int, float) { ++ons; },
+                               [&offs] (int) { ++offs; } });
+
+    // Instruments get the piano; it starts hidden and toggles the shell
+    // height by exactly the keyboard strip.
+    EXPECT_FALSE (shell.isPianoVisible());
+    const int closedHeight = shell.getHeight();
+    shell.setPianoVisible (true);
+    EXPECT_TRUE (shell.isPianoVisible());
+    EXPECT_EQ (shell.getHeight(), closedHeight + PluginEditorShell::keyboardHeight);
+    shell.setPianoVisible (false);
+    EXPECT_EQ (shell.getHeight(), closedHeight);
 }

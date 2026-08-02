@@ -65,6 +65,7 @@ MixerPanel::Strip::Strip (MixerPanel& o, int index)
     undoGesture::attach (panKnob, owner.services.project, "Insert pan");
     addAndMakeVisible (panKnob);
 
+    muteButton.setTooltip ("Mute this insert");
     muteButton.setClickingTogglesState (true);
     muteButton.setWantsKeyboardFocus (false);
     muteButton.setColour (juce::TextButton::buttonOnColourId, theme::record.darker (0.2f));
@@ -168,10 +169,12 @@ MixerPanel::MixerPanel (AppServices& s)
         auto& b = effectSlots[(size_t) slot];
         b.setButtonText ("---");
         b.setWantsKeyboardFocus (false);
+        b.setTooltip ("Effect slot: click to load, edit, bypass or remove");
         b.onClick = [this, slot] { showEffectSlotMenu (slot); };
         addAndMakeVisible (b);
     }
 
+    addSendButton.setTooltip ("Send this insert's signal into another insert (bus / sidechain)");
     addSendButton.setWantsKeyboardFocus (false);
     addSendButton.onClick = [this] { showSendMenu(); };
     addAndMakeVisible (addSendButton);

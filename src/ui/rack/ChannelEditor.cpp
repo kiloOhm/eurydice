@@ -503,8 +503,17 @@ void ChannelEditorManager::show (AppServices& services, juce::ValueTree channel)
         if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (services.generators.getOrCreate (channel)))
         {
             if (auto hosted = gen->getPlugin())
+            {
+                // Instruments get the shell's piano, wired through the same
+                // preview path the editors' keyboards use.
+                PluginEditorShell::NoteSink notes {
+                    [&services, channelId] (int note, float velocity)
+                    { services.engine.previewNote (channelId, note, velocity, 0); },
+                    [&services, channelId] (int note)
+                    { services.engine.previewNoteOff (channelId, note); } };
                 services.pluginWindows.showEditorFor (hosted,
-                    name + " / " + hosted->getDescription().name);
+                    name + " / " + hosted->getDescription().name, std::move (notes));
+            }
             else
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
                     name, "The plugin is still loading (or failed to load). Try again in a moment.");
