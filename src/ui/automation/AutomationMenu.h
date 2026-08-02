@@ -28,9 +28,9 @@ inline void show (AppServices& services, const AutomationWriter::Target& target,
     menu.addSeparator();
     menu.addItem (3, "Reset to default", resetToDefault != nullptr);
 
-    // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks) — the callback's
-    // ownership passes into the menu's modal manager, which the analyzer
-    // cannot see across JUCE's type-erased dispatch.
+    // The callback's ownership passes into the menu's modal manager, which
+    // the analyzer cannot see across JUCE's type-erased dispatch.
+    // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
     menu.showMenuAsync ({}, [&services, target, normalised, reset = std::move (resetToDefault)] (int result)
     {
         if (result == 1)
@@ -61,5 +61,6 @@ inline void show (AppServices& services, const AutomationWriter::Target& target,
             reset();
         }
     });
+    // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
 }
 } // namespace automationmenu
