@@ -2,6 +2,53 @@
 #include "engine/SamplerGenerator.h"
 #include "model/UndoGesture.h"
 #include "plugins/PluginGenerator.h"
+#include "model/ChannelParams.h"
+#include "ui/automation/AutomationMenu.h"
+
+namespace
+{
+// Builds a generator's knob row from the shared parameter table and wires each
+// knob into the automation layer: moving one records while the write arm is
+// on, right-clicking one offers to create or edit its clip.
+void buildKnobs (KnobGrid& grid, juce::Component& owner,
+                 AppServices& services, juce::ValueTree channel)
+{
+    const int channelId = channel[ids::id];
+    const auto channelName = channel[ids::name].toString();
+
+    for (const auto& descriptor : channelparams::forChannelType (channel[ids::type].toString()))
+    {
+        if (descriptor.section.isNotEmpty())
+            grid.beginSection (descriptor.section);
+
+        auto knob = std::make_unique<LabelledKnob> (descriptor.caption, services.project, channel,
+                                                    descriptor.id, descriptor.range,
+                                                    descriptor.defaultValue, descriptor.suffix,
+                                                    descriptor.decimals);
+        if (descriptor.automatable)
+        {
+            // The table is a function-local static, so &descriptor outlives
+            // every editor window that captures it.
+            const AutomationWriter::Target target { "channel-param", channelId,
+                                                    descriptor.id.toString(),
+                                                    channelName + " " + descriptor.caption };
+            auto* knobPtr = knob.get();
+
+            knob->onLiveEdit = [&services, target, &descriptor] (double value)
+            {
+                services.automationWriter.touch (target, descriptor.toNormalised (value));
+            };
+            knob->onContextMenu = [&services, target, &descriptor, knobPtr] (double value)
+            {
+                automationmenu::show (services, target, descriptor.toNormalised (value),
+                                      [knobPtr] { knobPtr->resetToDefault(); });
+            };
+        }
+        owner.addAndMakeVisible (*knob);
+        grid.adopt (std::move (knob));
+    }
+}
+}
 
 namespace
 {
@@ -30,6 +77,11 @@ struct KeyboardBridge : juce::MidiKeyboardState::Listener
 } // namespace
 
 // ================= KnobGrid =================
+
+void KnobGrid::adopt (std::unique_ptr<LabelledKnob> knob)
+{
+    knobs.push_back (std::move (knob));
+}
 
 void KnobGrid::beginSection (const juce::String& caption)
 {
@@ -104,8 +156,6 @@ void KnobGrid::refresh()
 SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
     : services (s), channel (ch)
 {
-    auto& model = services.project;
-
     loadButton.setWantsKeyboardFocus (false);
     loadButton.onClick = [this]
     {
@@ -157,29 +207,7 @@ SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
     pathLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (pathLabel);
 
-    grid.beginSection ("SAMPLE");
-    grid.add (*this, "ROOT",  model, channel, ids::rootNote,    { 0.0, 127.0, 1.0 }, 60.0, {}, 0);
-    grid.add (*this, "START", model, channel, ids::sampleStart, { 0.0, 1.0 }, 0.0, {}, 3);
-    grid.add (*this, "END",   model, channel, ids::sampleEnd,   { 0.0, 1.0 }, 1.0, {}, 3);
-
-    grid.beginSection ("PITCH ENV");
-    grid.add (*this, "DEPTH", model, channel, ids::pitchEnvDepth, { -48.0, 48.0 }, 0.0, " st", 1);
-    grid.add (*this, "PDEC",  model, channel, ids::pitchEnvDecay, { 0.001, 2.0, 0.0, 0.35 }, 0.08, " s", 3);
-
-    grid.beginSection ("AMP");
-    grid.add (*this, "ATT",   model, channel, ids::attack,   { 0.0, 2.0, 0.0, 0.35 }, 0.001, " s", 3);
-    grid.add (*this, "DEC",   model, channel, ids::decay,    { 0.0, 4.0, 0.0, 0.35 }, 0.0, " s", 2);
-    grid.add (*this, "SUS",   model, channel, ids::sustain,  { 0.0, 1.0 }, 1.0, {}, 2);
-    grid.add (*this, "REL",   model, channel, ids::release,  { 0.0, 4.0, 0.0, 0.35 }, 0.02, " s", 2);
-    grid.add (*this, "SHAPE", model, channel, ids::envShape, { 0.0, 1.0 }, 0.0, {}, 2);
-
-    grid.beginSection ("FILTER");
-    grid.add (*this, "CUT", model, channel, ids::cutoff,    { 40.0, 20000.0, 0.0, 0.28 }, 20000.0, " Hz", 0);
-    grid.add (*this, "RES", model, channel, ids::resonance, { 0.0, 1.0 }, 0.0, {}, 2);
-
-    grid.beginSection (driveSectionCaption);
-    grid.add (*this, "DRIVE", model, channel, ids::drive,      { 0.0, 1.0 }, 0.0, {}, 2);
-    grid.add (*this, "CURVE", model, channel, ids::driveCurve, { 0.0, 2.0, 1.0 }, 0.0, {}, 0);
+    buildKnobs (grid, *this, services, channel);
 
     refreshWaveform();
     startTimerHz (4);
@@ -325,23 +353,7 @@ void SamplerEditor::resized()
 SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
     : services (s), channel (ch)
 {
-    auto& model = services.project;
-
-    grid.beginSection ("OSCILLATORS");
-    grid.add (*this, "SHAPE",  model, channel, ids::oscShape,   { 0.0, 1.0 }, 0.0, {}, 2);
-    grid.add (*this, "DETUNE", model, channel, ids::osc2Detune, { -50.0, 50.0 }, 7.0, " ct", 1);
-    grid.add (*this, "OSC2",   model, channel, ids::osc2Mix,    { 0.0, 1.0 }, 0.35, {}, 2);
-
-    grid.beginSection ("FILTER");
-    grid.add (*this, "CUT", model, channel, ids::cutoff,       { 40.0, 18000.0, 0.0, 0.28 }, 4000.0, " Hz", 0);
-    grid.add (*this, "RES", model, channel, ids::resonance,    { 0.0, 1.0 }, 0.3, {}, 2);
-    grid.add (*this, "ENV", model, channel, ids::filterEnvAmt, { 0.0, 1.0 }, 0.35, {}, 2);
-
-    grid.beginSection ("ENVELOPE");
-    grid.add (*this, "ATT", model, channel, ids::attack,  { 0.0, 2.0, 0.0, 0.35 }, 0.004, " s", 3);
-    grid.add (*this, "DEC", model, channel, ids::decay,   { 0.0, 4.0, 0.0, 0.35 }, 0.25, " s", 2);
-    grid.add (*this, "SUS", model, channel, ids::sustain, { 0.0, 1.0 }, 0.7, {}, 2);
-    grid.add (*this, "REL", model, channel, ids::release, { 0.0, 4.0, 0.0, 0.35 }, 0.08, " s", 2);
+    buildKnobs (grid, *this, services, channel);
 
     keyboard.setAvailableRange (36, 96);
     keyboard.setWantsKeyboardFocus (false);

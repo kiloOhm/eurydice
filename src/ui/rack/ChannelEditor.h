@@ -21,6 +21,10 @@ public:
               juce::NormalisableRange<double> range, double defaultValue,
               const juce::String& suffix = {}, int decimals = 2);
 
+    // Takes ownership of a knob built elsewhere (the channel-parameter table),
+    // so automation wiring and grid layout do not need separate knob lists.
+    void adopt (std::unique_ptr<LabelledKnob>);
+
     // Lays the grid out inside area and returns the height it actually used.
     int layout (juce::Rectangle<int> area);
     void paintCaptions (juce::Graphics&) const;

@@ -312,5 +312,12 @@ bool ProjectModel::loadFromFile (const juce::File& file)
 
     undo.clearUndoHistory();
     root = loaded;
+
+    // ids::writing only means "a write pass is running right now". A project
+    // saved mid-pass would otherwise come back with automation permanently
+    // yielding to a control nobody is holding.
+    for (auto automation : root.getChildWithName (ids::AUTOMATIONS))
+        automation.removeProperty (ids::writing, nullptr);
+
     return true;
 }

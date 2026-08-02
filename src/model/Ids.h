@@ -116,9 +116,11 @@ DECLARE_ID (slotIndex)
 DECLARE_ID (bypass)
 
 // Automation
-DECLARE_ID (targetType)    // "channel" | "insert" | "plugin"
+DECLARE_ID (targetType)    // "channel" | "insert" | "channel-param" | "plugin-*"
 DECLARE_ID (targetId)
 DECLARE_ID (paramId)
+DECLARE_ID (writing)       // transient: a write pass is recording this source,
+                           // so the engine must yield to the live control
 DECLARE_ID (posTicks)      // on POINT (relative to clip start)
 DECLARE_ID (value)         // 0..1 normalised
 DECLARE_ID (tension)       // -1..1 curve tension to next point

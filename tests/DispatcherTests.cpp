@@ -236,6 +236,71 @@ TEST_F (DispatcherFixture, AutomationCreateAndSetPoints)
     EXPECT_CONTROL_ERROR (call ("automation.setPoints", R"({"automationId": 777})"));
 }
 
+TEST_F (DispatcherFixture, AutomationListGetPointsAndRemove)
+{
+    const int autoId = call ("automation.create",
+        R"({"targetType": "channel", "targetId": )" + juce::String (firstChannelId())
+            + R"(, "paramId": "pan", "name": "kick pan", "initialValue": 0.5})")["id"];
+
+    auto listed = call ("automation.list");
+    ASSERT_EQ (listed.getArray()->size(), 1);
+    EXPECT_EQ ((int) listed[0]["id"], autoId);
+    EXPECT_EQ (listed[0]["name"].toString(), "kick pan");
+    EXPECT_EQ (listed[0]["targetType"].toString(), "channel");
+    EXPECT_EQ ((int) listed[0]["targetId"], firstChannelId());
+    EXPECT_EQ (listed[0]["paramId"].toString(), "pan");
+    EXPECT_EQ ((int) listed[0]["numPoints"], 2);   // addAutomation seeds a flat pair
+    EXPECT_FALSE ((bool) listed[0]["writing"]);
+
+    call ("automation.setPoints", R"({"automationId": )" + juce::String (autoId)
+              + R"(, "points": [{"pos": 0, "value": 0.25},
+                                {"pos": 1920, "value": 0.75, "tension": -0.5}]})");
+    auto points = call ("automation.getPoints", R"({"automationId": )" + juce::String (autoId) + "}");
+    ASSERT_EQ (points.getArray()->size(), 2);
+    EXPECT_EQ ((int) points[1]["pos"], 1920);
+    EXPECT_DOUBLE_EQ ((double) points[1]["value"], 0.75);
+    EXPECT_DOUBLE_EQ ((double) points[1]["tension"], -0.5);
+
+    // The source came with a playlist clip; removing it takes the clip too.
+    auto countClips = [this]
+    {
+        const auto tracks = call ("playlist.get");
+        int total = 0;
+        for (const auto& track : *tracks.getArray())
+            total += track["clips"].getArray()->size();
+        return total;
+    };
+    ASSERT_EQ (countClips(), 1);
+
+    call ("automation.remove", R"({"automationId": )" + juce::String (autoId) + "}");
+    EXPECT_EQ (call ("automation.list").getArray()->size(), 0);
+    EXPECT_EQ (countClips(), 0);
+
+    EXPECT_CONTROL_ERROR (call ("automation.getPoints", R"({"automationId": 777})"));
+    EXPECT_CONTROL_ERROR (call ("automation.remove", R"({"automationId": 777})"));
+}
+
+TEST_F (DispatcherFixture, AutomationWriteArmRoundTrips)
+{
+    EXPECT_FALSE ((bool) call ("state.get")["automationWrite"]);
+
+    call ("transport.set", R"({"automationWrite": true})");
+    EXPECT_TRUE (services.automationWriter.isArmed());
+    EXPECT_TRUE ((bool) call ("state.get")["automationWrite"]);
+
+    call ("transport.set", R"({"automationWrite": false})");
+    EXPECT_FALSE (services.automationWriter.isArmed());
+}
+
+TEST_F (DispatcherFixture, AutomationCreateAcceptsGeneratorParams)
+{
+    const auto created = call ("automation.create",
+        R"({"targetType": "channel-param", "targetId": )" + juce::String (firstChannelId())
+            + R"(, "paramId": "cutoff", "name": "kick cutoff", "initialValue": 0.3})");
+    ASSERT_GT ((int) created["id"], 0);
+    EXPECT_EQ (call ("automation.list")[0]["targetType"].toString(), "channel-param");
+}
+
 TEST_F (DispatcherFixture, ProjectSaveLoadViaDispatch)
 {
     const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)

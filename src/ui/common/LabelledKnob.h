@@ -4,6 +4,7 @@
 #include "app/Theme.h"
 #include "model/ProjectModel.h"
 #include "model/UndoGesture.h"
+#include "ui/common/AutomatableSlider.h"
 
 // A rotary bound to one property of a ValueTree, with a caption and a value
 // readout underneath. Writes go through the UndoManager so channel tweaks are
@@ -30,6 +31,13 @@ public:
             this->tree.setProperty (this->property, slider.getValue(),
                                     &this->model.getUndoManager());
             updateReadout();
+            if (onLiveEdit)
+                onLiveEdit (slider.getValue());
+        };
+        slider.onContextMenu = [this]
+        {
+            if (onContextMenu)
+                onContextMenu (slider.getValue());
         };
         undoGesture::attach (slider, projectModel, caption);
         addAndMakeVisible (slider);
@@ -53,6 +61,15 @@ public:
         slider.setValue (tree.getProperty (property, defaultValue), juce::dontSendNotification);
         updateReadout();
     }
+
+    void resetToDefault()
+    {
+        slider.setValue (defaultValue, juce::sendNotificationSync);
+    }
+
+    // Both carry the knob's current value in its own units.
+    std::function<void (double)> onLiveEdit;
+    std::function<void (double)> onContextMenu;
 
     void resized() override
     {
@@ -79,7 +96,7 @@ private:
     juce::String suffix;
     int decimals = 2;
 
-    juce::Slider slider;
+    AutomatableSlider slider;
     juce::Label captionLabel, valueLabel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LabelledKnob)

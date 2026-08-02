@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "app/AppServices.h"
+#include "ui/common/AutomatableSlider.h"
 
 // FL-style mixer: master + insert strips with fader/pan/mute/meter, a detail
 // column for the selected insert (effect slots + sends). Sends support the
@@ -33,7 +34,7 @@ private:
 
     private:
         MixerPanel& owner;
-        juce::Slider fader, panKnob;
+        AutomatableSlider fader, panKnob;
         juce::TextButton muteButton { "M" };
         juce::Rectangle<int> meterBounds;
         float peakL = 0.0f, peakR = 0.0f;
@@ -45,6 +46,8 @@ private:
     void showSendMenu();
     void showEffectSlotMenu (int slotIndex);
     void showStripMenu (int insertIndex);
+    void showKnobMenu (int insertIndex, const juce::Identifier& prop);
+    void knobMoved (int insertIndex, const juce::Identifier& prop);
     juce::ValueTree getSlotTree (int insertIndex, int slotIndex, bool createIfMissing);
 
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;

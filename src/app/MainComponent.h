@@ -58,6 +58,7 @@ private:
     void restoreFromRecovery (const juce::File& recoveryFile);
     void transportPlay();
     void transportStop();
+    void openAutomationEditor (int index);
     void updateWindowTitle();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
@@ -81,6 +82,7 @@ private:
     juce::Component desktop;
 
     std::unique_ptr<FloatingPanel> playlistPanel;
+    class PlaylistPanel* playlistView = nullptr;   // owned by playlistPanel
     std::unique_ptr<FloatingPanel> channelRackPanel;
     std::unique_ptr<FloatingPanel> pianoRollPanel;
     std::unique_ptr<FloatingPanel> mixerPanel;

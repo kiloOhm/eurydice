@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "model/ProjectModel.h"
+#include "ui/common/AutomatableSlider.h"
 
 // One row in the channel rack: mute LED, name, pan/vol knobs, step cells.
 class ChannelRow : public juce::Component
@@ -28,6 +29,11 @@ public:
     std::function<void (juce::ValueTree channel)> onWantsInsertMenu;
     std::function<void (juce::ValueTree channel)> onWantsPianoRoll;
 
+    // ids::volume or ids::pan. The panel turns these into automation actions;
+    // the row itself stays model-only.
+    std::function<void (juce::ValueTree channel, juce::Identifier)> onKnobMoved;
+    std::function<void (juce::ValueTree channel, juce::Identifier)> onKnobContextMenu;
+
     static constexpr int rowHeight   = 30;
     static constexpr int stepWidth   = 26;
     static constexpr int fixedLeftWidth = 18 + 4 + 118 + 4 + 26 + 26 + 4 + 40 + 8;
@@ -51,7 +57,7 @@ private:
 
     juce::TextButton muteLed;
     juce::TextButton nameButton;
-    juce::Slider panKnob, volKnob;
+    AutomatableSlider panKnob, volKnob;
     juce::TextButton insertButton;   // target mixer insert, click to reassign
 
     int playStep = -1;

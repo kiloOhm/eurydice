@@ -34,8 +34,8 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
     insertButton.addMouseListener (this, false);
     addAndMakeVisible (insertButton);
 
-    auto initKnob = [this] (juce::Slider& k, const juce::Identifier& prop, double min, double max,
-                            const juce::String& gestureName)
+    auto initKnob = [this] (AutomatableSlider& k, const juce::Identifier& prop,
+                            double min, double max, const juce::String& gestureName)
     {
         k.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         k.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
@@ -45,6 +45,13 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
         k.onValueChange = [this, &k, prop]
         {
             channel.setProperty (prop, k.getValue(), &model.getUndoManager());
+            if (onKnobMoved)
+                onKnobMoved (channel, prop);
+        };
+        k.onContextMenu = [this, prop]
+        {
+            if (onSelected) onSelected (getChannelId());
+            if (onKnobContextMenu) onKnobContextMenu (channel, prop);
         };
         undoGesture::attach (k, model, gestureName);
         addAndMakeVisible (k);

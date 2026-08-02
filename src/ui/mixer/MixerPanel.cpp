@@ -1,6 +1,26 @@
 #include "MixerPanel.h"
 #include "app/Theme.h"
 #include "model/UndoGesture.h"
+#include "ui/automation/AutomationMenu.h"
+
+namespace
+{
+// Insert volume runs 0..1.25 and pan -1..1; both fold onto the 0..1 the
+// automation curve stores and the engine unfolds again.
+double insertKnobNormalised (const juce::ValueTree& insert, const juce::Identifier& prop)
+{
+    return prop == ids::pan ? ((double) insert[ids::pan] + 1.0) * 0.5
+                            : (double) insert[ids::volume] / 1.25;
+}
+
+AutomationWriter::Target insertKnobTarget (const juce::ValueTree& insert, int insertIndex,
+                                           const juce::Identifier& prop)
+{
+    const bool isPan = prop == ids::pan;
+    return { "insert", insertIndex, isPan ? "pan" : "volume",
+             insert[ids::name].toString() + (isPan ? " pan" : " volume") };
+}
+}
 
 // ================= Strip =================
 
@@ -16,6 +36,12 @@ MixerPanel::Strip::Strip (MixerPanel& o, int index)
     {
         owner.insertTree (insertIndex).setProperty (ids::volume, fader.getValue(),
                                                     &owner.services.project.getUndoManager());
+        owner.knobMoved (insertIndex, ids::volume);
+    };
+    fader.onContextMenu = [this]
+    {
+        owner.selectInsert (insertIndex);
+        owner.showKnobMenu (insertIndex, ids::volume);
     };
     undoGesture::attach (fader, owner.services.project, "Insert volume");
     addAndMakeVisible (fader);
@@ -29,6 +55,12 @@ MixerPanel::Strip::Strip (MixerPanel& o, int index)
     {
         owner.insertTree (insertIndex).setProperty (ids::pan, panKnob.getValue(),
                                                     &owner.services.project.getUndoManager());
+        owner.knobMoved (insertIndex, ids::pan);
+    };
+    panKnob.onContextMenu = [this]
+    {
+        owner.selectInsert (insertIndex);
+        owner.showKnobMenu (insertIndex, ids::pan);
     };
     undoGesture::attach (panKnob, owner.services.project, "Insert pan");
     addAndMakeVisible (panKnob);
@@ -226,6 +258,23 @@ void MixerPanel::rebuildDetail()
     }
     resized();
     repaint();
+}
+
+void MixerPanel::knobMoved (int insertIndex, const juce::Identifier& prop)
+{
+    const auto insert = insertTree (insertIndex);
+    services.automationWriter.touch (insertKnobTarget (insert, insertIndex, prop),
+                                     insertKnobNormalised (insert, prop));
+}
+
+void MixerPanel::showKnobMenu (int insertIndex, const juce::Identifier& prop)
+{
+    auto insert = insertTree (insertIndex);
+    const bool isPan = prop == ids::pan;
+    automationmenu::show (services, insertKnobTarget (insert, insertIndex, prop),
+                          insertKnobNormalised (insert, prop),
+                          [insert, prop, isPan, &undo = services.project.getUndoManager()]
+                          () mutable { insert.setProperty (prop, isPan ? 0.0 : 0.8, &undo); });
 }
 
 void MixerPanel::showStripMenu (int insertIndex)

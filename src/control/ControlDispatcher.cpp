@@ -89,6 +89,7 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
             { "loopStart", project.getLoopStart() },
             { "loopEnd", project.getLoopEnd() },
             { "loopEnabled", project.isLoopEnabled() },
+            { "automationWrite", services.automationWriter.isArmed() },
             { "playing", engine.isPlaying() },
             { "positionTicks", engine.getPositionTicks() },
             { "activePatternId", (int) project.getRoot()[ids::activePattern] },
@@ -111,6 +112,8 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
             project.setLoopRange ((int) getOr (params, "loopStart", project.getLoopStart()),
                                   (int) getOr (params, "loopEnd", project.getLoopEnd()));
         if (has (params, "loopEnabled")) project.setLoopEnabled (getOr (params, "loopEnabled", false));
+        if (has (params, "automationWrite"))
+            services.automationWriter.setArmed (getOr (params, "automationWrite", false));
         return true;
     }
 
@@ -468,9 +471,10 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     if (method == "automation.create")
     {
         const auto targetType = getOr (params, "targetType", "").toString();
-        if (targetType != "channel" && targetType != "insert"
+        if (targetType != "channel" && targetType != "insert" && targetType != "channel-param"
             && targetType != "plugin-channel" && targetType != "plugin-insert")
-            throw ControlError { "targetType must be channel|insert|plugin-channel|plugin-insert" };
+            throw ControlError {
+                "targetType must be channel|insert|channel-param|plugin-channel|plugin-insert" };
 
         auto automation = services.createAutomationWithClip (
             targetType,
@@ -479,6 +483,59 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
             getOr (params, "name", "automation").toString(),
             (double) getOr (params, "initialValue", 0.5));
         return makeObj ({ { "id", (int) automation[ids::id] } });
+    }
+    if (method == "automation.list")
+    {
+        juce::Array<juce::var> out;
+        for (const auto source : project.automations())
+        {
+            if (! source.hasType (ids::AUTOMATION))
+                continue;
+            int numPoints = 0;
+            for (const auto point : source)
+                if (point.hasType (ids::POINT))
+                    ++numPoints;
+            out.add (makeObj ({ { "id", (int) source[ids::id] },
+                                { "name", source[ids::name].toString() },
+                                { "targetType", source[ids::targetType].toString() },
+                                { "targetId", (int) source[ids::targetId] },
+                                { "paramId", source[ids::paramId].toString() },
+                                { "numPoints", numPoints },
+                                { "writing", (bool) source[ids::writing] } }));
+        }
+        return out;
+    }
+    if (method == "automation.getPoints")
+    {
+        auto automation = project.getAutomationById ((int) getOr (params, "automationId", -1));
+        if (! automation.isValid())
+            throw ControlError { "unknown automationId" };
+        juce::Array<juce::var> points;
+        for (const auto point : automation)
+            if (point.hasType (ids::POINT))
+                points.add (makeObj ({ { "pos", (int) point[ids::posTicks] },
+                                       { "value", (double) point[ids::value] },
+                                       { "tension", (double) point[ids::tension] } }));
+        return points;
+    }
+    if (method == "automation.remove")
+    {
+        auto automation = project.getAutomationById ((int) getOr (params, "automationId", -1));
+        if (! automation.isValid())
+            throw ControlError { "unknown automationId" };
+
+        const int automationId = automation[ids::id];
+        for (auto track : project.playlist())
+            for (int i = track.getNumChildren(); --i >= 0;)
+            {
+                const auto clip = track.getChild (i);
+                if (clip.hasType (ids::CLIP)
+                    && clip[ids::clipType].toString() == "automation"
+                    && (int) clip[ids::automationId] == automationId)
+                    track.removeChild (i, &undo);
+            }
+        project.automations().removeChild (automation, &undo);
+        return true;
     }
     if (method == "automation.setPoints")
     {

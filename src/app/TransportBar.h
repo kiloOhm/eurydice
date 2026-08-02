@@ -16,6 +16,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
 
     std::function<void()> onPlay, onStop, onRecordToggled, onLoopToggled;
+    std::function<void()> onAutomationWriteToggled;
     std::function<void (double)> onTempoChanged;
     std::function<void (bool)> onSongModeChanged;
 
@@ -31,6 +32,7 @@ public:
     std::function<bool()>   getIsPlaying;
     std::function<bool()>   getIsRecording;
     std::function<bool()>   getLoopEnabled;
+    std::function<bool()>   getAutomationWrite;
 
     // Exposed so the owner can bracket tempo drags into one undo transaction
     // without this bar needing to know about the project model.
@@ -51,6 +53,7 @@ private:
     juce::TextButton patButton  { "PAT" };
     juce::TextButton songButton { "SONG" };
     juce::TextButton loopButton { "LOOP" };
+    juce::TextButton autoButton { "AUTO" };
     juce::Slider tempoSlider;
     juce::Label positionLabel;
 

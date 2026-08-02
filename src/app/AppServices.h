@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AutomationWriter.h"
 #include "model/ProjectModel.h"
 #include "engine/AudioEngine.h"
 #include "engine/GeneratorPool.h"
@@ -51,23 +52,19 @@ public:
                                               const juce::String& paramId, const juce::String& name,
                                               double initialValue)
     {
-        auto automation = project.addAutomation (targetType, targetId, paramId, name, initialValue);
-        const int lengthTicks = 4 * ids::ticksPerBar;
-
-        int trackIndex = 0;
-        for (int i = 0; i < project.numPlaylistTracks(); ++i)
-        {
-            bool free = true;
-            for (const auto clip : project.playlist().getChild (i))
-                if (clip.hasType (ids::CLIP) && (int) clip[ids::startTicks] < lengthTicks)
-                    free = false;
-            if (free) { trackIndex = i; break; }
-        }
-
-        auto clip = project.addPlaylistClip ("automation", trackIndex, 0, lengthTicks);
-        clip.setProperty (ids::automationId, (int) automation[ids::id], nullptr);
+        auto automation = AutomationWriter::createWithClip (project, targetType, targetId,
+                                                            paramId, name, initialValue);
+        // Creation used to be silent, which read as "nothing happened"; the
+        // host brings the playlist forward and flags the new clip.
+        if (onAutomationClipCreated)
+            if (auto clip = AutomationWriter::findClip (project, (int) automation[ids::id]);
+                clip.isValid())
+                onAutomationClipCreated (clip);
         return automation;
     }
+
+    // Set by the host window: show the playlist and highlight a fresh clip.
+    std::function<void (juce::ValueTree clip)> onAutomationClipCreated;
 
     // Captures live plugin state into the tree, then writes the file.
     bool saveProject (const juce::File& file)
@@ -113,6 +110,7 @@ public:
     AudioEngine         engine;
     EngineSync          engineSync;
     PluginWindowManager pluginWindows;
+    AutomationWriter    automationWriter { project, engine };
 
 private:
     void updateAudioSpec()

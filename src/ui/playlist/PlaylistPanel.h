@@ -19,6 +19,10 @@ public:
     // Asks the host to bring the piano roll forward.
     std::function<void()> onShowPianoRoll;
 
+    // Scrolls a freshly created clip into view and rings it for a moment, so
+    // "create automation clip" visibly does something.
+    void revealClip (juce::ValueTree clip);
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -46,6 +50,7 @@ private:
 
     juce::ValueTree clipAt (juce::Point<int>, bool& overRightEdge);
     void addClipAt (juce::Point<int>);
+    void showAutomationClipMenu (juce::ValueTree clip);
     bool loopRangeBounds (int& x0, int& x1) const;
     void paintTrackHeaders (juce::Graphics&);
     void paintRuler (juce::Graphics&);
@@ -74,6 +79,9 @@ private:
     double loopAnchorTicks = 0.0;
 
     double playheadTicks = -1.0;
+
+    juce::ValueTree revealedClip;
+    int revealFramesLeft = 0;   // counts down at timer rate
 
     juce::AudioFormatManager thumbFormats;
     juce::AudioThumbnailCache thumbCache { 64 };
