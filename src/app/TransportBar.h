@@ -15,8 +15,8 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
 
-    std::function<void()> onPlay, onStop, onRecordToggled, onLoopToggled;
-    std::function<void (double)> onTempoChanged;
+    std::function<void()> onPlay, onStop, onRecordToggled, onLoopToggled, onMetronomeToggled;
+    std::function<void (double)> onTempoChanged, onMetronomeLevelChanged;
     std::function<void (bool)> onSongModeChanged;
 
     // Panel toggle buttons route through the command manager so the menu,
@@ -31,10 +31,12 @@ public:
     std::function<bool()>   getIsPlaying;
     std::function<bool()>   getIsRecording;
     std::function<bool()>   getLoopEnabled;
+    std::function<bool()>   getMetronomeEnabled;
 
     void setTempoDisplay (double bpm);
     void setSongMode (bool songMode);
     void setRecordArmed (bool armed);
+    void setMetronomeLevelDisplay (double level);
 
     static constexpr int preferredHeight = 44;
 
@@ -47,6 +49,8 @@ private:
     juce::TextButton patButton  { "PAT" };
     juce::TextButton songButton { "SONG" };
     juce::TextButton loopButton { "LOOP" };
+    juce::TextButton metronomeButton { "CLICK" };
+    juce::Slider metronomeSlider;
     juce::Slider tempoSlider;
     juce::Label positionLabel;
 

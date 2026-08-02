@@ -27,6 +27,8 @@ enum
     transportToggleSongMode,
     transportToggleRecord,
     transportToggleLoop,
+    transportToggleMetronome,
+    transportCountIn,
 
     optionsAudioSettings,
     optionsScanPlugins,

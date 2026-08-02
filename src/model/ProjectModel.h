@@ -21,6 +21,25 @@ public:
     void   setTempo (double bpm)              { root.setProperty (ids::tempo, juce::jlimit (20.0, 999.0, bpm), &undo); }
     double getSwing() const                   { return root[ids::swing]; }
     void   setSwing (double s)                { root.setProperty (ids::swing, juce::jlimit (0.0, 1.0, s), &undo); }
+
+    // Swing is per pattern, falling back to the project value for patterns
+    // that never set one (which is every pattern in a pre-0.2 project).
+    bool patternOverridesSwing (const juce::ValueTree& pattern) const
+    {
+        return pattern.hasProperty (ids::swing);
+    }
+    double getSwingForPattern (const juce::ValueTree& pattern) const
+    {
+        return patternOverridesSwing (pattern) ? (double) pattern[ids::swing] : getSwing();
+    }
+    void setPatternSwing (juce::ValueTree pattern, double s)
+    {
+        pattern.setProperty (ids::swing, juce::jlimit (0.0, 1.0, s), &undo);
+    }
+    void clearPatternSwing (juce::ValueTree pattern)
+    {
+        pattern.removeProperty (ids::swing, &undo);
+    }
     bool   isSongMode() const                 { return root[ids::songMode]; }
     void   setSongMode (bool song)            { root.setProperty (ids::songMode, song, nullptr); }
 

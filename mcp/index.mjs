@@ -128,6 +128,10 @@ tool("daw_pattern_remove",
   "Delete a pattern and every playlist clip that references it. Fails if it is the last remaining pattern. patternId defaults to the active pattern.",
   { patternId: z.number().optional() }, "pattern.remove");
 
+tool("daw_pattern_set_swing",
+  "Set swing (0..1) for one pattern, overriding the project swing. Omit `swing` to drop the override and follow the project again. patternId defaults to the active pattern.",
+  { patternId: z.number().optional(), swing: z.number().min(0).max(1).optional() }, "pattern.setSwing");
+
 tool("daw_notes_get", "List a channel's notes in a pattern. patternId defaults to the active pattern.",
   { patternId: z.number().optional(), channelId: z.number() }, "notes.get");
 
@@ -174,6 +178,21 @@ tool("daw_plugins_list", "List scanned VST3/AU plugins with their pluginId strin
 tool("daw_plugins_scan", "Scan the system for VST3/AU plugins (runs in background).", {}, "plugins.scan");
 
 tool("daw_meters", "Live peak meters for all mixer inserts (call while playing to check levels).", {}, "meters.get");
+
+tool("daw_render_export",
+  "Render the project to a WAV (plus optional MP3 and stems). Renders the whole arrangement in song mode, or the active pattern otherwise; an armed loop is ignored unless loopRangeOnly is set.",
+  {
+    path: z.string().describe("destination .wav path; stems land beside it as '<name>-<stem>.wav'"),
+    mp3: z.boolean().optional().describe("also write a 320 kbps MP3 (needs the `lame` binary)"),
+    stems: z.enum(["none", "insert", "channel"]).optional()
+      .describe("'insert' = one wav per mixer insert, 'channel' = one wav per rack channel in isolation"),
+    loopRangeOnly: z.boolean().optional().describe("bound the render to the project's loop range"),
+    normalise: z.boolean().optional().describe("peak-normalise afterwards; stems get the master's gain"),
+    normaliseDb: z.number().min(-24).max(0).optional().describe("normalisation target in dBFS (default -0.3)"),
+    bitDepth: z.union([z.literal(16), z.literal(24), z.literal(32)]).optional(),
+    sampleRate: z.number().optional().describe("output sample rate; omit or 0 to keep the engine rate"),
+    tailSeconds: z.number().optional().describe("extra time so reverbs and releases ring out (default 2)"),
+  }, "render.export");
 
 tool("daw_project_save", "Save the project to a .eury file.", { path: z.string() }, "project.save");
 tool("daw_project_load", "Load a .eury project file.", { path: z.string() }, "project.load");

@@ -53,7 +53,13 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
     swingKnob.setRange (0.0, 1.0, 0.001);
     swingKnob.setWantsKeyboardFocus (false);
     swingKnob.setDoubleClickReturnValue (true, 0.0);
-    swingKnob.onValueChange = [this] { services.project.setSwing (swingKnob.getValue()); };
+    swingKnob.setTooltip ("Swing for this pattern — until you turn it, the project swing applies "
+                          "(\"...\" menu to go back)");
+    swingKnob.onValueChange = [this]
+    {
+        if (auto pat = activePattern(); pat.isValid())
+            services.project.setPatternSwing (pat, swingKnob.getValue());
+    };
     addAndMakeVisible (swingKnob);
 
     swingLabel.setFont (theme::uiFont (9.0f, true));
@@ -123,7 +129,10 @@ void ChannelRackPanel::refreshHeader()
     if (pat.isValid())
         lengthBox.setSelectedId ((int) pat[ids::lengthTicks] / ids::ticksPerStep,
                                  juce::dontSendNotification);
-    swingKnob.setValue (project.getSwing(), juce::dontSendNotification);
+    swingKnob.setValue (project.getSwingForPattern (pat), juce::dontSendNotification);
+    // The star marks a pattern that no longer follows the project swing.
+    swingLabel.setText (project.patternOverridesSwing (pat) ? "SWING*" : "SWING",
+                        juce::dontSendNotification);
 
     graphLane.setPattern (pat);
     graphLane.setChannel (selectedChannel());
@@ -216,6 +225,8 @@ void ChannelRackPanel::showPatternMenu()
     menu.addSeparator();
     menu.addItem (4, "Move left", index > 0);
     menu.addItem (5, "Move right", index < project.numPatterns() - 1);
+    menu.addSeparator();
+    menu.addItem (6, "Follow project swing", project.patternOverridesSwing (pattern));
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (patternMenuButton),
         [this, pattern, index] (int result) mutable
@@ -249,6 +260,11 @@ void ChannelRackPanel::showPatternMenu()
             else if (result == 4 || result == 5)
             {
                 services.project.movePattern (index, result == 4 ? index - 1 : index + 1);
+                refreshHeader();
+            }
+            else if (result == 6)
+            {
+                services.project.clearPatternSwing (pattern);
                 refreshHeader();
             }
         });

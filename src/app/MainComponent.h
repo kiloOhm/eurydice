@@ -8,6 +8,7 @@
 #include "ProjectFileState.h"
 #include "TransportBar.h"
 #include "ui/common/FloatingPanel.h"
+#include "engine/OfflineRenderer.h"
 #include "ui/rack/ChannelEditor.h"
 
 // The whole app surface: menu bar, transport bar with panel toggles, browser
@@ -49,6 +50,7 @@ private:
     void showPanelContextMenu (juce::CommandID);
     void showAudioSettings();
     void showExportDialog();
+    void chooseExportFile (const OfflineRenderer::Options&);
     void saveProject (bool forceChooser);
     void openProjectInteractive();
     void newProject();

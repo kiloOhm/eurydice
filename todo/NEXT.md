@@ -45,11 +45,14 @@ hardcore / frenchcore.
 - Piano roll: chop/glue, arpeggiator, strum, per-note pan lane, slide notes.
 - Autosave and crash recovery.
 - Plugin sandboxing — a crashing VST currently takes the whole DAW down.
-- Export: render only the loop range; normalisation; per-channel (not just
-  per-insert) stems.
 - Audio recording: loop-record takes and comping.
-- Metronome and count-in.
-- Per-pattern swing (currently global only).
+- ~~Export options~~ — dialog with bit depth, sample rate, loop-range-only,
+  MP3, per-insert or per-channel stems and peak normalisation; a render also
+  ignores an armed loop instead of being truncated by it.
+- ~~Metronome and count-in~~ — `CLICK` in the transport bar with a level, ⇧⌘M,
+  and an optional one- or two-bar count-in before armed recording.
+- ~~Per-pattern swing~~ — the rack swing knob now writes to the pattern;
+  patterns without one follow the project value.
 
 ## Known smaller gaps
 

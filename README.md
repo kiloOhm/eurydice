@@ -26,7 +26,7 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 
 | Area | Notes |
 |---|---|
-| Channel rack | Step sequencer with 4-step group tinting, swing, per-channel pan/volume, insert routing |
+| Channel rack | Step sequencer with 4-step group tinting, per-pattern swing, per-channel pan/volume, insert routing |
 | Piano roll | Draw/paint/move/resize, right-click delete, marquee select, velocity lane, ghost notes from other channels, chord stamp, scale highlighting |
 | Playlist | Free tracks; pattern, audio and automation clips; drag/resize/cross-track move; alt-resize time-stretches audio |
 | Mixer | 32 inserts + master, 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters |
@@ -35,7 +35,8 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 | Automation | Right-click any parameter (including plugin params) → automation clip with a tension-curve editor |
 | Audio | Input recording to audio clips; Rubber Band R3 offline time-stretch |
 | MIDI | CoreMIDI input with hot-plug, note recording, FL-style typing keyboard |
-| Export | WAV (16/24-bit), MP3 via LAME, per-insert stems |
+| Export | Dialog with bit depth, sample rate, loop-range-only, MP3 via LAME, per-insert or per-channel stems, peak normalisation |
+| Metronome | Synthesised click accented on the bar, level control, optional one- or two-bar count-in before armed recording |
 
 ### Getting around
 
@@ -49,7 +50,8 @@ for brightness and media by default — either use `Fn`+the key, or turn on
 
 `Space` play/stop · `Home` rewind · `⌘L` song mode · `⌘E` arm recording ·
 `⌘N`/`⌘O`/`⌘S`/`⇧⌘S` project · `⌘R` export · `⌘Z`/`⇧⌘Z` undo/redo ·
-`⌘,` audio settings · `Z`–`M` and `Q`–`P` rows play notes · `,`/`.` shift octave.
+`⇧⌘L` loop · `⇧⌘M` metronome · `⌘,` audio settings ·
+`Z`–`M` and `Q`–`P` rows play notes · `,`/`.` shift octave.
 
 Drag a panel near an edge to dock it to that half of the desktop, or into a
 corner for a quarter — a preview shows the target region before you release,

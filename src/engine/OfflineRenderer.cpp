@@ -18,6 +18,93 @@ std::unique_ptr<juce::AudioFormatWriter> makeWavWriter (const juce::File& file, 
     }
     return std::unique_ptr<juce::AudioFormatWriter> (writer);
 }
+
+std::unique_ptr<juce::AudioFormatReader> makeWavReader (const juce::File& file)
+{
+    juce::WavAudioFormat wav;
+    return std::unique_ptr<juce::AudioFormatReader> (
+        wav.createReaderFor (new juce::FileInputStream (file), true));
+}
+
+float peakOfFile (const juce::File& file)
+{
+    auto reader = makeWavReader (file);
+    if (reader == nullptr || reader->lengthInSamples <= 0)
+        return 0.0f;
+
+    juce::Range<float> levels[2];
+    reader->readMaxLevels (0, reader->lengthInSamples, levels, (int) juce::jmin (2u, reader->numChannels));
+
+    float peak = 0.0f;
+    for (const auto& range : levels)
+        peak = juce::jmax (peak, std::abs (range.getStart()), std::abs (range.getEnd()));
+    return peak;
+}
+
+// Rewrites the file in place with a gain applied and, when the target rate
+// differs, resampled. Rendering streams straight to disk, so both happen here
+// rather than by holding a whole arrangement in memory.
+bool rewriteFile (const juce::File& file, float gain, int targetSampleRate, int bitDepth)
+{
+    auto reader = makeWavReader (file);
+    if (reader == nullptr)
+        return false;
+
+    const double sourceRate = reader->sampleRate;
+    const int rate = targetSampleRate > 0 ? targetSampleRate : juce::roundToInt (sourceRate);
+    const juce::int64 numIn = reader->lengthInSamples;
+    const bool resample = rate != juce::roundToInt (sourceRate) && sourceRate > 0.0;
+    const juce::int64 numOut = resample
+                                   ? (juce::int64) std::llround ((double) numIn * rate / sourceRate)
+                                   : numIn;
+
+    juce::TemporaryFile temp (file);
+    auto writer = makeWavWriter (temp.getFile(), (double) rate, bitDepth);
+    if (writer == nullptr)
+        return false;
+
+    constexpr int chunk = 8192;
+    juce::AudioBuffer<float> buffer (2, chunk);
+
+    if (resample)
+    {
+        juce::AudioFormatReaderSource source (reader.get(), false);
+        juce::ResamplingAudioSource resampler (&source, false, 2);
+        resampler.setResamplingRatio (sourceRate / rate);
+        resampler.prepareToPlay (chunk, (double) rate);
+
+        for (juce::int64 pos = 0; pos < numOut;)
+        {
+            const int n = (int) juce::jmin<juce::int64> (chunk, numOut - pos);
+            juce::AudioSourceChannelInfo info (&buffer, 0, n);
+            resampler.getNextAudioBlock (info);
+            buffer.applyGain (0, n, gain);
+            writer->writeFromAudioSampleBuffer (buffer, 0, n);
+            pos += n;
+        }
+        resampler.releaseResources();
+    }
+    else
+    {
+        for (juce::int64 pos = 0; pos < numIn;)
+        {
+            const int n = (int) juce::jmin<juce::int64> (chunk, numIn - pos);
+            reader->read (&buffer, 0, n, pos, true, true);
+            buffer.applyGain (0, n, gain);
+            writer->writeFromAudioSampleBuffer (buffer, 0, n);
+            pos += n;
+        }
+    }
+
+    writer = nullptr;
+    reader = nullptr;   // must close before the temporary replaces it
+    return temp.overwriteTargetFileWithTemporary();
+}
+
+juce::String sanitiseForFileName (const juce::String& name)
+{
+    return name.replaceCharacters ("/\\:", "---").trim();
+}
 }
 
 juce::File OfflineRenderer::findLameBinary()
@@ -34,8 +121,20 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
     Result result;
 
     // --- determine render range in ticks ---
+    double startTick = 0.0;
     double endTick = 0.0;
-    if (project.isSongMode())
+
+    if (opts.loopRangeOnly)
+    {
+        startTick = (double) project.getLoopStart();
+        endTick   = (double) project.getLoopEnd();
+        if (endTick <= startTick)
+        {
+            result.error = "Loop range is empty — mark one in the playlist ruler first.";
+            return result;
+        }
+    }
+    else if (project.isSongMode())
     {
         for (const auto track : project.playlist())
             for (const auto clip : track)
@@ -50,7 +149,7 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
             endTick = (double) (int) pattern[ids::lengthTicks];
     }
 
-    if (endTick <= 0.0)
+    if (endTick <= startTick)
     {
         result.error = "Nothing to render (empty pattern/playlist).";
         return result;
@@ -59,12 +158,12 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
     const double sampleRate = engine.getSampleRate();
     const int blockSize = engine.getBlockSize();
     const double tps = (project.getTempo() / 60.0) * ids::ticksPerQuarter / sampleRate;
-    const juce::int64 mainSamples = (juce::int64) std::ceil (endTick / tps);
+    const juce::int64 mainSamples = (juce::int64) std::ceil ((endTick - startTick) / tps);
     const juce::int64 tailSamples = (juce::int64) (opts.tailSeconds * sampleRate);
 
-    // --- figure out which inserts get stems ---
+    // --- figure out what gets a stem ---
     std::vector<int> stemInserts;
-    if (opts.renderStems)
+    if (opts.stems == Stems::perInsert)
     {
         std::set<int> used;
         for (int i = 0; i < project.numChannels(); ++i)
@@ -80,6 +179,9 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
         stemInserts.assign (used.begin(), used.end());
     }
 
+    const int numChannels = juce::jmin (project.numChannels(), AudioEngine::maxChannels);
+    const bool channelStems = opts.stems == Stems::perChannel;
+
     // --- writers ---
     auto masterWriter = makeWavWriter (opts.wavFile, sampleRate, opts.bitDepth);
     if (masterWriter == nullptr)
@@ -89,26 +191,58 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
     }
     result.writtenFiles.add (opts.wavFile.getFullPathName());
 
-    std::map<int, std::unique_ptr<juce::AudioFormatWriter>> stemWriters;
+    // Stem names come from the project, so two channels can easily ask for the
+    // same file; the index keeps them apart instead of one overwriting the other.
+    std::set<juce::String> usedNames;
+    auto stemFileFor = [&opts, &usedNames] (const juce::String& rawName, int index)
+    {
+        auto name = sanitiseForFileName (rawName);
+        if (name.isEmpty())
+            name = "Stem";
+        if (! usedNames.insert (name).second)
+            name << " " << (index + 1);
+        return opts.wavFile.getSiblingFile (
+            opts.wavFile.getFileNameWithoutExtension() + "-" + name + ".wav");
+    };
+
+    std::map<int, std::unique_ptr<juce::AudioFormatWriter>> insertStemWriters, channelStemWriters;
+
     for (int idx : stemInserts)
     {
-        auto name = project.getInsert (idx)[ids::name].toString()
-                        .replaceCharacters ("/\\:", "---");
-        auto file = opts.wavFile.getSiblingFile (
-            opts.wavFile.getFileNameWithoutExtension() + "-" + name + ".wav");
+        const auto file = stemFileFor (project.getInsert (idx)[ids::name].toString(), idx);
         if (auto writer = makeWavWriter (file, sampleRate, opts.bitDepth))
         {
-            stemWriters[idx] = std::move (writer);
+            insertStemWriters[idx] = std::move (writer);
             result.writtenFiles.add (file.getFullPathName());
         }
     }
 
+    if (channelStems)
+    {
+        for (int i = 0; i < numChannels; ++i)
+        {
+            const auto file = stemFileFor (project.getChannel (i)[ids::name].toString(), i);
+            if (auto writer = makeWavWriter (file, sampleRate, opts.bitDepth))
+            {
+                channelStemWriters[i] = std::move (writer);
+                result.writtenFiles.add (file.getFullPathName());
+            }
+        }
+    }
+
     // --- render ---
+    const bool metronomeWasOn = engine.isMetronomeEnabled();
+    engine.setMetronomeEnabled (false);   // a click in a bounce is never wanted
+
     engine.detachFromDevice();
+    engine.setChannelStemCapture (channelStems);
+    // A loop armed for editing must not truncate the render: the range is an
+    // explicit option here, never an implicit one.
+    engine.setLoopBypassed (true);
     engine.prepareOffline (sampleRate, blockSize);
 
     engine.stop();
-    engine.setPositionTicks (0.0);
+    engine.setPositionTicks (startTick);
     engine.play();
 
     juce::AudioBuffer<float> out (2, blockSize);
@@ -131,8 +265,10 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
         engine.processBlockOffline (outPtrs, 2, n);
 
         masterWriter->writeFromAudioSampleBuffer (out, 0, n);
-        for (auto& [idx, writer] : stemWriters)
+        for (auto& [idx, writer] : insertStemWriters)
             writer->writeFromAudioSampleBuffer (engine.getInsertBusForStem (idx), 0, n);
+        for (auto& [idx, writer] : channelStemWriters)
+            writer->writeFromAudioSampleBuffer (engine.getChannelBusForStem (idx), 0, n);
 
         rendered += n;
         if (opts.progress)
@@ -141,9 +277,32 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
 
     engine.stop();
     masterWriter = nullptr;
-    stemWriters.clear();
+    insertStemWriters.clear();
+    channelStemWriters.clear();
 
+    engine.setChannelStemCapture (false);
+    engine.setLoopBypassed (false);
+    engine.setMetronomeEnabled (metronomeWasOn);
     engine.reattachToDevice();   // re-prepares via audioDeviceAboutToStart
+
+    // --- normalise + sample-rate conversion ---
+    float gain = 1.0f;
+    if (opts.normalise)
+    {
+        const float peak = peakOfFile (opts.wavFile);
+        if (peak > 1.0e-6f)
+            gain = (float) juce::Decibels::decibelsToGain (opts.normaliseTargetDb) / peak;
+        else
+            result.error = "Normalisation skipped: the render is silent.";
+    }
+
+    const int targetRate = opts.sampleRate > 0 ? opts.sampleRate : juce::roundToInt (sampleRate);
+    // Stems take the master's gain, not their own peak, so the balance between
+    // them still adds up to the mix.
+    if (gain != 1.0f || targetRate != juce::roundToInt (sampleRate))
+        for (const auto& path : result.writtenFiles)
+            if (! rewriteFile (juce::File (path), gain, targetRate, opts.bitDepth))
+                result.error = "Could not post-process " + juce::File (path).getFileName();
 
     // --- mp3 ---
     if (opts.renderMp3)

@@ -94,6 +94,90 @@ TEST (SequencerEngine, SwingDelaysOddSteps)
     EXPECT_GT (rmsOf (out, swungOnset, 2048), 0.01f);
 }
 
+TEST (SequencerEngine, PatternSwingOverridesTheProjectSwing)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 1 * ids::ticksPerStep);
+    fx.model.setSwing (0.0);
+    fx.model.setPatternSwing (fx.model.getPattern (0), 1.0);
+    fx.sync.rebuildNow();
+
+    const double tps = fx.ticksPerSample();
+    const int unswungOnset = (int) (240 / tps);
+    const int swungOnset   = (int) ((240 + 120) / tps);
+
+    auto out = fx.renderFromStart (swungOnset + 8192);
+    EXPECT_LT (rmsOf (out, unswungOnset, swungOnset - unswungOnset - 256), 1.0e-5f)
+        << "the pattern swing was ignored";
+    EXPECT_GT (rmsOf (out, swungOnset, 2048), 0.01f);
+}
+
+// The override is the presence of the property, not a non-zero value: a
+// pattern can deliberately stay straight while the project swings.
+TEST (SequencerEngine, PatternSwingOfZeroBeatsANonZeroProjectSwing)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 1 * ids::ticksPerStep);
+    fx.model.setSwing (1.0);
+    fx.model.setPatternSwing (fx.model.getPattern (0), 0.0);
+    fx.sync.rebuildNow();
+
+    const int unswungOnset = (int) (240 / fx.ticksPerSample());
+    auto out = fx.renderFromStart (unswungOnset + 8192);
+    EXPECT_GT (rmsOf (out, unswungOnset, 2048), 0.01f) << "the note was swung anyway";
+}
+
+TEST (SequencerEngine, PatternWithoutSwingFollowsTheProject)
+{
+    EngineFixture fx;
+    auto pattern = fx.model.getPattern (0);
+    ASSERT_FALSE (fx.model.patternOverridesSwing (pattern));
+
+    fx.model.setSwing (0.6);
+    fx.sync.rebuildNow();
+    auto snap = fx.engine.getPendingSnapshot();
+    ASSERT_NE (snap, nullptr);
+    ASSERT_FALSE (snap->patterns.empty());
+    EXPECT_DOUBLE_EQ (snap->patterns[0].swing, 0.6);
+
+    // Clearing the override goes back to following the project.
+    fx.model.setPatternSwing (pattern, 0.1);
+    fx.model.clearPatternSwing (pattern);
+    fx.sync.rebuildNow();
+    snap = fx.engine.getPendingSnapshot();
+    ASSERT_NE (snap, nullptr);
+    EXPECT_FALSE (fx.model.patternOverridesSwing (pattern));
+    EXPECT_DOUBLE_EQ (snap->patterns[0].swing, 0.6);
+}
+
+TEST (SequencerEngine, PatternsSwingIndependently)
+{
+    EngineFixture fx;
+    soloNoteAt (fx, 1 * ids::ticksPerStep);
+
+    auto straight = fx.model.getPattern (0);
+    auto swung = fx.model.clonePattern ((int) straight[ids::id]);
+    fx.model.setPatternSwing (straight, 0.0);
+    fx.model.setPatternSwing (swung, 1.0);
+    fx.sync.rebuildNow();
+
+    auto snap = fx.engine.getPendingSnapshot();
+    ASSERT_NE (snap, nullptr);
+    ASSERT_EQ (snap->patterns.size(), 2u);
+    EXPECT_DOUBLE_EQ (snap->patterns[0].swing, 0.0);
+    EXPECT_DOUBLE_EQ (snap->patterns[1].swing, 1.0);
+
+    const double tps = fx.ticksPerSample();
+    const int unswungOnset = (int) (240 / tps);
+    const int swungOnset   = (int) ((240 + 120) / tps);
+
+    fx.model.getRoot().setProperty (ids::activePattern, (int) swung[ids::id], nullptr);
+    fx.sync.rebuildNow();
+    auto out = fx.renderFromStart (swungOnset + 8192);
+    EXPECT_LT (rmsOf (out, unswungOnset, swungOnset - unswungOnset - 256), 1.0e-5f);
+    EXPECT_GT (rmsOf (out, swungOnset, 2048), 0.01f);
+}
+
 TEST (SequencerEngine, PatternLoopsInPatternMode)
 {
     EngineFixture fx;

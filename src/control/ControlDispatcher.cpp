@@ -76,7 +76,9 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         {
             const auto p = project.getPattern (i);
             patterns.add (makeObj ({ { "id", (int) p[ids::id] }, { "name", p[ids::name].toString() },
-                                     { "lengthTicks", (int) p[ids::lengthTicks] } }));
+                                     { "lengthTicks", (int) p[ids::lengthTicks] },
+                                     { "swing", project.getSwingForPattern (p) },
+                                     { "swingOverridden", project.patternOverridesSwing (p) } }));
         }
 
         return makeObj ({
@@ -134,6 +136,17 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         auto p = requirePattern (params);
         project.getRoot().setProperty (ids::activePattern, (int) p[ids::id], nullptr);
         return true;
+    }
+    if (method == "pattern.setSwing")
+    {
+        auto pattern = requirePattern (params);
+        // A null (or missing) swing drops the override back to the project value.
+        if (has (params, "swing") && ! getOr (params, "swing", {}).isVoid())
+            project.setPatternSwing (pattern, (double) getOr (params, "swing", 0.0));
+        else
+            project.clearPatternSwing (pattern);
+        return makeObj ({ { "swing", project.getSwingForPattern (pattern) },
+                          { "swingOverridden", project.patternOverridesSwing (pattern) } });
     }
     if (method == "pattern.setLength")
     {
@@ -462,8 +475,25 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         OfflineRenderer::Options opts;
         opts.wavFile     = juce::File (path).withFileExtension (".wav");
         opts.renderMp3   = (bool) getOr (params, "mp3", false);
-        opts.renderStems = (bool) getOr (params, "stems", false);
         opts.tailSeconds = (double) getOr (params, "tailSeconds", 2.0);
+        opts.loopRangeOnly = (bool) getOr (params, "loopRangeOnly", false);
+        opts.normalise   = (bool) getOr (params, "normalise", false);
+        opts.normaliseTargetDb = (double) getOr (params, "normaliseDb", -0.3);
+        opts.bitDepth    = (int) getOr (params, "bitDepth", 24);
+        opts.sampleRate  = (int) getOr (params, "sampleRate", 0);
+
+        if (opts.bitDepth != 16 && opts.bitDepth != 24 && opts.bitDepth != 32)
+            throw ControlError { "bitDepth must be 16|24|32" };
+
+        // Accepts the pre-0.2 boolean spelling of `stems` as "per insert".
+        const auto stems = getOr (params, "stems", "none");
+        if (stems.isBool())
+            opts.stems = (bool) stems ? OfflineRenderer::Stems::perInsert
+                                      : OfflineRenderer::Stems::none;
+        else if (stems.toString() == "insert")  opts.stems = OfflineRenderer::Stems::perInsert;
+        else if (stems.toString() == "channel") opts.stems = OfflineRenderer::Stems::perChannel;
+        else if (stems.toString() != "none")
+            throw ControlError { "stems must be none|insert|channel" };
 
         const auto r = OfflineRenderer::render (engine, project, opts);
         if (! r.ok)
