@@ -1013,3 +1013,77 @@ TEST (BuiltinEffectEditor, FollowsUndoOfAParameterChange)
     undo.undo();
     EXPECT_DOUBLE_EQ ((double) slot[ids::fxDrive], 6.0);
 }
+
+TEST (CompressorEffect, DefaultSettingsAreRoughlyUnityOnABusyBus)
+{
+    // A fresh compressor dropped on a bus must not gut the level: the old
+    // defaults (-18 dB, 4:1, no makeup) cost a kick bus ~13 dB.
+    test::EngineFixture fixture;
+
+    auto dry = fixture.renderFromStart (44100);
+    const float dryRms = test::rmsOf (dry, 0, dry.getNumSamples());
+
+    addBuiltinSlot (fixture, 0, 0, CompressorEffect::identifier());
+    auto wet = fixture.renderFromStart (44100);
+    const float wetRms = test::rmsOf (wet, 0, wet.getNumSamples());
+
+    const float deltaDb = juce::Decibels::gainToDecibels (wetRms / juce::jmax (1.0e-9f, dryRms));
+    std::cout << "COMP_DEFAULTS dryRms=" << dryRms << " wetRms=" << wetRms
+              << " delta=" << deltaDb << " dB\n";
+    EXPECT_GT (deltaDb, -2.0f) << "default compressor costs more than 2 dB RMS";
+    EXPECT_LT (deltaDb,  2.0f) << "default compressor adds more than 2 dB RMS";
+}
+
+TEST (CompressorEffect, DuckPresetPumpsABusFromTheKick)
+{
+    // The one-click "Sidechain duck" menu action writes this exact slot via
+    // configureDuckSlot; prove it audibly ducks through the real engine by
+    // watching the pad insert's own bus peak around a kick hit.
+    test::EngineFixture fixture;
+
+    auto kickChannel = fixture.model.getChannel (0);
+    kickChannel.setProperty (ids::insertIndex, 1, nullptr);
+
+    auto pad = fixture.model.addChannel ("synth", "Pad");
+    pad.setProperty (ids::insertIndex, 2, nullptr);
+    auto pattern = fixture.model.getPattern (0);
+    auto lane = fixture.model.getOrCreateLane (pattern, pad[ids::id]);
+    fixture.model.addNote (lane, 48, 0, 16 * ids::ticksPerStep);   // whole bar
+
+    juce::ValueTree slot (ids::SLOT);
+    slot.setProperty (ids::slotIndex, 0, nullptr);
+    CompressorEffect::configureDuckSlot (slot, 1, nullptr);
+    fixture.model.getInsert (2).appendChild (slot, nullptr);
+    fixture.sync.rebuildNow();
+
+    // Render block by block and track the pad bus peak per block.
+    fixture.engine.stop();
+    fixture.engine.setPositionTicks (0.0);
+    fixture.engine.play();
+    std::vector<float> padPeak;
+    juce::AudioBuffer<float> out (2, test::kBlockSize);
+    for (int b = 0; b < 120; ++b)   // ~1.4 s at 44.1k
+    {
+        float* ptrs[2] = { out.getWritePointer (0), out.getWritePointer (1) };
+        fixture.engine.processBlockOffline (ptrs, 2, test::kBlockSize);
+        padPeak.push_back (fixture.engine.getInsertPeak (2, 0));
+    }
+    fixture.engine.stop();
+
+    // Second kick hit lands at tick 960 = sample ~18900 = block ~37.
+    const double samplesPerTick = test::kSampleRate / ((140.0 / 60.0) * 960.0);
+    const int hitBlock = (int) (960.0 * samplesPerTick / test::kBlockSize) + 1;
+    const int preBlock = hitBlock - 3;   // just before the hit: duck released
+
+    ASSERT_GT ((int) padPeak.size(), hitBlock + 2);
+    const float before = padPeak[(size_t) preBlock];
+    const float atHit  = juce::jmin (padPeak[(size_t) hitBlock], padPeak[(size_t) hitBlock + 1]);
+
+    auto* duck = dynamic_cast<CompressorEffect*> (fixture.builtinEffects.peek (2, 0).get());
+    ASSERT_NE (duck, nullptr);
+    EXPECT_EQ (duck->getSidechainInsert(), 1);
+
+    // The pad bus must visibly pump: several dB down right at the kick.
+    EXPECT_LT (atHit, before * 0.72f)
+        << "pad peak before hit " << before << ", at hit " << atHit;
+}

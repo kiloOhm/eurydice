@@ -36,13 +36,18 @@ public:
         return lastReductionDb.load (std::memory_order_relaxed);
     }
 
+    // Writes the one-click "duck this bus from <source>" preset onto a slot:
+    // compressor id, pumping ballistics (fast attack, deep ratio, ~100 ms
+    // release) and the sidechain source. Shared by the mixer menu and tests.
+    static void configureDuckSlot (juce::ValueTree slot, int sourceInsert, juce::UndoManager*);
+
 private:
-    std::atomic<float> thresholdDb { -18.0f };
-    std::atomic<float> ratio { 4.0f };
+    std::atomic<float> thresholdDb { -12.0f };
+    std::atomic<float> ratio { 2.5f };
     std::atomic<float> attackMs { 8.0f };
     std::atomic<float> releaseMs { 120.0f };
     std::atomic<float> kneeDb { 6.0f };
-    std::atomic<float> makeupDb { 0.0f };
+    std::atomic<float> makeupDb { 2.5f };
     std::atomic<float> scHpFreq { 20.0f };
     std::atomic<float> mix { 1.0f };
     std::atomic<int> sidechainInsert { -1 };

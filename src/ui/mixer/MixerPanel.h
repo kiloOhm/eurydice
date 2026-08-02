@@ -62,6 +62,8 @@ private:
     juce::ValueTree observedRoot;
 
     void rebuildStrips();
+    int firstFreeSlot (int insertIndex) const;
+    void createDuck (int insertIndex, int sourceInsert);
 
     juce::Viewport stripViewport;
     juce::Component stripContainer;

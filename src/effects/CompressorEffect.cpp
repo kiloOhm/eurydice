@@ -16,12 +16,15 @@ const juce::String& CompressorEffect::displayName()
 const std::vector<fx::ParamSpec>& CompressorEffect::specs()
 {
     static const std::vector<fx::ParamSpec> s {
-        { ids::fxThreshold, "Thresh", -60.0,    0.0, 1.0,  -18.0, " dB", 1 },
-        { ids::fxRatio,     "Ratio",    1.0,   20.0, 0.4,    4.0, ":1",  1 },
+        // Defaults tuned so a fresh instance is roughly unity RMS on a busy
+        // bus (gentle 2.5:1 over a soft knee, makeup covering the reduction);
+        // the old -18/4:1/no-makeup start cost a kick bus ~5 dB.
+        { ids::fxThreshold, "Thresh", -60.0,    0.0, 1.0,  -12.0, " dB", 1 },
+        { ids::fxRatio,     "Ratio",    1.0,   20.0, 0.4,    2.5, ":1",  1 },
         { ids::fxAttack,    "Atk",      0.1,  200.0, 0.35,   8.0, " ms", 1 },
         { ids::fxRelease,   "Rel",      5.0, 1000.0, 0.4,  120.0, " ms", 0 },
         { ids::fxKnee,      "Knee",     0.0,   24.0, 1.0,    6.0, " dB", 1 },
-        { ids::fxMakeup,    "Makeup", -12.0,   24.0, 1.0,    0.0, " dB", 1 },
+        { ids::fxMakeup,    "Makeup", -12.0,   24.0, 1.0,    2.5, " dB", 1 },
         { ids::fxScHpFreq,  "SC HP",   20.0, 2000.0, 0.3,   20.0, " Hz", 0 },
         { ids::fxMix,       "Mix",      0.0,    1.0, 1.0,    1.0, {},    2 },
         { ids::fxSidechain, "Sidechain", -1.0, 32.0, 1.0,   -1.0, {},    0, {}, true },
@@ -132,4 +135,19 @@ void CompressorEffect::process (juce::AudioBuffer<float>& stereoBus, int numSamp
     }
 
     lastReductionDb.store (maxReduction, std::memory_order_relaxed);
+}
+
+void CompressorEffect::configureDuckSlot (juce::ValueTree slot, int sourceInsert,
+                                          juce::UndoManager* undo)
+{
+    slot.setProperty (ids::pluginId, identifier(), undo);
+    slot.setProperty (ids::pluginState, juce::String(), nullptr);
+    BuiltinEffect::writeDefaults (slot, specs(), undo);
+    slot.setProperty (ids::fxThreshold, -30.0, undo);
+    slot.setProperty (ids::fxRatio,       8.0, undo);
+    slot.setProperty (ids::fxAttack,      0.5, undo);
+    slot.setProperty (ids::fxRelease,   100.0, undo);
+    slot.setProperty (ids::fxKnee,        3.0, undo);
+    slot.setProperty (ids::fxMakeup,      0.0, undo);
+    slot.setProperty (ids::fxSidechain, sourceInsert, undo);
 }

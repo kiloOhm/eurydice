@@ -2,6 +2,7 @@
 #include "app/Theme.h"
 #include "model/UndoGesture.h"
 #include "ui/automation/AutomationMenu.h"
+#include "effects/CompressorEffect.h"
 
 namespace
 {
@@ -329,6 +330,16 @@ void MixerPanel::showStripMenu (int insertIndex)
                       : juce::String ("Name after channel"),
                   routedChannels.size() == 1);
     menu.addSeparator();
+
+    // One-click sidechain pump: a compressor keyed from another insert.
+    juce::PopupMenu duckMenu;
+    const bool haveFreeSlot = firstFreeSlot (insertIndex) >= 0;
+    for (int i = 0; i < services.project.numInserts(); ++i)
+        if (i != insertIndex)
+            duckMenu.addItem (20000 + i, "from " + insertTree (i)[ids::name].toString(),
+                              haveFreeSlot);
+    menu.addSubMenu ("Sidechain duck", duckMenu);
+    menu.addSeparator();
     menu.addSubMenu ("Create automation clip", automationMenu);
 
     menu.showMenuAsync ({}, [this, insertIndex, routedChannels] (int result)
@@ -367,6 +378,11 @@ void MixerPanel::showStripMenu (int insertIndex)
                 ins.setProperty (ids::name, routedChannels[0],
                                  &services.project.getUndoManager());
             }
+            return;
+        }
+        if (result >= 20000)
+        {
+            createDuck (insertIndex, result - 20000);
             return;
         }
 
@@ -608,6 +624,34 @@ void MixerPanel::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree
         rebuildDetail();
     else if (child.hasType (ids::INSERT))
         rebuildStrips();
+}
+
+int MixerPanel::firstFreeSlot (int insertIndex) const
+{
+    for (int s = 0; s < (int) effectSlots.size(); ++s)
+    {
+        auto slot = const_cast<MixerPanel*> (this)->getSlotTree (insertIndex, s, false);
+        if (! slot.isValid() || slot[ids::pluginId].toString().isEmpty())
+            return s;
+    }
+    return -1;
+}
+
+// One-click genre pump: a compressor in the first free slot, keyed from
+// another insert, with fast-attack / deep-ratio ducking settings rather than
+// the gentle bus defaults.
+void MixerPanel::createDuck (int insertIndex, int sourceInsert)
+{
+    const int slotIndex = firstFreeSlot (insertIndex);
+    if (slotIndex < 0)
+        return;
+
+    auto& undo = services.project.getUndoManager();
+    const undoGesture::Scoped step (services.project, "Sidechain duck");
+    CompressorEffect::configureDuckSlot (getSlotTree (insertIndex, slotIndex, true),
+                                         sourceInsert, &undo);
+    selectInsert (insertIndex);
+    rebuildDetail();
 }
 
 // (Re)creates one strip per insert; also runs at construction. Rebuilding on
