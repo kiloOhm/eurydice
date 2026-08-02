@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <vector>
 #include "Generator.h"
@@ -60,12 +61,24 @@ struct AutomationPoint
 
 struct AutomationSnapshot
 {
-    enum class Kind { channelVolume, channelPan, insertVolume, insertPan, pluginParam };
+    enum class Kind { channelVolume, channelPan, insertVolume, insertPan,
+                      pluginParam, generatorParam };
     Kind kind = Kind::channelVolume;
     int  channelIndex = -1;                       // for channel* kinds
     int  insertIndex = -1;                        // for insert* kinds
     juce::AudioProcessorParameter* param = nullptr;   // pluginParam
     std::shared_ptr<HostedPlugin> keepAlive;          // pins param's owner
+
+    // generatorParam: a built-in sampler/synth knob. genRange maps the stored
+    // 0..1 value onto the parameter's own units.
+    std::atomic<float>* genParam = nullptr;
+    juce::NormalisableRange<float> genRange;
+    std::shared_ptr<Generator> genKeepAlive;
+
+    // A write pass is recording this source right now, so the engine must
+    // leave the parameter to the live control instead of replaying the curve.
+    bool writing = false;
+
     std::vector<AutomationPoint> points;              // sorted by posTicks
 
     float valueAt (double localTicks) const

@@ -395,6 +395,9 @@ void AudioEngine::applyAutomation (const EngineSnapshot& snap, double tick)
             continue;
 
         const auto& automation = snap.automations[(size_t) clip.automationIndex];
+        if (automation.writing)
+            continue;
+
         const float value = automation.valueAt (tick - clip.startTicks);
 
         switch (automation.kind)
@@ -418,6 +421,11 @@ void AudioEngine::applyAutomation (const EngineSnapshot& snap, double tick)
             case AutomationSnapshot::Kind::pluginParam:
                 if (automation.param != nullptr)
                     automation.param->setValueNotifyingHost (value);
+                break;
+            case AutomationSnapshot::Kind::generatorParam:
+                if (automation.genParam != nullptr)
+                    automation.genParam->store (automation.genRange.convertFrom0to1 (value),
+                                                std::memory_order_relaxed);
                 break;
         }
     }

@@ -28,6 +28,12 @@ TransportBar::TransportBar()
     loopButton.setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
     loopButton.onClick = [this] { if (onLoopToggled) onLoopToggled(); };
 
+    autoButton.setWantsKeyboardFocus (false);
+    autoButton.setClickingTogglesState (true);
+    autoButton.setTooltip ("Write automation: while playing, moving a knob records it");
+    autoButton.setColour (juce::TextButton::buttonOnColourId, theme::record);
+    autoButton.onClick = [this] { if (onAutomationWriteToggled) onAutomationWriteToggled(); };
+
     tempoSlider.setSliderStyle (juce::Slider::LinearBar);
     tempoSlider.setRange (20.0, 999.0, 0.01);
     tempoSlider.setValue (140.0, juce::dontSendNotification);
@@ -46,7 +52,7 @@ TransportBar::TransportBar()
 
     for (auto* c : std::initializer_list<juce::Component*> { &playButton, &stopButton, &recordButton,
                                                              &patButton, &songButton, &loopButton,
-                                                             &tempoSlider, &positionLabel })
+                                                             &autoButton, &tempoSlider, &positionLabel })
         addAndMakeVisible (c);
 
     // Visible panel toggles: the discoverable route to every window.
@@ -112,6 +118,8 @@ void TransportBar::resized()
     r.removeFromLeft (8);
 
     loopButton.setBounds (r.removeFromLeft (48));
+    r.removeFromLeft (2);
+    autoButton.setBounds (r.removeFromLeft (48));
     r.removeFromLeft (16);
 
     tempoSlider.setBounds (r.removeFromLeft (110));
@@ -169,6 +177,8 @@ void TransportBar::timerCallback()
     // control API, so poll rather than tracking it from the click callback.
     if (getLoopEnabled)
         loopButton.setToggleState (getLoopEnabled(), juce::dontSendNotification);
+    if (getAutomationWrite)
+        autoButton.setToggleState (getAutomationWrite(), juce::dontSendNotification);
 
     const bool playing = getIsPlaying ? getIsPlaying() : false;
     playButton.setColour (juce::TextButton::textColourOffId,

@@ -1,4 +1,5 @@
 #include "EngineSync.h"
+#include "model/ChannelParams.h"
 #include "plugins/PluginGenerator.h"
 #include <map>
 
@@ -213,6 +214,21 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
                 valid = true;
             }
         }
+        else if (targetType == "channel-param")
+        {
+            const auto channel = model.getChannelById (targetId);
+            if (channel.isValid())
+                if (const auto* descriptor = channelparams::find (channel[ids::type].toString(), paramId))
+                    if (auto generator = generators.getOrCreate (channel))
+                        if (auto* atomicValue = generator->getAutomatableParam (paramId))
+                        {
+                            as.kind = AutomationSnapshot::Kind::generatorParam;
+                            as.genParam = atomicValue;
+                            as.genRange = descriptor->floatRange();
+                            as.genKeepAlive = std::move (generator);
+                            valid = true;
+                        }
+        }
         else if (targetType == "plugin-channel")
         {
             const auto channel = model.getChannelById (targetId);
@@ -250,6 +266,8 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
 
         if (! valid)
             continue;
+
+        as.writing = (bool) automation[ids::writing];
 
         for (const auto point : automation)
             if (point.hasType (ids::POINT))

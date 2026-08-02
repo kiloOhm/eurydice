@@ -28,6 +28,21 @@ public:
     void render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi) override;
     void reset() override;
 
+    std::atomic<float>* getAutomatableParam (const juce::String& paramId) override
+    {
+        if (paramId == "attack")       return &p.attack;
+        if (paramId == "decay")        return &p.decay;
+        if (paramId == "sustain")      return &p.sustain;
+        if (paramId == "release")      return &p.release;
+        if (paramId == "cutoff")       return &p.cutoffHz;
+        if (paramId == "resonance")    return &p.resonance;
+        if (paramId == "osc2Detune")   return &p.osc2DetuneCents;
+        if (paramId == "osc2Mix")      return &p.osc2Mix;
+        if (paramId == "oscShape")     return &p.oscShape;
+        if (paramId == "filterEnvAmt") return &p.filterEnvAmount;
+        return nullptr;
+    }
+
     Params& params() { return p; }
 
 private:

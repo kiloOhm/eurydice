@@ -1,14 +1,56 @@
 #include "ChannelEditor.h"
 #include "engine/SamplerGenerator.h"
 #include "plugins/PluginGenerator.h"
+#include "model/ChannelParams.h"
+#include "ui/automation/AutomationMenu.h"
+
+namespace
+{
+// Builds a generator's knob row from the shared parameter table and wires each
+// knob into the automation layer: moving one records while the write arm is
+// on, right-clicking one offers to create or edit its clip.
+void buildKnobs (std::vector<std::unique_ptr<LabelledKnob>>& knobs, juce::Component& owner,
+                 AppServices& services, juce::ValueTree channel)
+{
+    const int channelId = channel[ids::id];
+    const auto channelName = channel[ids::name].toString();
+
+    for (const auto& descriptor : channelparams::forChannelType (channel[ids::type].toString()))
+    {
+        auto knob = std::make_unique<LabelledKnob> (descriptor.caption, services.project, channel,
+                                                    descriptor.id, descriptor.range,
+                                                    descriptor.defaultValue, descriptor.suffix,
+                                                    descriptor.decimals);
+        if (descriptor.automatable)
+        {
+            // The table is a function-local static, so &descriptor outlives
+            // every editor window that captures it.
+            const AutomationWriter::Target target { "channel-param", channelId,
+                                                    descriptor.id.toString(),
+                                                    channelName + " " + descriptor.caption };
+            auto* knobPtr = knob.get();
+
+            knob->onLiveEdit = [&services, target, &descriptor] (double value)
+            {
+                services.automationWriter.touch (target, descriptor.toNormalised (value));
+            };
+            knob->onContextMenu = [&services, target, &descriptor, knobPtr] (double value)
+            {
+                automationmenu::show (services, target, descriptor.toNormalised (value),
+                                      [knobPtr] { knobPtr->resetToDefault(); });
+            };
+        }
+        owner.addAndMakeVisible (*knob);
+        knobs.push_back (std::move (knob));
+    }
+}
+}
 
 // ================= SamplerEditor =================
 
 SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
     : services (s), channel (ch)
 {
-    auto& model = services.project;
-
     loadButton.setWantsKeyboardFocus (false);
     loadButton.onClick = [this]
     {
@@ -48,23 +90,7 @@ SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
     pathLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (pathLabel);
 
-    auto addKnob = [this, &model] (const juce::String& caption, const juce::Identifier& id,
-                                   juce::NormalisableRange<double> range, double defaultValue,
-                                   const juce::String& suffix, int decimals)
-    {
-        auto knob = std::make_unique<LabelledKnob> (caption, model, channel, id, range,
-                                                    defaultValue, suffix, decimals);
-        addAndMakeVisible (*knob);
-        knobs.push_back (std::move (knob));
-    };
-
-    addKnob ("ROOT", ids::rootNote, { 0.0, 127.0, 1.0 }, 60.0, {}, 0);
-    addKnob ("ATT",  ids::attack,  { 0.0, 2.0, 0.0, 0.35 }, 0.001, " s", 3);
-    addKnob ("DEC",  ids::decay,   { 0.0, 4.0, 0.0, 0.35 }, 0.0, " s", 2);
-    addKnob ("SUS",  ids::sustain, { 0.0, 1.0 }, 1.0, {}, 2);
-    addKnob ("REL",  ids::release, { 0.0, 4.0, 0.0, 0.35 }, 0.02, " s", 2);
-    addKnob ("CUT",  ids::cutoff,  { 40.0, 20000.0, 0.0, 0.28 }, 20000.0, " Hz", 0);
-    addKnob ("RES",  ids::resonance, { 0.0, 1.0 }, 0.0, {}, 2);
+    buildKnobs (knobs, *this, services, channel);
 
     refreshWaveform();
     startTimerHz (4);
@@ -203,33 +229,13 @@ void SamplerEditor::resized()
 SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
     : services (s), channel (ch)
 {
-    auto& model = services.project;
+    buildKnobs (knobs, *this, services, channel);
 
-    auto addKnob = [this, &model] (const juce::String& caption, const juce::Identifier& id,
-                                   juce::NormalisableRange<double> range, double defaultValue,
-                                   const juce::String& suffix, int decimals)
-    {
-        auto knob = std::make_unique<LabelledKnob> (caption, model, channel, id, range,
-                                                    defaultValue, suffix, decimals);
-        addAndMakeVisible (*knob);
-        knobs.push_back (std::move (knob));
-    };
-
+    // Captions sit above the knob the section starts at, so these indices
+    // follow the order of channelparams::synth().
     sections.emplace_back ("OSCILLATORS", 0);
-    addKnob ("SHAPE",  ids::oscShape,   { 0.0, 1.0 }, 0.0, {}, 2);
-    addKnob ("DETUNE", ids::osc2Detune, { -50.0, 50.0 }, 7.0, " ct", 1);
-    addKnob ("OSC2",   ids::osc2Mix,    { 0.0, 1.0 }, 0.35, {}, 2);
-
-    sections.emplace_back ("FILTER", (int) knobs.size());
-    addKnob ("CUT",    ids::cutoff,       { 40.0, 18000.0, 0.0, 0.28 }, 4000.0, " Hz", 0);
-    addKnob ("RES",    ids::resonance,    { 0.0, 1.0 }, 0.3, {}, 2);
-    addKnob ("ENV",    ids::filterEnvAmt, { 0.0, 1.0 }, 0.35, {}, 2);
-
-    sections.emplace_back ("ENVELOPE", (int) knobs.size());
-    addKnob ("ATT", ids::attack,  { 0.0, 2.0, 0.0, 0.35 }, 0.004, " s", 3);
-    addKnob ("DEC", ids::decay,   { 0.0, 4.0, 0.0, 0.35 }, 0.25, " s", 2);
-    addKnob ("SUS", ids::sustain, { 0.0, 1.0 }, 0.7, {}, 2);
-    addKnob ("REL", ids::release, { 0.0, 4.0, 0.0, 0.35 }, 0.08, " s", 2);
+    sections.emplace_back ("FILTER", 3);
+    sections.emplace_back ("ENVELOPE", 6);
 
     keyboard.setAvailableRange (36, 96);
     keyboard.setWantsKeyboardFocus (false);

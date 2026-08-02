@@ -291,6 +291,14 @@ void PlaylistPanel::paintClips (juce::Graphics& g)
             g.fillRoundedRectangle (r, 3.0f);
             g.setColour (base);
             g.drawRoundedRectangle (r.reduced (0.5f), 3.0f, 1.2f);
+
+            if (revealFramesLeft > 0 && clip == revealedClip)
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.9f));
+                g.drawRoundedRectangle (r.expanded (2.0f), 4.0f, 2.0f);
+                g.setColour (base);
+            }
+
             g.fillRect (r.removeFromTop (13.0f).reduced (1.0f, 1.0f));
 
             juce::String label = "Clip";
@@ -424,6 +432,14 @@ void PlaylistPanel::mouseDown (const juce::MouseEvent& e)
 
     if (e.mods.isPopupMenu())
     {
+        // Automation clips get a menu instead: they are the only way into the
+        // curve editor besides a double-click, so erasing on right-click was
+        // costing people work.
+        if (clip.isValid() && clip[ids::clipType].toString() == "automation")
+        {
+            showAutomationClipMenu (clip);
+            return;
+        }
         if (clip.isValid())
         {
             clip.getParent().removeChild (clip, &services.project.getUndoManager());
@@ -622,8 +638,63 @@ void PlaylistPanel::valueTreeChildRemoved (juce::ValueTree&, juce::ValueTree& ch
         repaint();
 }
 
+void PlaylistPanel::revealClip (juce::ValueTree clip)
+{
+    if (! clip.isValid())
+        return;
+
+    revealedClip = clip;
+    revealFramesLeft = 90;   // ~3 s at the 30 Hz timer
+
+    const int startTicks = clip[ids::startTicks];
+    if (startTicks < (int) scrollTicks
+        || startTicks > (int) (scrollTicks + gridArea().getWidth() / pxPerTick))
+        scrollTicks = juce::jmax (0.0, (double) startTicks - ids::ticksPerBar);
+
+    const int trackIndex = services.project.playlist().indexOf (clip.getParent());
+    if (trackIndex >= 0)
+    {
+        const int top = trackIndex * trackHeight;
+        if (top < scrollY || top + trackHeight > scrollY + gridArea().getHeight())
+            scrollY = juce::jmax (0, top - gridArea().getHeight() / 2);
+    }
+    repaint();
+}
+
+void PlaylistPanel::showAutomationClipMenu (juce::ValueTree clip)
+{
+    auto automation = services.project.getAutomationById (clip[ids::automationId]);
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (automation.isValid() ? automation[ids::name].toString()
+                                                : juce::String ("Automation"));
+    menu.addItem (1, "Open automation editor", automation.isValid());
+    menu.addItem (2, (bool) clip[ids::muted] ? "Unmute clip" : "Mute clip");
+    menu.addSeparator();
+    menu.addItem (3, "Delete clip");
+
+    menu.showMenuAsync ({}, [this, clip, automation] (int result) mutable
+    {
+        auto& undo = services.project.getUndoManager();
+        if (result == 1 && automation.isValid())
+            AutomationEditor::open (services, automation, clip[ids::lengthTicks]);
+        else if (result == 2)
+            clip.setProperty (ids::muted, ! (bool) clip[ids::muted], &undo);
+        else if (result == 3)
+            clip.getParent().removeChild (clip, &undo);
+        repaint();
+    });
+}
+
 void PlaylistPanel::timerCallback()
 {
+    if (revealFramesLeft > 0)
+    {
+        --revealFramesLeft;
+        if (revealFramesLeft == 0)
+            repaint();
+    }
+
     double newPlayhead = -1.0;
     if (services.project.isSongMode())
         newPlayhead = services.engine.getPositionTicks();

@@ -10,6 +10,7 @@
 #include "ui/playlist/PlaylistPanel.h"
 #include "ui/rack/ChannelEditor.h"
 #include "ui/rack/ChannelRackPanel.h"
+#include "ui/automation/AutomationEditor.h"
 #include "ui/common/DockZones.h"
 
 namespace
@@ -25,6 +26,7 @@ int typingKeyToNote (juce::juce_wchar c)
 }
 
 constexpr int recentFilesBaseId = 3000;
+constexpr int automationBaseId = 4000;
 }
 
 MainComponent::MainComponent()
@@ -61,6 +63,11 @@ MainComponent::MainComponent()
     {
         commandManager.invokeDirectly (CommandIDs::transportToggleLoop, false);
     };
+    transportBar.onAutomationWriteToggled = [this]
+    {
+        commandManager.invokeDirectly (CommandIDs::transportToggleAutomationWrite, false);
+    };
+    transportBar.getAutomationWrite = [this] { return services.automationWriter.isArmed(); };
     transportBar.getBeatPosition   = [this] { return services.engine.getPositionBeats(); };
     transportBar.getIsPlaying      = [this] { return services.engine.isPlaying(); };
     transportBar.getLoopEnabled    = [this] { return services.project.isLoopEnabled(); };
@@ -92,7 +99,16 @@ MainComponent::MainComponent()
 
     auto playlist = std::make_unique<PlaylistPanel> (services);
     playlist->onShowPianoRoll = [this] { commandManager.invokeDirectly (CommandIDs::viewPianoRoll, false); };
+    playlistView = playlist.get();
     playlistPanel = std::make_unique<FloatingPanel> ("Playlist", std::move (playlist));
+
+    // Creating an automation clip used to be silent; show where it landed.
+    services.onAutomationClipCreated = [this] (juce::ValueTree clip)
+    {
+        playlistPanel->bringToFrontAndShow();
+        transportBar.refreshPanelButtons();
+        playlistView->revealClip (clip);
+    };
 
     pianoRollPanel = std::make_unique<FloatingPanel> ("Piano Roll",
                                                       std::make_unique<PianoRollPanel> (services));
@@ -285,6 +301,9 @@ MainComponent::~MainComponent()
    #if JUCE_MAC
     juce::MenuBarModel::setMacMainMenu (nullptr);
    #endif
+    // The panels die before AppServices does, so drop the callback that
+    // reaches back into them.
+    services.onAutomationClipCreated = nullptr;
     fileState.removeChangeListener (this);
     removeKeyListener (commandManager.getKeyMappings());
     commandManager.setFirstCommandTarget (nullptr);
@@ -296,7 +315,7 @@ MainComponent::~MainComponent()
 
 juce::StringArray MainComponent::getMenuBarNames()
 {
-    return { "File", "Edit", "View", "Options" };
+    return { "File", "Edit", "View", "Automation", "Options" };
 }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
@@ -336,6 +355,21 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     }
     else if (index == 3)
     {
+        menu.addCommandItem (&commandManager, CommandIDs::transportToggleAutomationWrite);
+        menu.addSeparator();
+
+        int count = 0;
+        for (const auto source : services.project.automations())
+            if (source.hasType (ids::AUTOMATION))
+                menu.addItem (automationBaseId + count++,
+                              "Edit " + source[ids::name].toString());
+
+        if (count == 0)
+            menu.addItem (automationBaseId + 999,
+                          "Right-click any knob to create a clip", false, false);
+    }
+    else if (index == 4)
+    {
         menu.addCommandItem (&commandManager, CommandIDs::transportPlayStop);
         menu.addCommandItem (&commandManager, CommandIDs::transportRewind);
         menu.addCommandItem (&commandManager, CommandIDs::transportToggleSongMode);
@@ -356,6 +390,27 @@ void MainComponent::menuItemSelected (int menuItemID, int)
         const auto file = recentFiles.getFile (menuItemID - recentFilesBaseId);
         if (file.existsAsFile() && okToCloseProject ("opening another project"))
             loadProjectFile (file);
+        return;
+    }
+
+    if (menuItemID >= automationBaseId && menuItemID < automationBaseId + 999)
+        openAutomationEditor (menuItemID - automationBaseId);
+}
+
+// index counts only AUTOMATION children, matching how the menu was built.
+void MainComponent::openAutomationEditor (int index)
+{
+    int count = 0;
+    for (const auto source : services.project.automations())
+    {
+        if (! source.hasType (ids::AUTOMATION))
+            continue;
+        if (count++ != index)
+            continue;
+        const auto clip = AutomationWriter::findClip (services.project, (int) source[ids::id]);
+        AutomationEditor::open (services, source,
+                                clip.isValid() ? (int) clip[ids::lengthTicks] : 4 * ids::ticksPerBar);
+        return;
     }
 }
 
@@ -372,7 +427,7 @@ void MainComponent::getAllCommands (juce::Array<juce::CommandID>& commands)
         CommandIDs::viewResetLayout,
         CommandIDs::transportPlayStop, CommandIDs::transportRewind,
         CommandIDs::transportToggleSongMode, CommandIDs::transportToggleRecord,
-        CommandIDs::transportToggleLoop,
+        CommandIDs::transportToggleLoop, CommandIDs::transportToggleAutomationWrite,
         CommandIDs::optionsAudioSettings, CommandIDs::optionsScanPlugins });
 }
 
@@ -472,6 +527,13 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.addDefaultKeypress ('l', cmd | shift);
             info.setTicked (services.project.isLoopEnabled());
             break;
+        case CommandIDs::transportToggleAutomationWrite:
+            info.setInfo ("Write Automation (AUTO)",
+                          "While playing, record every knob you move into its automation clip",
+                          "Automation", 0);
+            info.addDefaultKeypress ('a', cmd | shift);
+            info.setTicked (services.automationWriter.isArmed());
+            break;
 
         case CommandIDs::optionsAudioSettings:
             info.setInfo ("Audio & MIDI Settings...", "Choose the audio device", "Options", 0);
@@ -564,6 +626,11 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
         case CommandIDs::transportToggleLoop:
             services.project.setLoopEnabled (! services.project.isLoopEnabled());
             commandManager.commandStatusChanged();
+            return true;
+        case CommandIDs::transportToggleAutomationWrite:
+            services.automationWriter.setArmed (! services.automationWriter.isArmed());
+            commandManager.commandStatusChanged();
+            menuItemsChanged();
             return true;
 
         case CommandIDs::optionsAudioSettings: showAudioSettings(); return true;
@@ -731,6 +798,7 @@ void MainComponent::transportPlay()
 void MainComponent::transportStop()
 {
     services.engine.stop();
+    services.automationWriter.finaliseAll();
     if (recorder->isRecording())
         recorder->stopAndPlaceClip();
 }

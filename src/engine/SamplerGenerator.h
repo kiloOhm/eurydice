@@ -26,6 +26,17 @@ public:
     void render (juce::AudioBuffer<float>& out, const juce::MidiBuffer& midi) override;
     void reset() override;
 
+    std::atomic<float>* getAutomatableParam (const juce::String& paramId) override
+    {
+        if (paramId == "attack")    return &p.attack;
+        if (paramId == "decay")     return &p.decay;
+        if (paramId == "sustain")   return &p.sustain;
+        if (paramId == "release")   return &p.release;
+        if (paramId == "cutoff")    return &p.cutoff;
+        if (paramId == "resonance") return &p.resonance;
+        return nullptr;
+    }
+
     // Message thread. Returns false if the file couldn't be read.
     bool loadSampleFile (const juce::File&);
 

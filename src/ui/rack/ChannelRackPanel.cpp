@@ -1,6 +1,27 @@
 #include "ChannelRackPanel.h"
 #include "ChannelEditor.h"
 #include "app/Theme.h"
+#include "model/ChannelParams.h"
+#include "ui/automation/AutomationMenu.h"
+
+namespace
+{
+// Channel volume is already 0..1; pan is -1..1 folded onto the same range the
+// engine unfolds again when it applies the curve.
+double channelKnobNormalised (const juce::ValueTree& channel, const juce::Identifier& prop)
+{
+    return prop == ids::pan ? ((double) channel[ids::pan] + 1.0) * 0.5
+                            : (double) channel[ids::volume];
+}
+
+AutomationWriter::Target channelKnobTarget (const juce::ValueTree& channel,
+                                            const juce::Identifier& prop)
+{
+    const bool isPan = prop == ids::pan;
+    return { "channel", (int) channel[ids::id], isPan ? "pan" : "volume",
+             channel[ids::name].toString() + (isPan ? " pan" : " volume") };
+}
+}
 
 ChannelRackPanel::ChannelRackPanel (AppServices& s)
     : services (s), graphLane (s.project)
@@ -147,6 +168,19 @@ void ChannelRackPanel::rebuildRows()
         row->onOpenEditor = [this] (juce::ValueTree channel) { openChannelEditor (channel); };
         row->onWantsInsertMenu = [this] (juce::ValueTree channel) { showInsertMenu (channel); };
         row->onWantsPianoRoll = [this] (juce::ValueTree channel) { showPianoRollFor (channel); };
+        row->onKnobMoved = [this] (juce::ValueTree channel, juce::Identifier prop)
+        {
+            services.automationWriter.touch (channelKnobTarget (channel, prop),
+                                             channelKnobNormalised (channel, prop));
+        };
+        row->onKnobContextMenu = [this] (juce::ValueTree channel, juce::Identifier prop)
+        {
+            const bool isPan = prop == ids::pan;
+            automationmenu::show (services, channelKnobTarget (channel, prop),
+                                  channelKnobNormalised (channel, prop),
+                                  [channel, prop, isPan, &undo = services.project.getUndoManager()]
+                                  () mutable { channel.setProperty (prop, isPan ? 0.0 : 0.78, &undo); });
+        };
         rowContainer.addAndMakeVisible (*row);
         rows.push_back (std::move (row));
     }
@@ -297,9 +331,14 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
                             true,
                             (int) channel[ids::insertIndex] == i);
 
+    const auto& generatorParams = channelparams::forChannelType (channel[ids::type].toString());
+
     juce::PopupMenu automationMenu;
     automationMenu.addItem (10, "Volume");
     automationMenu.addItem (11, "Pan");
+    for (size_t i = 0; i < generatorParams.size(); ++i)
+        if (generatorParams[i].automatable)
+            automationMenu.addItem (200 + (int) i, generatorParams[i].caption);
     if (channel[ids::type].toString() == "plugin")
     {
         if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (services.generators.getOrCreate (channel)))
@@ -359,7 +398,19 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
                 channel[ids::name].toString() + (isPan ? " pan" : " volume"),
                 isPan ? ((double) channel[ids::pan] + 1.0) * 0.5 : (double) channel[ids::volume]);
         }
-        else if (result >= 100 && result < 1000)
+        else if (result >= 200 && result < 1000)
+        {
+            const auto& params = channelparams::forChannelType (channel[ids::type].toString());
+            const auto index = (size_t) (result - 200);
+            if (index >= params.size())
+                return;
+            const auto& descriptor = params[index];
+            services.createAutomationWithClip ("channel-param", channel[ids::id],
+                descriptor.id.toString(),
+                channel[ids::name].toString() + " " + descriptor.caption,
+                descriptor.toNormalised (channel.getProperty (descriptor.id, descriptor.defaultValue)));
+        }
+        else if (result >= 100 && result < 200)
         {
             const int paramIndex = result - 100;
             juce::String paramName = "param " + juce::String (paramIndex);

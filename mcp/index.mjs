@@ -86,6 +86,7 @@ server.tool("daw_transport",
     loopStart: z.number().min(0).optional().describe("loop range start in ticks"),
     loopEnd: z.number().min(0).optional().describe("loop range end in ticks; only a range longer than 0 loops"),
     loopEnabled: z.boolean().optional().describe("wrap back to loopStart when the transport reaches loopEnd"),
+    automationWrite: z.boolean().optional().describe("arm automation write: while playing, every control the user moves is recorded into its automation clip"),
   },
   async ({ action, ...rest }) => {
     if (action === "play") return asText(await rpc("transport.play"));
@@ -174,6 +175,35 @@ tool("daw_plugins_list", "List scanned VST3/AU plugins with their pluginId strin
 tool("daw_plugins_scan", "Scan the system for VST3/AU plugins (runs in background).", {}, "plugins.scan");
 
 tool("daw_meters", "Live peak meters for all mixer inserts (call while playing to check levels).", {}, "meters.get");
+
+tool("daw_automation_list",
+  "List every automation source: id, name, target type/id, param, and how many curve points it holds.",
+  {}, "automation.list");
+
+tool("daw_automation_create",
+  "Create an automation source plus the playlist clip that plays it. targetType 'channel' (paramId volume|pan), 'insert' (volume|pan), 'channel-param' (a built-in sampler/synth knob: attack, decay, sustain, release, cutoff, resonance, osc2Detune, osc2Mix, oscShape, filterEnvAmt), 'plugin-channel' (paramId '<paramIndex>') or 'plugin-insert' (paramId '<slot>:<paramIndex>'). Values are normalised 0..1.",
+  {
+    targetType: z.enum(["channel", "insert", "channel-param", "plugin-channel", "plugin-insert"]),
+    targetId: z.number().describe("channel id for channel/channel-param/plugin-channel, insert index for insert/plugin-insert"),
+    paramId: z.string(),
+    name: z.string().optional(),
+    initialValue: z.number().min(0).max(1).optional(),
+  }, "automation.create");
+
+tool("daw_automation_get_points", "Read one automation source's curve points (pos in ticks, value 0..1, tension -1..1).",
+  { automationId: z.number() }, "automation.getPoints");
+
+tool("daw_automation_set_points",
+  "Replace an automation source's curve. value 0..1, tension -1..1 shapes the segment to the next point. " + TIME_HELP,
+  {
+    automationId: z.number(),
+    points: z.array(z.object({
+      pos: z.number(), value: z.number(), tension: z.number().optional(),
+    })),
+  }, "automation.setPoints");
+
+tool("daw_automation_remove", "Delete an automation source and every playlist clip that references it.",
+  { automationId: z.number() }, "automation.remove");
 
 tool("daw_project_save", "Save the project to a .eury file.", { path: z.string() }, "project.save");
 tool("daw_project_load", "Load a .eury project file.", { path: z.string() }, "project.load");
