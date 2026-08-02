@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "TestHelpers.h"
+#include "engine/WavWriter.h"
 #include "control/ControlDispatcher.h"
 #include "engine/Drive.h"
 #include "engine/KickGenerator.h"
@@ -61,13 +62,9 @@ std::unique_ptr<SamplerGenerator> makeSineSampler (double seconds = 0.5, double 
 {
     auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
                     .getNonexistentChildFile ("eurytest-kickdesign", ".wav");
-    juce::WavAudioFormat wav;
-    auto stream = file.createOutputStream();
-    std::unique_ptr<juce::AudioFormatWriter> writer (
-        wav.createWriterFor (stream.get(), test::kSampleRate, 1, 16, {}, 0));
+    auto writer = wavwriter::forFile (file, test::kSampleRate, 1, 16);
     if (writer == nullptr)
         return nullptr;
-    stream.release();
 
     const int n = (int) (seconds * test::kSampleRate);
     juce::AudioBuffer<float> tone (1, n);
@@ -89,13 +86,9 @@ std::unique_ptr<SamplerGenerator> makeRampSampler (double seconds = 0.2)
 {
     auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
                     .getNonexistentChildFile ("eurytest-ramp", ".wav");
-    juce::WavAudioFormat wav;
-    auto stream = file.createOutputStream();
-    std::unique_ptr<juce::AudioFormatWriter> writer (
-        wav.createWriterFor (stream.get(), test::kSampleRate, 1, 16, {}, 0));
+    auto writer = wavwriter::forFile (file, test::kSampleRate, 1, 16);
     if (writer == nullptr)
         return nullptr;
-    stream.release();
 
     const int n = (int) (seconds * test::kSampleRate);
     juce::AudioBuffer<float> ramp (1, n);

@@ -1,4 +1,5 @@
 #include "OfflineRenderer.h"
+#include "WavWriter.h"
 #include <juce_dsp/juce_dsp.h>
 #include <set>
 #include <map>
@@ -7,17 +8,7 @@ namespace
 {
 std::unique_ptr<juce::AudioFormatWriter> makeWavWriter (const juce::File& file, double sampleRate, int bitDepth)
 {
-    file.deleteFile();
-    auto stream = file.createOutputStream();
-    if (stream == nullptr)
-        return nullptr;
-    juce::WavAudioFormat wav;
-    auto* writer = wav.createWriterFor (stream.get(), sampleRate, 2, bitDepth, {}, 0);
-    if (writer != nullptr)
-    {
-        [[maybe_unused]] auto* owned = stream.release();   // writer owns it now
-    }
-    return std::unique_ptr<juce::AudioFormatWriter> (writer);
+    return wavwriter::forFile (file, sampleRate, 2, bitDepth);
 }
 
 std::unique_ptr<juce::AudioFormatReader> makeWavReader (const juce::File& file)

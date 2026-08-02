@@ -7,6 +7,7 @@
 #include "engine/GeneratorPool.h"
 #include "engine/AudioClipCache.h"
 #include "plugins/PluginManager.h"
+#include "engine/WavWriter.h"
 #include "plugins/EffectPool.h"
 #include "effects/BuiltinEffectPool.h"
 
@@ -84,13 +85,9 @@ inline juce::File makeToneFile (double seconds, double sampleRate = 44100.0)
 {
     auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
                     .getNonexistentChildFile ("eurytest-tone", ".wav");
-    juce::WavAudioFormat wav;
-    auto stream = file.createOutputStream();
-    std::unique_ptr<juce::AudioFormatWriter> writer (
-        wav.createWriterFor (stream.get(), sampleRate, 1, 16, {}, 0));
+    auto writer = wavwriter::forFile (file, sampleRate, 1, 16);
     if (writer == nullptr)
         return {};
-    stream.release();
 
     const int n = (int) (seconds * sampleRate);
     juce::AudioBuffer<float> tone (1, n);

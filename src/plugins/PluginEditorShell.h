@@ -36,7 +36,7 @@ public:
                        NoteSink sink = {})
         : instance (inst), title (titleText), notes (std::move (sink))
     {
-        editor.reset (instance.hasEditor() ? instance.createEditorIfNeeded()
+        editor.reset (instance.hasEditor() ? instance.createEditorAndMakeActive()
                                            : new juce::GenericAudioProcessorEditor (instance));
         addAndMakeVisible (*editor);
         editor->addComponentListener (this);

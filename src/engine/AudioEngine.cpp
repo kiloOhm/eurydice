@@ -22,7 +22,11 @@ juce::String AudioEngine::initialise()
     // combiner's restart path from a CoreAudio dispatch thread while it is
     // still being set up. That race corrupted the heap and crashed most
     // launches. Input is enabled on demand when recording arms.
-    auto err = deviceManager.initialiseWithDefaultDevices (0, 2);
+    // EURYDICE_DUPLEX=1 opens input+output at startup — the configuration
+    // that used to crash — so the combiner can be re-stress-tested after
+    // JUCE upgrades without a code change.
+    const bool duplex = juce::SystemStats::getEnvironmentVariable ("EURYDICE_DUPLEX", "") == "1";
+    auto err = deviceManager.initialiseWithDefaultDevices (duplex ? 2 : 0, 2);
     deviceManager.addAudioCallback (this);
     return err;
 }

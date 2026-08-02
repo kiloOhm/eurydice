@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AppServices.h"
+#include "engine/WavWriter.h"
 #include "TakeSplitter.h"
 #include "model/UndoGesture.h"
 
@@ -32,20 +33,14 @@ public:
             return;
 
         const auto file = recordingsDir().getNonexistentChildFile ("take", ".wav");
-        auto stream = file.createOutputStream();
-        if (stream == nullptr)
-            return;
-
         const double sr = services.engine.getSampleRate();
-        juce::WavAudioFormat wav;
-        auto* writer = wav.createWriterFor (stream.get(), sr, 2, 24, {}, 0);
+        auto writer = wavwriter::forFile (file, sr, 2, 24);
         if (writer == nullptr)
             return;
-        [[maybe_unused]] auto* owned = stream.release();   // the writer owns it now
 
         writeThread.startThread();
         threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter> (
-            writer, writeThread, 1 << 17);
+            writer.release(), writeThread, 1 << 17);
 
         recordFile = file;
         recordStartTick = services.engine.getPositionTicks();

@@ -1,4 +1,5 @@
 #include "TestHelpers.h"
+#include "engine/WavWriter.h"
 #include "engine/StretchFollower.h"
 
 using namespace test;
@@ -11,13 +12,9 @@ juce::File makeClickTrainFile (double seconds, double sampleRate = 44100.0)
 {
     auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
                     .getNonexistentChildFile ("eurytest-clicks", ".wav");
-    juce::WavAudioFormat wav;
-    auto stream = file.createOutputStream();
-    std::unique_ptr<juce::AudioFormatWriter> writer (
-        wav.createWriterFor (stream.get(), sampleRate, 1, 16, {}, 0));
+    auto writer = wavwriter::forFile (file, sampleRate, 1, 16);
     if (writer == nullptr)
         return {};
-    stream.release();
 
     const int n = (int) (seconds * sampleRate);
     const int clickSpacing = (int) (sampleRate / 8.0);

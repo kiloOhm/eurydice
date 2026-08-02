@@ -41,9 +41,9 @@ private:
 
 PluginManager::PluginManager()
 {
-    formatManager.addFormat (new juce::VST3PluginFormat());
+    formatManager.addFormat (std::make_unique<juce::VST3PluginFormat>());
    #if JUCE_PLUGINHOST_AU && JUCE_MAC
-    formatManager.addFormat (new juce::AudioUnitPluginFormat());
+    formatManager.addFormat (std::make_unique<juce::AudioUnitPluginFormat>());
    #endif
 
     if (auto xml = juce::parseXML (getAppDataDir().getChildFile ("plugins.xml")))

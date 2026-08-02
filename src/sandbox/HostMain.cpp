@@ -230,7 +230,7 @@ private:
             return;
         }
         juce::Component* editor = instance->hasEditor()
-                                      ? instance->createEditorIfNeeded()
+                                      ? instance->createEditorAndMakeActive()
                                       : new juce::GenericAudioProcessorEditor (*instance);
         editorWindow = std::make_unique<EditorWindow> (*this, title, editor);
     }

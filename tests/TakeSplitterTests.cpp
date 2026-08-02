@@ -196,9 +196,7 @@ TEST (TakeFiles, SplitFilesCarryTheRightSampleRegions)
     // in 24-bit, so regions are identifiable after the round trip.
     constexpr int total = 3000;
     {
-        juce::WavAudioFormat wav;
-        std::unique_ptr<juce::AudioFormatWriter> writer (
-            wav.createWriterFor (source.createOutputStream().release(), 44100.0, 2, 24, {}, 0));
+        auto writer = wavwriter::forFile (source, 44100.0, 2, 24);
         ASSERT_NE (writer, nullptr);
         juce::AudioBuffer<float> buffer (2, total);
         for (int i = 0; i < total; ++i)

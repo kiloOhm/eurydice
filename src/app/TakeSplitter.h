@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_formats/juce_audio_formats.h>
+#include "engine/WavWriter.h"
 #include <juce_data_structures/juce_data_structures.h>
 #include <vector>
 #include "model/Ids.h"
@@ -176,12 +177,11 @@ inline juce::Array<juce::File> writeTakeFiles (const juce::File& source,
         if (out == nullptr)
             return cleanup();
 
-        std::unique_ptr<juce::AudioFormatWriter> writer (
-            wav.createWriterFor (out.get(), reader->sampleRate,
-                                 reader->numChannels, (int) reader->bitsPerSample, {}, 0));
+        auto writer = wavwriter::forStream (std::move (out), reader->sampleRate,
+                                            (int) reader->numChannels,
+                                            (int) reader->bitsPerSample);
         if (writer == nullptr)
             return cleanup();
-        [[maybe_unused]] auto* owned = out.release();   // the writer owns it now
 
         if (! writer->writeFromAudioReader (*reader, takes[i].startSample, takes[i].numSamples))
         {

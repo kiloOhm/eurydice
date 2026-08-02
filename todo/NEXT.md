@@ -73,17 +73,23 @@ the active work.
   an engine-level test with a real instrument. Remaining polish: per-plugin
   (not global) opt-in, latency reporting for the one-block delay, sysex and
   >64-param automation for sandboxed plugins.
-- **JUCE upgrade / input-device rework** — retire the CoreAudio combiner
-  workaround (see engine debt below).
+- ~~JUCE upgrade~~ — shipped: 8.0.8 → 8.0.15, all deprecations migrated
+  (options-based WAV writers via src/engine/WavWriter.h, unique_ptr
+  addFormat, createEditorAndMakeActive). The AudioIODeviceCombiner race is
+  fixed upstream: full-duplex startup survived 8/8 stress launches with
+  clean audio (was 1/8 on 8.0.8). Lazy input (output-only startup, input
+  enabled when recording arms) is retained as a deliberate UX choice — no
+  mic prompt at launch, no aggregate device when not recording — and
+  EURYDICE_DUPLEX=1 re-runs the stress configuration after future upgrades.
 - **Time signatures beyond 4/4** — foundational, invasive, low value for the
   target genres.
 
 ## Engine / platform debt (carried)
 
-- JUCE AudioIODeviceCombiner is unsafe on this machine: we start output-only
-  and enable input when recording arms. Real fix is a newer JUCE or a second
-  AudioDeviceManager for input. Disarming record deliberately leaves the
-  input open.
+- ~~JUCE AudioIODeviceCombiner unsafe~~ — fixed by the 8.0.15 upgrade
+  (verified by stress test). Output-only startup stays as a UX choice;
+  disarming record still deliberately leaves the input open to avoid a
+  device restart per toggle.
 - Per-note pan is stored but not applied at playback.
 - The rack swing knob is not automatable (project-level property, no engine
   target kind).
