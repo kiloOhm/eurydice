@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "AppServices.h"
+#include "AutoSaver.h"
 #include "Commands.h"
 #include "EurydiceLookAndFeel.h"
 #include "MidiInputManager.h"
@@ -53,6 +54,8 @@ private:
     void openProjectInteractive();
     void newProject();
     void loadProjectFile (const juce::File&);
+    void offerCrashRecovery();
+    void restoreFromRecovery (const juce::File& recoveryFile);
     void transportPlay();
     void transportStop();
     void updateWindowTitle();
@@ -63,6 +66,7 @@ private:
     EurydiceLookAndFeel lookAndFeel;
     AppServices services;
     ProjectFileState fileState { services.project };
+    AutoSaver autoSave { services.project, fileState };
     juce::ApplicationCommandManager commandManager;
     juce::RecentlyOpenedFilesList recentFiles;
     std::unique_ptr<juce::PropertiesFile> settings;

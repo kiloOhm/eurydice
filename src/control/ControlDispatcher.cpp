@@ -1,5 +1,6 @@
 #include "ControlDispatcher.h"
 #include "engine/OfflineRenderer.h"
+#include "model/UndoGesture.h"
 
 namespace
 {
@@ -60,6 +61,9 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     auto& project = services.project;
     auto& engine  = services.engine;
     auto& undo    = project.getUndoManager();
+
+    // One API call = one undo step, the same granularity a UI gesture gets.
+    const undoGesture::Scoped step (project, method);
 
     if (method == "ping")
         return "pong";

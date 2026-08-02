@@ -3,6 +3,7 @@
 #include "Theme.h"
 #include "AudioRecorder.h"
 #include "control/ControlServer.h"
+#include "model/UndoGesture.h"
 #include "engine/OfflineRenderer.h"
 #include "ui/browser/BrowserPanel.h"
 #include "ui/mixer/MixerPanel.h"
@@ -56,6 +57,7 @@ MainComponent::MainComponent()
         midiInput->recordArmed.store (! midiInput->recordArmed.load());
     };
     transportBar.onTempoChanged    = [this] (double bpm) { services.project.setTempo (bpm); };
+    undoGesture::attach (transportBar.getTempoSlider(), services.project, "Tempo");
     transportBar.onSongModeChanged = [this] (bool song) { services.project.setSongMode (song); };
     transportBar.onLoopToggled     = [this]
     {
@@ -125,8 +127,17 @@ MainComponent::MainComponent()
    #endif
     setApplicationCommandManagerToWatch (&commandManager);
 
+    autoSave.onBeforeSnapshot = [this] { services.capturePluginState(); };
+
     updateWindowTitle();
     setSize (1440, 900);
+
+    // Deferred so the prompt lands on top of a window that already exists.
+    juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)]
+    {
+        if (safe != nullptr)
+            safe->offerCrashRecovery();
+    });
 
     // Debug hooks (used by scripts/e2e and screenshot verification).
     const auto showList = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SHOW", "");
@@ -581,7 +592,10 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
 bool MainComponent::okToCloseProject (const juce::String& action)
 {
     if (! fileState.isDirty())
+    {
+        autoSave.clearRecovery();
         return true;
+    }
 
     const int result = juce::AlertWindow::showYesNoCancelBox (
         juce::MessageBoxIconType::WarningIcon, "Unsaved changes",
@@ -595,7 +609,52 @@ bool MainComponent::okToCloseProject (const juce::String& action)
         saveProject (false);
         return ! fileState.isDirty();
     }
-    return true;       // discard
+    autoSave.clearRecovery();   // discarded on purpose, so do not offer it back
+    return true;
+}
+
+void MainComponent::offerCrashRecovery()
+{
+    const auto pending = AutoSaver::findPending (autoSave.getDirectory());
+    if (pending.isEmpty())
+        return;
+
+    const auto recovery = pending.getFirst();
+    const auto shadowed = AutoSaver::projectShadowedBy (recovery);
+    const auto displayName = shadowed == juce::File() ? juce::String ("Untitled")
+                                                      : shadowed.getFileName();
+
+    juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon,
+        "Recover unsaved work",
+        "Eurydice did not shut down cleanly. An autosave of \"" + displayName + "\" from "
+            + recovery.getLastModificationTime().toString (true, true) + " is available.\n\n"
+              "Restore it?",
+        "Restore", "Discard", nullptr,
+        juce::ModalCallbackFunction::create (
+            [safe = juce::Component::SafePointer<MainComponent> (this), recovery] (int result)
+            {
+                if (safe == nullptr)
+                    return;
+                if (result == 1)
+                    safe->restoreFromRecovery (recovery);
+                else
+                    recovery.deleteFile();
+            }));
+}
+
+void MainComponent::restoreFromRecovery (const juce::File& recoveryFile)
+{
+    const auto shadowed = AutoSaver::projectShadowedBy (recoveryFile);
+
+    if (! services.loadProject (recoveryFile))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+            "Recovery failed", "Could not read the autosave file.");
+        return;
+    }
+
+    services.project.getRoot().removeProperty (ids::recoveryOf, nullptr);
+    fileState.markRestored (shadowed);
 }
 
 void MainComponent::newProject()
@@ -616,6 +675,7 @@ void MainComponent::loadProjectFile (const juce::File& file)
         return;
     }
     fileState.markLoaded (file);
+    autoSave.clearRecovery();
     recentFiles.addFile (file);
     settings->setValue ("recentFiles", recentFiles.toString());
     settings->saveIfNeeded();
@@ -645,6 +705,7 @@ void MainComponent::saveProject (bool forceChooser)
         if (services.saveProject (existing))
         {
             fileState.markSaved (existing);
+            autoSave.clearRecovery();
             recentFiles.addFile (existing);
             settings->setValue ("recentFiles", recentFiles.toString());
         }
@@ -667,6 +728,7 @@ void MainComponent::saveProject (bool forceChooser)
             if (services.saveProject (target))
             {
                 fileState.markSaved (target);
+                autoSave.clearRecovery();
                 recentFiles.addFile (target);
                 settings->setValue ("recentFiles", recentFiles.toString());
                 settings->saveIfNeeded();

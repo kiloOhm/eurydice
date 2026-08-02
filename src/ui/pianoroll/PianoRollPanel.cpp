@@ -1,5 +1,6 @@
 #include "PianoRollPanel.h"
 #include "app/Theme.h"
+#include "model/UndoGesture.h"
 
 namespace
 {
@@ -280,12 +281,10 @@ void PianoRollPanel::deleteSelected()
     auto lane = currentLane (false);
     if (! lane.isValid())
         return;
-    auto& undo = services.project.getUndoManager();
-    undo.beginNewTransaction ("Delete notes");
+    const undoGesture::Scoped step (services.project, "Delete notes");
     for (auto& note : selection)
         services.project.removeNote (lane, note);
     selection.clearQuick();
-    undo.beginNewTransaction();
     repaint();
 }
 
@@ -345,7 +344,7 @@ void PianoRollPanel::replaceSelection (const std::vector<notetools::Note>& notes
                                       note.velocity, note.pan));
 
     // Close the batch so the next edit cannot merge into this undo step.
-    model.getUndoManager().beginNewTransaction();
+    undoGesture::end (services.project);
     repaint();
 }
 
@@ -353,7 +352,7 @@ void PianoRollPanel::applyRoll (int divisionTicks)
 {
     if (selection.isEmpty())
         return;
-    services.project.getUndoManager().beginNewTransaction ("Roll notes");
+    undoGesture::begin (services.project, "Roll notes");
     replaceSelection (notetools::rollAll (selectedNotes(), divisionTicks, velocityRamp()));
 }
 
@@ -361,7 +360,7 @@ void PianoRollPanel::applyChop()
 {
     if (selection.isEmpty())
         return;
-    services.project.getUndoManager().beginNewTransaction ("Chop notes");
+    undoGesture::begin (services.project, "Chop notes");
     replaceSelection (notetools::chopAll (selectedNotes(), snapTicks()));
 }
 
@@ -369,7 +368,7 @@ void PianoRollPanel::applyGlue()
 {
     if (selection.isEmpty())
         return;
-    services.project.getUndoManager().beginNewTransaction ("Glue notes");
+    undoGesture::begin (services.project, "Glue notes");
     replaceSelection (notetools::glue (selectedNotes()));
 }
 
@@ -378,14 +377,13 @@ void PianoRollPanel::applyStrum (int offsetTicks)
     if (selection.isEmpty())
         return;
 
+    const undoGesture::Scoped step (services.project, "Strum notes");
     auto& undo = services.project.getUndoManager();
-    undo.beginNewTransaction ("Strum notes");
 
     const auto strummed = notetools::strum (selectedNotes(), offsetTicks);
     for (int i = 0; i < selection.size(); ++i)
         selection.getReference (i).setProperty (ids::startTicks, strummed[(size_t) i].startTicks, &undo);
 
-    undo.beginNewTransaction();
     repaint();
 }
 
@@ -694,6 +692,7 @@ void PianoRollPanel::mouseDown (const juce::MouseEvent& e)
     if (velocityArea().contains (pos))
     {
         drag = Drag::velocity;
+        undoGesture::begin (services.project, "Set velocity");
         setVelocityAt (pos);
         return;
     }
@@ -720,6 +719,7 @@ void PianoRollPanel::mouseDown (const juce::MouseEvent& e)
             return;
         }
         drag = Drag::erase;
+        undoGesture::begin (services.project, "Delete notes");
         deleteNoteAt (pos);
         return;
     }
@@ -747,11 +747,13 @@ void PianoRollPanel::mouseDown (const juce::MouseEvent& e)
         drag = overRightEdge ? Drag::resize : Drag::move;
         dragTickOffset = xToTicks (pos.x) - (double) (int) note[ids::startTicks];
         dragKeyOffset  = yToKey (pos.y) - (int) note[ids::key];
+        undoGesture::begin (services.project, overRightEdge ? "Resize notes" : "Move notes");
         repaint();
     }
     else
     {
         drag = Drag::create;
+        undoGesture::begin (services.project, "Add note");
         addNoteAt (pos);
         dragTickOffset = 0.0;
         dragKeyOffset = 0;
@@ -847,6 +849,9 @@ void PianoRollPanel::mouseUp (const juce::MouseEvent&)
 {
     if (drag == Drag::create && dragNote.isValid())
         lastNoteLength = dragNote[ids::lengthTicks];
+    // Harmless when the gesture never wrote anything: an empty transaction is
+    // never recorded.
+    undoGesture::end (services.project);
     drag = Drag::none;
     dragNote = {};
     marqueeRect = {};

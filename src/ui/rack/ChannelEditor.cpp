@@ -1,5 +1,6 @@
 #include "ChannelEditor.h"
 #include "engine/SamplerGenerator.h"
+#include "model/UndoGesture.h"
 #include "plugins/PluginGenerator.h"
 
 // ================= SamplerEditor =================
@@ -38,6 +39,7 @@ SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
                                   juce::dontSendNotification);
     oneShotButton.onClick = [this]
     {
+        const undoGesture::Scoped step (services.project, "One-shot");
         channel.setProperty (ids::oneShot, oneShotButton.getToggleState(),
                              &services.project.getUndoManager());
     };
@@ -73,6 +75,7 @@ SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
 
 void SamplerEditor::loadSample (const juce::File& file)
 {
+    const undoGesture::Scoped step (services.project, "Load sample");
     channel.setProperty (ids::samplePath, file.getFullPathName(),
                          &services.project.getUndoManager());
     // Give the pool a beat to reload, then repaint the waveform.

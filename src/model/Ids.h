@@ -103,6 +103,9 @@ DECLARE_ID (posTicks)      // on POINT (relative to clip start)
 DECLARE_ID (value)         // 0..1 normalised
 DECLARE_ID (tension)       // -1..1 curve tension to next point
 
+// Autosave. Set on the root of a recovery copy only, never on a saved project.
+DECLARE_ID (recoveryOf)    // path of the project the copy shadows; empty = untitled
+
 #undef DECLARE_ID
 
 inline constexpr int ticksPerQuarter = 960;

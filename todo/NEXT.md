@@ -13,12 +13,9 @@ hardcore / frenchcore.
 - ~~Pattern management~~ — clone, rename, delete and reorder.
 - ~~Note repeat / roll tool~~ — plus chop, glue and strum, with velocity ramps
   for ratchets.
-
-## P0 — still open
-
-- **Undo coalescing.** One knob drag still pushes dozens of undo steps, so ⌘Z
-  is close to useless after tweaking. The piano-roll batch tools wrap
-  themselves in single transactions; knobs, faders and the graph lane do not.
+- ~~Undo coalescing~~ — `src/model/UndoGesture.h` brackets each gesture in one
+  transaction; knobs, faders, sends, the graph lane, curve points, clip and
+  note drags and every API call are now one undo step apiece.
 
 ## P1 — needed for these genres specifically
 
@@ -43,7 +40,9 @@ hardcore / frenchcore.
 - Channel reorder by drag; channel colours and grouping.
 - MIDI learn for hardware knobs (deferred from v1).
 - Piano roll: chop/glue, arpeggiator, strum, per-note pan lane, slide notes.
-- Autosave and crash recovery.
+- ~~Autosave and crash recovery~~ — a dirty project is mirrored to
+  `~/Library/Application Support/Eurydice/recovery/` once a minute, written
+  atomically off the message thread, and offered back at startup.
 - Plugin sandboxing — a crashing VST currently takes the whole DAW down.
 - Export: render only the loop range; normalisation; per-channel (not just
   per-insert) stems.

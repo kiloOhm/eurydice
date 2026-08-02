@@ -1,6 +1,7 @@
 #include "ChannelRackPanel.h"
 #include "ChannelEditor.h"
 #include "app/Theme.h"
+#include "model/UndoGesture.h"
 
 ChannelRackPanel::ChannelRackPanel (AppServices& s)
     : services (s), graphLane (s.project)
@@ -40,8 +41,11 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
     {
         auto pat = activePattern();
         if (pat.isValid() && lengthBox.getSelectedId() > 0)
+        {
+            const undoGesture::Scoped step (services.project, "Pattern length");
             pat.setProperty (ids::lengthTicks, lengthBox.getSelectedId() * ids::ticksPerStep,
                              &services.project.getUndoManager());
+        }
         for (auto& row : rows)
             row->repaint();
         rowContainer.setSize (rowContainerWidth(), rowContainer.getHeight());
@@ -54,6 +58,7 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
     swingKnob.setWantsKeyboardFocus (false);
     swingKnob.setDoubleClickReturnValue (true, 0.0);
     swingKnob.onValueChange = [this] { services.project.setSwing (swingKnob.getValue()); };
+    undoGesture::attach (swingKnob, services.project, "Swing");
     addAndMakeVisible (swingKnob);
 
     swingLabel.setFont (theme::uiFont (9.0f, true));
@@ -183,12 +188,17 @@ void ChannelRackPanel::showAddChannelMenu()
         [this, instruments] (int result)
         {
             auto& project = services.project;
+            if (result == 3)
+            {
+                services.plugins.startScan ([] {});
+                return;
+            }
+
+            const undoGesture::Scoped step (project, "Add channel");
             if (result == 1)
                 project.addChannel ("sampler", "Sampler " + juce::String (project.numChannels() + 1));
             else if (result == 2)
                 project.addChannel ("synth", "Synth " + juce::String (project.numChannels() + 1));
-            else if (result == 3)
-                services.plugins.startScan ([] {});
             else if (result >= 1000)
             {
                 const auto desc = instruments[result - 1000];
@@ -222,6 +232,7 @@ void ChannelRackPanel::showPatternMenu()
         {
             if (result == 1)
             {
+                const undoGesture::Scoped step (services.project, "Clone pattern");
                 auto copy = services.project.clonePattern ((int) pattern[ids::id]);
                 services.project.getRoot().setProperty (ids::activePattern,
                                                         (int) copy[ids::id], nullptr);
@@ -233,21 +244,27 @@ void ChannelRackPanel::showPatternMenu()
                 window->addTextEditor ("name", pattern[ids::name].toString());
                 window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
                 window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-                auto& undo = services.project.getUndoManager();
+                auto& model = services.project;
                 window->enterModalState (true, juce::ModalCallbackFunction::create (
-                    [window, pattern, &undo] (int r) mutable
+                    [window, pattern, &model] (int r) mutable
                     {
                         if (r == 1)
-                            pattern.setProperty (ids::name, window->getTextEditorContents ("name"), &undo);
+                        {
+                            const undoGesture::Scoped step (model, "Rename pattern");
+                            pattern.setProperty (ids::name, window->getTextEditorContents ("name"),
+                                                 &model.getUndoManager());
+                        }
                         delete window;
                     }));
             }
             else if (result == 3)
             {
+                const undoGesture::Scoped step (services.project, "Delete pattern");
                 services.project.removePattern ((int) pattern[ids::id]);
             }
             else if (result == 4 || result == 5)
             {
+                const undoGesture::Scoped step (services.project, "Move pattern");
                 services.project.movePattern (index, result == 4 ? index - 1 : index + 1);
                 refreshHeader();
             }
@@ -283,8 +300,11 @@ void ChannelRackPanel::showInsertMenu (juce::ValueTree channel)
         [this, channel] (int result) mutable
         {
             if (result > 0)
+            {
+                const undoGesture::Scoped step (services.project, "Route channel");
                 channel.setProperty (ids::insertIndex, result - 1,
                                      &services.project.getUndoManager());
+            }
         });
 }
 
@@ -324,7 +344,7 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
 
     menu.showMenuAsync ({}, [this, channel] (int result) mutable
     {
-        auto& undo = services.project.getUndoManager();
+        auto& project = services.project;
         if (result == 1)
         {
             auto* window = new juce::AlertWindow ("Rename channel", {}, juce::MessageBoxIconType::NoIcon);
@@ -332,16 +352,21 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
             window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
             window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
             window->enterModalState (true, juce::ModalCallbackFunction::create (
-                [window, channel, &undo] (int r) mutable
+                [window, channel, &project] (int r) mutable
                 {
                     if (r == 1)
-                        channel.setProperty (ids::name, window->getTextEditorContents ("name"), &undo);
+                    {
+                        const undoGesture::Scoped step (project, "Rename channel");
+                        channel.setProperty (ids::name, window->getTextEditorContents ("name"),
+                                             &project.getUndoManager());
+                    }
                     delete window;
                 }));
         }
         else if (result == 2)
         {
-            services.project.removeChannel (channel);
+            const undoGesture::Scoped step (project, "Delete channel");
+            project.removeChannel (channel);
         }
         else if (result == 5)
         {
@@ -354,6 +379,7 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
         else if (result == 10 || result == 11)
         {
             const bool isPan = result == 11;
+            const undoGesture::Scoped step (project, "Create automation");
             services.createAutomationWithClip ("channel", channel[ids::id],
                 isPan ? "pan" : "volume",
                 channel[ids::name].toString() + (isPan ? " pan" : " volume"),
@@ -371,13 +397,15 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
                         paramName = p->getName (48);
                         current = p->getValue();
                     }
+            const undoGesture::Scoped step (project, "Create automation");
             services.createAutomationWithClip ("plugin-channel", channel[ids::id],
                 juce::String (paramIndex),
                 channel[ids::name].toString() + " " + paramName, current);
         }
         else if (result >= 1000)
         {
-            channel.setProperty (ids::insertIndex, result - 1000, &undo);
+            const undoGesture::Scoped step (project, "Route channel");
+            channel.setProperty (ids::insertIndex, result - 1000, &project.getUndoManager());
         }
     });
 }

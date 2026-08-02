@@ -17,6 +17,7 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
 
     int getChannelId() const { return channel[ids::id]; }
     juce::ValueTree getChannelTree() const { return channel; }
