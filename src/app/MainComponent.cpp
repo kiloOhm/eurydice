@@ -133,15 +133,15 @@ MainComponent::MainComponent()
     if (showList.contains ("pianoroll")) pianoRollPanel->bringToFrontAndShow();
     if (showList.contains ("mixer"))     mixerPanel->bringToFrontAndShow();
 
-    // EURYDICE_EDITOR=<channel index> opens that channel's editor window.
+    // EURYDICE_EDITOR=<channel index>|synth|kick opens that channel's editor.
     const auto editorIndex = juce::SystemStats::getEnvironmentVariable ("EURYDICE_EDITOR", "");
     if (editorIndex.isNotEmpty())
     {
         juce::Timer::callAfterDelay (400, [this, editorIndex]
         {
-            auto channel = editorIndex == "synth"
-                               ? services.project.addChannel ("synth", "Lead")
-                               : services.project.getChannel (editorIndex.getIntValue());
+            auto channel = editorIndex == "synth" ? services.project.addChannel ("synth", "Lead")
+                         : editorIndex == "kick"  ? services.project.addChannel ("kick", "Kick Synth")
+                                                  : services.project.getChannel (editorIndex.getIntValue());
             channelEditors.show (services, channel);
         });
     }

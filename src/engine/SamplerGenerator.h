@@ -4,10 +4,11 @@
 #include <juce_dsp/juce_dsp.h>
 #include "Generator.h"
 
-// FL-style sampler channel: one sample, repitched by note, with an amp
-// envelope and a lowpass filter. In one-shot mode (the drum default) note-offs
-// are ignored and the sample plays to its end. Sample loading happens on the
-// message thread; the audio thread only reads via shared_ptr.
+// FL-style sampler channel: one sample, repitched by note, trimmed, optionally
+// reversed, with a pitch envelope, an amp envelope, a lowpass filter and a
+// drive stage. In one-shot mode (the drum default) note-offs are ignored and
+// the sample plays to its end. Sample loading happens on the message thread;
+// the audio thread only reads via shared_ptr.
 class SamplerGenerator : public Generator
 {
 public:
@@ -18,6 +19,14 @@ public:
         std::atomic<float> resonance { 0.0f };
         std::atomic<float> gain { 1.0f };
         std::atomic<bool>  oneShot { true };
+        std::atomic<float> sampleStart { 0.0f };      // 0..1 of the sample
+        std::atomic<float> sampleEnd   { 1.0f };
+        std::atomic<bool>  reverse { false };
+        std::atomic<float> pitchEnvDepth { 0.0f };    // semitones at note start
+        std::atomic<float> pitchEnvDecay { 0.08f };   // seconds
+        std::atomic<float> drive { 0.0f };            // 0..1
+        std::atomic<int>   driveCurve { 0 };
+        std::atomic<float> envShape { 0.0f };         // 0 = linear, 1 = exponential
     };
 
     SamplerGenerator();
@@ -55,6 +64,11 @@ private:
         int key = -1;
         double pos = 0.0;
         double rate = 1.0;
+        double startPos = 0.0, endPos = 0.0;   // trimmed region, in source frames
+        bool reverse = false;
+        double pitchEnv = 0.0;                 // 1 -> 0
+        double pitchEnvCoef = 0.0;
+        float pitchEnvDepth = 0.0f;
         float velocity = 1.0f;
         juce::ADSR env;
         juce::dsp::StateVariableTPTFilter<float> filter;

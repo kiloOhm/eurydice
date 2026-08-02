@@ -30,7 +30,7 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 | Piano roll | Draw/paint/move/resize, right-click delete, marquee select, velocity lane, ghost notes from other channels, chord stamp, scale highlighting |
 | Playlist | Free tracks; pattern, audio and automation clips; drag/resize/cross-track move; alt-resize time-stretches audio |
 | Mixer | 32 inserts + master, 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters |
-| Generators | Sampler channel (drop a WAV in, ADSR + lowpass, one-shot or sustained) and a built-in 2-osc subtractive synth, both with editor windows |
+| Generators | Sampler channel (drop a WAV in, ADSR + lowpass, one-shot or sustained, start/end trim, reverse, pitch envelope, drive), a built-in 2-osc subtractive synth, and a synthesised kick channel (swept body, click, noise, drive) — all with editor windows |
 | Plugins | VST3 + AU hosting: background scan, instrument channels, effect slots, native editor windows, state saved in the project |
 | Automation | Right-click any parameter (including plugin params) → automation clip with a tension-curve editor |
 | Audio | Input recording to audio clips; Rubber Band R3 offline time-stretch |
@@ -61,8 +61,9 @@ Right-click a panel button to reset that panel's position (or all of them);
 *View → Reset Panel Positions* does the same. Panels also can't be dragged
 fully off-screen, and double-clicking a title bar maximises it.
 
-Click a channel name to open its editor (sampler: sample slot, root note, ADSR,
-filter, one-shot; synth: oscillators, filter, envelope, keyboard). Right-click a
+Click a channel name to open its editor (sampler: sample slot, trim, reverse,
+pitch envelope, ADSR, filter, drive; synth: oscillators, filter, envelope,
+keyboard; kick: body sweep, click, noise, drive, keyboard). Right-click a
 channel for piano roll, routing, and automation. Double-click a pattern clip in
 the playlist to edit that pattern.
 

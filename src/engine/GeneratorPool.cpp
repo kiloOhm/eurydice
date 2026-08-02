@@ -1,4 +1,6 @@
 #include "GeneratorPool.h"
+#include "Drive.h"
+#include "KickGenerator.h"
 #include "SamplerGenerator.h"
 #include "SynthGenerator.h"
 #include "model/Ids.h"
@@ -14,6 +16,11 @@ float prop (const juce::ValueTree& tree, const juce::Identifier& id, float fallb
     return tree.hasProperty (id) ? (float) (double) tree[id] : fallback;
 }
 
+int curveProp (const juce::ValueTree& tree, const juce::Identifier& id)
+{
+    return juce::jlimit (0, drive::numCurves - 1, juce::roundToInt (prop (tree, id, 0.0f)));
+}
+
 void applySamplerParams (SamplerGenerator& sampler, const juce::ValueTree& channel)
 {
     auto& p = sampler.params();
@@ -24,7 +31,33 @@ void applySamplerParams (SamplerGenerator& sampler, const juce::ValueTree& chann
     p.cutoff.store    (prop (channel, ids::cutoff, 20000.0f));
     p.resonance.store (prop (channel, ids::resonance, 0.0f));
     p.oneShot.store   (channel.hasProperty (ids::oneShot) ? (bool) channel[ids::oneShot] : true);
+    p.sampleStart.store    (prop (channel, ids::sampleStart, 0.0f));
+    p.sampleEnd.store      (prop (channel, ids::sampleEnd, 1.0f));
+    p.reverse.store        (channel.hasProperty (ids::reverse) ? (bool) channel[ids::reverse] : false);
+    p.pitchEnvDepth.store  (prop (channel, ids::pitchEnvDepth, 0.0f));
+    p.pitchEnvDecay.store  (prop (channel, ids::pitchEnvDecay, 0.08f));
+    p.drive.store          (prop (channel, ids::drive, 0.0f));
+    p.driveCurve.store     (curveProp (channel, ids::driveCurve));
+    p.envShape.store       (prop (channel, ids::envShape, 0.0f));
     sampler.setRootNote ((int) channel.getProperty (ids::rootNote, 60));
+}
+
+void applyKickParams (KickGenerator& kick, const juce::ValueTree& channel)
+{
+    auto& p = kick.params();
+    p.startFreq.store  (prop (channel, ids::kickStartFreq, 240.0f));
+    p.endFreq.store    (prop (channel, ids::kickEndFreq, 48.0f));
+    p.pitchDecay.store (prop (channel, ids::kickPitchDecay, 0.035f));
+    p.ampDecay.store   (prop (channel, ids::kickAmpDecay, 0.5f));
+    p.bodyShape.store  (prop (channel, ids::kickBodyShape, 0.0f));
+    p.clickLevel.store (prop (channel, ids::kickClickLevel, 0.3f));
+    p.clickDecay.store (prop (channel, ids::kickClickDecay, 0.004f));
+    p.noiseLevel.store (prop (channel, ids::kickNoiseLevel, 0.12f));
+    p.noiseDecay.store (prop (channel, ids::kickNoiseDecay, 0.02f));
+    p.drive.store      (prop (channel, ids::drive, 0.25f));
+    p.driveCurve.store (curveProp (channel, ids::driveCurve));
+    p.envShape.store   (prop (channel, ids::envShape, 1.0f));
+    kick.setRootNote ((int) channel.getProperty (ids::rootNote, 60));
 }
 
 void applySynthParams (SynthGenerator& synth, const juce::ValueTree& channel)
@@ -62,6 +95,10 @@ std::shared_ptr<Generator> GeneratorPool::getOrCreate (const juce::ValueTree& ch
         {
             applySynthParams (*synth, channel);
         }
+        else if (auto* kick = dynamic_cast<KickGenerator*> (it->second.get()))
+        {
+            applyKickParams (*kick, channel);
+        }
         return it->second;
     }
 
@@ -84,6 +121,13 @@ std::shared_ptr<Generator> GeneratorPool::getOrCreate (const juce::ValueTree& ch
         synth->prepare (sampleRate, blockSize);
         applySynthParams (*synth, channel);
         gen = synth;
+    }
+    else if (type == "kick")
+    {
+        auto kick = std::make_shared<KickGenerator>();
+        kick->prepare (sampleRate, blockSize);
+        applyKickParams (*kick, channel);
+        gen = kick;
     }
     else if (type == "plugin" && pluginManager != nullptr)
     {
