@@ -3,10 +3,11 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "app/Theme.h"
 #include "model/ProjectModel.h"
+#include "model/UndoGesture.h"
 
 // A rotary bound to one property of a ValueTree, with a caption and a value
 // readout underneath. Writes go through the UndoManager so channel tweaks are
-// undoable like everything else.
+// undoable like everything else, one undo step per gesture.
 class LabelledKnob : public juce::Component
 {
 public:
@@ -30,6 +31,7 @@ public:
                                     &this->model.getUndoManager());
             updateReadout();
         };
+        undoGesture::attach (slider, projectModel, caption);
         addAndMakeVisible (slider);
 
         captionLabel.setText (caption, juce::dontSendNotification);

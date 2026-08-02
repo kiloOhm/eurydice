@@ -32,6 +32,10 @@ public:
     std::function<bool()>   getIsRecording;
     std::function<bool()>   getLoopEnabled;
 
+    // Exposed so the owner can bracket tempo drags into one undo transaction
+    // without this bar needing to know about the project model.
+    juce::Slider& getTempoSlider() { return tempoSlider; }
+
     void setTempoDisplay (double bpm);
     void setSongMode (bool songMode);
     void setRecordArmed (bool armed);

@@ -2,6 +2,7 @@
 #include "ChannelRow.h"
 #include "app/Theme.h"
 #include "model/LaneUtils.h"
+#include "model/UndoGesture.h"
 
 namespace
 {
@@ -222,11 +223,16 @@ void StepGraphLane::resized()
 
 void StepGraphLane::mouseDown (const juce::MouseEvent& e)
 {
-    model.getUndoManager().beginNewTransaction();
+    undoGesture::begin (model, "Edit step graph");
     applyDrag (e.getPosition());
 }
 
 void StepGraphLane::mouseDrag (const juce::MouseEvent& e)
 {
     applyDrag (e.getPosition());
+}
+
+void StepGraphLane::mouseUp (const juce::MouseEvent&)
+{
+    undoGesture::end (model);
 }

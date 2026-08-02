@@ -32,6 +32,16 @@ public:
         markSaved (file);
     }
 
+    // A recovered autosave belongs to `file` but is not what sits on disk
+    // there, so it stays dirty until the user saves over it.
+    void markRestored (const juce::File& file)
+    {
+        attach();
+        currentFile = file;
+        dirty = true;
+        sendChangeMessage();
+    }
+
     void markNewProject()
     {
         attach();

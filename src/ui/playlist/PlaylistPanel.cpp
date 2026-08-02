@@ -1,6 +1,7 @@
 #include "PlaylistPanel.h"
 #include "app/Theme.h"
 #include "engine/EngineSnapshot.h"
+#include "model/UndoGesture.h"
 #include "ui/automation/AutomationEditor.h"
 
 PlaylistPanel::PlaylistPanel (AppServices& s)
@@ -394,20 +395,27 @@ void PlaylistPanel::mouseDown (const juce::MouseEvent& e)
         if (track.isValid())
         {
             if (pos.x < 22)   // mute LED
+            {
+                const undoGesture::Scoped step (services.project, "Mute track");
                 track.setProperty (ids::mute, ! (bool) track[ids::mute],
                                    &services.project.getUndoManager());
+            }
             else if (e.mods.isPopupMenu() || e.getNumberOfClicks() == 2)
             {
                 auto* window = new juce::AlertWindow ("Rename track", {}, juce::MessageBoxIconType::NoIcon);
                 window->addTextEditor ("name", track[ids::name].toString());
                 window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
                 window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-                auto& undo = services.project.getUndoManager();
+                auto& project = services.project;
                 window->enterModalState (true, juce::ModalCallbackFunction::create (
-                    [window, track, &undo] (int r) mutable
+                    [window, track, &project] (int r) mutable
                     {
                         if (r == 1)
-                            track.setProperty (ids::name, window->getTextEditorContents ("name"), &undo);
+                        {
+                            const undoGesture::Scoped step (project, "Rename track");
+                            track.setProperty (ids::name, window->getTextEditorContents ("name"),
+                                               &project.getUndoManager());
+                        }
                         delete window;
                     }));
             }
@@ -424,12 +432,13 @@ void PlaylistPanel::mouseDown (const juce::MouseEvent& e)
 
     if (e.mods.isPopupMenu())
     {
+        drag = Drag::erase;
+        undoGesture::begin (services.project, "Delete clips");
         if (clip.isValid())
         {
             clip.getParent().removeChild (clip, &services.project.getUndoManager());
             repaint();
         }
-        drag = Drag::erase;
         return;
     }
 
@@ -458,9 +467,11 @@ void PlaylistPanel::mouseDown (const juce::MouseEvent& e)
         dragClip = clip;
         drag = overRightEdge ? Drag::resize : Drag::move;
         dragTickOffset = xToTicks (pos.x) - (double) (int) clip[ids::startTicks];
+        undoGesture::begin (services.project, overRightEdge ? "Resize clip" : "Move clip");
     }
     else
     {
+        undoGesture::begin (services.project, "Add clip");
         addClipAt (pos);
     }
     repaint();
@@ -558,6 +569,9 @@ void PlaylistPanel::mouseDrag (const juce::MouseEvent& e)
 
 void PlaylistPanel::mouseUp (const juce::MouseEvent&)
 {
+    // Harmless when the gesture never wrote anything: an empty transaction is
+    // never recorded.
+    undoGesture::end (services.project);
     drag = Drag::none;
     dragClip = {};
 }

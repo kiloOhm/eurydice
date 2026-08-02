@@ -1,6 +1,7 @@
 #include "ChannelRow.h"
 #include "app/Theme.h"
 #include "model/LaneUtils.h"
+#include "model/UndoGesture.h"
 
 ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
     : model (m), channel (ch)
@@ -9,6 +10,7 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
     muteLed.setWantsKeyboardFocus (false);
     muteLed.onClick = [this]
     {
+        const undoGesture::Scoped step (model, "Mute channel");
         channel.setProperty (ids::mute, ! muteLed.getToggleState(), &model.getUndoManager());
     };
 
@@ -32,7 +34,8 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
     insertButton.addMouseListener (this, false);
     addAndMakeVisible (insertButton);
 
-    auto initKnob = [this] (juce::Slider& k, const juce::Identifier& prop, double min, double max)
+    auto initKnob = [this] (juce::Slider& k, const juce::Identifier& prop, double min, double max,
+                            const juce::String& gestureName)
     {
         k.setSliderStyle (juce::Slider::RotaryVerticalDrag);
         k.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
@@ -43,10 +46,11 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
         {
             channel.setProperty (prop, k.getValue(), &model.getUndoManager());
         };
+        undoGesture::attach (k, model, gestureName);
         addAndMakeVisible (k);
     };
-    initKnob (panKnob, ids::pan, -1.0, 1.0);
-    initKnob (volKnob, ids::volume, 0.0, 1.0);
+    initKnob (panKnob, ids::pan, -1.0, 1.0, "Channel pan");
+    initKnob (volKnob, ids::volume, 0.0, 1.0, "Channel volume");
 
     addAndMakeVisible (muteLed);
     addAndMakeVisible (nameButton);
@@ -260,6 +264,7 @@ void ChannelRow::mouseDown (const juce::MouseEvent& e)
     }
 
     dragPaintMode = e.mods.isPopupMenu() ? 0 : 1;
+    undoGesture::begin (model, dragPaintMode == 1 ? "Paint steps" : "Erase steps");
     setStep (step, dragPaintMode == 1);
 }
 
@@ -270,4 +275,12 @@ void ChannelRow::mouseDrag (const juce::MouseEvent& e)
     const int step = stepAt (e.getPosition());
     if (step >= 0)
         setStep (step, dragPaintMode == 1);
+}
+
+void ChannelRow::mouseUp (const juce::MouseEvent&)
+{
+    if (dragPaintMode < 0)
+        return;
+    dragPaintMode = -1;
+    undoGesture::end (model);
 }

@@ -4,6 +4,7 @@
 #include "app/AppServices.h"
 #include "app/Theme.h"
 #include "engine/EngineSnapshot.h"
+#include "model/UndoGesture.h"
 
 // Curve editor for one automation source. Left-drag moves points,
 // double-click adds a point, right-click deletes one, vertical drag on a
@@ -108,7 +109,14 @@ public:
             tensionSegment = segmentLeftPointAt (e.getPosition().x);
             tensionStartY = e.getPosition().y;
             if (tensionSegment >= 0)
+            {
                 tensionStart = (float) (double) getPoint (tensionSegment)[ids::tension];
+                undoGesture::begin (services.project, "Bend automation curve");
+            }
+        }
+        else
+        {
+            undoGesture::begin (services.project, "Move automation point");
         }
     }
 
@@ -135,6 +143,8 @@ public:
 
     void mouseUp (const juce::MouseEvent&) override
     {
+        if (draggedPoint >= 0 || tensionSegment >= 0)
+            undoGesture::end (services.project);
         draggedPoint = -1;
         tensionSegment = -1;
         repaint();
@@ -236,6 +246,7 @@ private:
 
     void addPoint (juce::Point<int> pos)
     {
+        const undoGesture::Scoped step (services.project, "Add automation point");
         juce::ValueTree point (ids::POINT);
         point.setProperty (ids::posTicks, (int) xToTicks (pos.x), nullptr);
         point.setProperty (ids::value, (double) yToValue (pos.y), nullptr);
@@ -248,7 +259,10 @@ private:
     {
         auto point = getPoint (index);
         if (point.isValid())
+        {
+            const undoGesture::Scoped step (services.project, "Delete automation point");
             automation.removeChild (point, &services.project.getUndoManager());
+        }
     }
 
     AppServices& services;

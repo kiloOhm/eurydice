@@ -286,3 +286,22 @@ TEST_F (DispatcherFixture, AudioClipAddViaDispatch)
         R"({"track": 0, "path": "/missing.wav"})"));
     tone.deleteFile();
 }
+
+TEST_F (DispatcherFixture, EachCallIsItsOwnUndoStep)
+{
+    auto channel = services.project.getChannel (0);
+    channel.setProperty (ids::volume, 0.5, nullptr);
+    channel.setProperty (ids::pan, 0.0, nullptr);
+    services.project.getUndoManager().clearUndoHistory();
+
+    const auto id = juce::String (firstChannelId());
+    call ("channel.set", R"({"channelId": )" + id + R"(, "volume": 0.9})");
+    call ("channel.set", R"({"channelId": )" + id + R"(, "pan": -0.4})");
+
+    int steps = 0;
+    while (services.project.getUndoManager().undo())
+        ++steps;
+    EXPECT_EQ (steps, 2);
+    EXPECT_DOUBLE_EQ ((double) channel[ids::volume], 0.5);
+    EXPECT_DOUBLE_EQ ((double) channel[ids::pan], 0.0);
+}

@@ -1,5 +1,6 @@
 #include "MixerPanel.h"
 #include "app/Theme.h"
+#include "model/UndoGesture.h"
 
 // ================= Strip =================
 
@@ -16,6 +17,7 @@ MixerPanel::Strip::Strip (MixerPanel& o, int index)
         owner.insertTree (insertIndex).setProperty (ids::volume, fader.getValue(),
                                                     &owner.services.project.getUndoManager());
     };
+    undoGesture::attach (fader, owner.services.project, "Insert volume");
     addAndMakeVisible (fader);
 
     panKnob.setSliderStyle (juce::Slider::RotaryVerticalDrag);
@@ -28,6 +30,7 @@ MixerPanel::Strip::Strip (MixerPanel& o, int index)
         owner.insertTree (insertIndex).setProperty (ids::pan, panKnob.getValue(),
                                                     &owner.services.project.getUndoManager());
     };
+    undoGesture::attach (panKnob, owner.services.project, "Insert pan");
     addAndMakeVisible (panKnob);
 
     muteButton.setClickingTogglesState (true);
@@ -35,6 +38,7 @@ MixerPanel::Strip::Strip (MixerPanel& o, int index)
     muteButton.setColour (juce::TextButton::buttonOnColourId, theme::record.darker (0.2f));
     muteButton.onClick = [this]
     {
+        const undoGesture::Scoped step (owner.services.project, "Mute insert");
         owner.insertTree (insertIndex).setProperty (ids::mute, muteButton.getToggleState(),
                                                     &owner.services.project.getUndoManager());
     };
@@ -201,6 +205,7 @@ void MixerPanel::rebuildDetail()
         {
             sendCopy.setProperty (ids::level, rowPtr->level.getValue(), &undo);
         };
+        undoGesture::attach (row->level, services.project, "Send level");
         addAndMakeVisible (row->level);
 
         row->remove.setWantsKeyboardFocus (false);
@@ -208,7 +213,10 @@ void MixerPanel::rebuildDetail()
         row->remove.setEnabled (! isDefaultMasterSend);
         row->remove.onClick = [this, sendCopy]() mutable
         {
-            sendCopy.getParent().removeChild (sendCopy, &services.project.getUndoManager());
+            {
+                const undoGesture::Scoped step (services.project, "Remove send");
+                sendCopy.getParent().removeChild (sendCopy, &services.project.getUndoManager());
+            }
             rebuildDetail();
             resized();
         };
@@ -248,6 +256,7 @@ void MixerPanel::showStripMenu (int insertIndex)
             return;
         const auto insertName = insertTree (insertIndex)[ids::name].toString();
         const auto ins = insertTree (insertIndex);
+        const undoGesture::Scoped step (services.project, "Create automation");
 
         if (result == 1)
             services.createAutomationWithClip ("insert", insertIndex, "volume",
@@ -330,12 +339,14 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
             }
             else if (result == 2)
             {
+                const undoGesture::Scoped step (services.project, "Bypass effect");
                 auto slot = getSlotTree (selectedInsert, slotIndex, true);
                 slot.setProperty (ids::bypass, ! (bool) slot[ids::bypass], &undo);
                 rebuildDetail();
             }
             else if (result == 3)
             {
+                const undoGesture::Scoped step (services.project, "Remove effect");
                 if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
                     services.pluginWindows.closeFor (plugin.get());
                 services.effects.remove (selectedInsert, slotIndex);
@@ -351,6 +362,7 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
             else if (result >= 1000)
             {
                 const auto desc = fx[result - 1000];
+                const undoGesture::Scoped step (services.project, "Add effect");
                 if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
                     services.pluginWindows.closeFor (plugin.get());
                 services.effects.remove (selectedInsert, slotIndex);
@@ -383,6 +395,7 @@ void MixerPanel::showSendMenu()
         {
             if (result < 100)
                 return;
+            const undoGesture::Scoped step (services.project, "Add send");
             auto targetSends = insertTree (selectedInsert).getChildWithName (ids::SENDS);
             juce::ValueTree newSend (ids::SEND);
             newSend.setProperty (ids::destInsert, result - 100, nullptr);
