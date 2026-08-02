@@ -142,6 +142,17 @@ void ProjectModel::removeChannel (const juce::ValueTree& channel)
     channels().removeChild (channel, &undo);
 }
 
+bool ProjectModel::moveChannel (int fromIndex, int toIndex)
+{
+    if (fromIndex == toIndex
+        || ! juce::isPositiveAndBelow (fromIndex, numChannels())
+        || ! juce::isPositiveAndBelow (toIndex, numChannels()))
+        return false;
+
+    channels().moveChild (fromIndex, toIndex, &undo);
+    return true;
+}
+
 juce::ValueTree ProjectModel::getChannelById (int channelId) const
 {
     return channels().getChildWithProperty (ids::id, channelId);

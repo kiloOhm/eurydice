@@ -15,10 +15,12 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
         channel.setProperty (ids::mute, ! muteLed.getToggleState(), &model.getUndoManager());
     };
 
-    nameButton.setTooltip ("Open the channel editor — right-click for channel options");
+    nameButton.setTooltip ("Open the channel editor — drag to reorder, right-click for channel options");
     nameButton.setWantsKeyboardFocus (false);
     nameButton.onClick = [this]
     {
+        if (reordering)   // release of a reorder drag, not a click
+            return;
         if (onSelected) onSelected (getChannelId());
         if (onOpenEditor) onOpenEditor (channel);
     };
@@ -196,6 +198,15 @@ void ChannelRow::paintNoteGraph (juce::Graphics& g, juce::Rectangle<int> area) c
 
 void ChannelRow::paint (juce::Graphics& g)
 {
+    if (channel.hasProperty (ids::colour))
+    {
+        const auto tint = juce::Colour::fromString (channel[ids::colour].toString());
+        g.setColour (tint.withAlpha (0.07f));
+        g.fillRect (getLocalBounds());
+        g.setColour (tint);
+        g.fillRect (0, 0, 3, getHeight());
+    }
+
     const auto area = stepsArea();
     const int steps = numSteps();
 
@@ -280,6 +291,8 @@ void ChannelRow::resized()
 
 void ChannelRow::mouseDown (const juce::MouseEvent& e)
 {
+    reordering = false;
+
     // Events forwarded from the child buttons arrive with their coordinates,
     // so translate before deciding where the click landed.
     const auto pos = e.eventComponent == this ? e.getPosition()
@@ -294,9 +307,14 @@ void ChannelRow::mouseDown (const juce::MouseEvent& e)
             return;
         }
     }
-    else if (e.eventComponent != this)
+    else
     {
-        return;   // let the button handle its own left-click
+        // A press on the name area (button or bare row) may become a reorder
+        // drag; the knobs and LEDs keep their gestures to themselves.
+        reorderArmed = pos.x < fixedLeftWidth
+                       && (e.eventComponent == this || e.eventComponent == &nameButton);
+        if (e.eventComponent != this)
+            return;   // let the button handle its own left-click
     }
 
     const int step = stepAt (pos);
@@ -317,6 +335,23 @@ void ChannelRow::mouseDown (const juce::MouseEvent& e)
 
 void ChannelRow::mouseDrag (const juce::MouseEvent& e)
 {
+    if (reorderArmed)
+    {
+        // Commit to the reorder only once the pointer clearly moved, so a
+        // twitchy click still opens the editor.
+        if (! reordering && std::abs (e.getDistanceFromDragStartY()) > 4)
+            reordering = true;
+        if (reordering)
+        {
+            // Keep drag events coming while stationary so the viewport can
+            // auto-scroll at the edges.
+            juce::Component::beginDragAutoRepeat (50);
+            if (onReorderDrag)
+                onReorderDrag (*this, e);
+        }
+        return;
+    }
+
     if (dragPaintMode < 0)
         return;
     const int step = stepAt (e.getPosition());
@@ -324,8 +359,16 @@ void ChannelRow::mouseDrag (const juce::MouseEvent& e)
         setStep (step, dragPaintMode == 1);
 }
 
-void ChannelRow::mouseUp (const juce::MouseEvent&)
+void ChannelRow::mouseUp (const juce::MouseEvent& e)
 {
+    if (reorderArmed)
+    {
+        reorderArmed = false;
+        if (reordering && onReorderEnd)
+            onReorderEnd (*this, e);
+        return;
+    }
+
     if (dragPaintMode < 0)
         return;
     dragPaintMode = -1;
