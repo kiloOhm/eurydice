@@ -124,6 +124,18 @@ tests/         GoogleTest suite
 todo/          Per-feature status notes
 ```
 
+## Starter projects
+
+```bash
+python3 scripts/make_genre_projects.py
+```
+
+Writes one project per genre (schranz, tekk, hardtekk, DnB, uptempo, hardcore,
+frenchcore) to `~/Music/Eurydice Starters`, each at its own tempo with a
+genre-typical drum pattern, per-element mixer routing, an eight-bar arrangement
+and a four-bar loop. Separate files rather than one project because tempo is a
+project-level setting and these genres sit 60 BPM apart.
+
 ## Plugins
 
 Eurydice ships no stock effects yet, so start with free VSTs:
