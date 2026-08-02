@@ -421,3 +421,34 @@ TEST (SequencerEngine, PreviewNoteProducesAudioWhileStopped)
     auto out = fx.render (8192);
     EXPECT_GT (rmsOf (out, 0, 4096), 0.01f);
 }
+
+TEST (SequencerEngine, ProjectSwingAutomationShiftsOddSteps)
+{
+    // The rack swing knob's automation target: project-level swing, applied
+    // to patterns that follow the project value (song mode, like all
+    // automation).
+    EngineFixture fx;
+    soloNoteAt (fx, 1 * ids::ticksPerStep);   // odd step
+    fx.model.setSwing (0.0);
+    fx.model.setSongMode (true);
+    auto patternClip = fx.model.addPlaylistClip ("pattern", 0, 0, ids::ticksPerBar);
+    patternClip.setProperty (ids::patternId, (int) fx.model.getPattern (0)[ids::id], nullptr);
+
+    auto automation = fx.model.addAutomation ("project", 0, "swing", "Swing", 1.0);
+    auto clip = fx.model.addPlaylistClip ("automation", 1, 0, ids::ticksPerBar);
+    clip.setProperty (ids::automationId, (int) automation[ids::id], nullptr);
+    fx.sync.rebuildNow();
+
+    ASSERT_EQ (fx.engine.getPendingSnapshot()->automations.size(), 1u);
+    EXPECT_EQ (fx.engine.getPendingSnapshot()->automations.front().kind,
+               AutomationSnapshot::Kind::projectSwing);
+
+    const double tps = fx.ticksPerSample();
+    const int unswungOnset = (int) (240 / tps);
+    const int swungOnset   = (int) ((240 + 120) / tps);
+
+    auto out = fx.renderFromStart (swungOnset + 8192);
+    EXPECT_LT (rmsOf (out, unswungOnset, swungOnset - unswungOnset - 256), 1.0e-5f)
+        << "swing automation was ignored";
+    EXPECT_GT (rmsOf (out, swungOnset, 2048), 0.01f);
+}

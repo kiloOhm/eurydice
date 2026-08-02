@@ -538,9 +538,9 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         const auto targetType = getOr (params, "targetType", "").toString();
         if (targetType != "channel" && targetType != "insert" && targetType != "channel-param"
             && targetType != "plugin-channel" && targetType != "plugin-insert"
-            && targetType != "builtin-insert")
+            && targetType != "builtin-insert" && targetType != "project")
             throw ControlError { "targetType must be channel|insert|channel-param"
-                                 "|plugin-channel|plugin-insert|builtin-insert" };
+                                 "|plugin-channel|plugin-insert|builtin-insert|project" };
 
         auto automation = services.createAutomationWithClip (
             targetType,

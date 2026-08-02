@@ -95,7 +95,7 @@ BrowserPanel::BrowserPanel (AppServices& s)
     addAndMakeVisible (pluginList);
 
     refreshPluginFilter();
-    resized();
+    BrowserPanel::resized();   // explicit: no virtual dispatch mid-construction
 }
 
 BrowserPanel::~BrowserPanel()

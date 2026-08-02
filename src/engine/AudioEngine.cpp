@@ -282,6 +282,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
 
     // Automation overrides for this block.
     channelVolAuto.fill (-1000.0f);
+    swingAuto = -1000.0f;
     channelPanAuto.fill (-1000.0f);
     insertVolAuto.fill (-1000.0f);
     insertPanAuto.fill (-1000.0f);
@@ -331,13 +332,16 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
             if (metronomeEnabled.load (std::memory_order_relaxed))
                 scheduleClicks (t0, t1, tps, done);
 
+            // Automation first: swing shifts note onsets, so it has to be in
+            // force before this range is sequenced (volume/pan are read later
+            // at render time either way).
+            if (snap->songMode)
+                applyAutomation (*snap, t0);
+
             flushNoteOffs (*snap, t0, t1, tps);
             generateMidiForRange (*snap, t0, t1, tps);
             if (snap->songMode)
-            {
-                applyAutomation (*snap, t0);
                 mixAudioClips (*snap, t0, t1, tps, done, chunk);
-            }
 
             tickPos = t1;
 
@@ -561,6 +565,9 @@ void AudioEngine::applyAutomation (const EngineSnapshot& snap, double tick)
                 if (automation.param != nullptr)
                     automation.param->setValueNotifyingHost (value);
                 break;
+            case AutomationSnapshot::Kind::projectSwing:
+                swingAuto = value;
+                break;
             case AutomationSnapshot::Kind::sandboxParam:
                 // Queued into the ring's event slots; the child applies them
                 // before its next block. RT-safe on this side.
@@ -651,7 +658,11 @@ void AudioEngine::emitPatternSegment (const EngineSnapshot& snap, const PatternS
                                       double segStart, double segEnd, double blockStartTick,
                                       int tickOffsetToSong, double tps)
 {
-    const double swingShift = pat.swing * (double) ids::ticksPerStep * 0.5;
+    // Automated project swing overrides patterns that follow the project
+    // value; a pattern with its own swing keeps it.
+    const double effectiveSwing = (swingAuto > -100.0f && ! pat.overridesSwing)
+                                      ? (double) swingAuto : pat.swing;
+    const double swingShift = effectiveSwing * (double) ids::ticksPerStep * 0.5;
 
     for (const auto& note : pat.notes)
     {

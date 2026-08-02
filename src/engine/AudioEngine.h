@@ -195,6 +195,7 @@ private:
     // --- per-block automation overrides (sentinel: < -100 means "none") ---
     std::array<float, maxChannels> channelVolAuto {}, channelPanAuto {};
     std::array<float, maxInserts>  insertVolAuto {},  insertPanAuto {};
+    float swingAuto = -1000.0f;   // audio thread; projectSwing automation
     void applyAutomation (const EngineSnapshot&, double tick);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioEngine)

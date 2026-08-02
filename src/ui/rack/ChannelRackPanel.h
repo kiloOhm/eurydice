@@ -4,6 +4,7 @@
 #include "app/AppServices.h"
 #include "app/Theme.h"
 #include "ChannelRow.h"
+#include "ui/common/AutomatableSlider.h"
 #include "RackReorder.h"
 #include "StepGraphLane.h"
 #include "ui/common/SampleDrop.h"
@@ -79,7 +80,7 @@ private:
     juce::TextButton addPatternButton { "+" };
     juce::TextButton patternMenuButton { "..." };
     juce::ComboBox lengthBox;
-    juce::Slider swingKnob;
+    AutomatableSlider swingKnob;
     juce::Label swingLabel { {}, "SWING" };
     juce::TextButton graphButton { "GRAPH" };
 

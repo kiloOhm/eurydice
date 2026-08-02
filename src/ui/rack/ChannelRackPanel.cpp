@@ -91,6 +91,14 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
     {
         if (auto pat = activePattern(); pat.isValid())
             services.project.setPatternSwing (pat, swingKnob.getValue());
+        services.automationWriter.touch ({ "project", 0, "swing", "Swing" },
+                                         swingKnob.getValue());
+    };
+    swingKnob.onContextMenu = [this]
+    {
+        automationmenu::show (services, { "project", 0, "swing", "Swing" },
+                              swingKnob.getValue(),
+                              [this] { swingKnob.setValue (0.0, juce::sendNotification); });
     };
     undoGesture::attach (swingKnob, services.project, "Swing");
     addAndMakeVisible (swingKnob);

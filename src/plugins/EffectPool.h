@@ -151,6 +151,8 @@ private:
                           const juce::String& initialStateBase64)
     {
         const auto desc = plugins.findByIdentifier (pluginId);
+        if (! desc.has_value())
+            return;   // caller checked, but keep this path self-sufficient
         plugins.createInstance (*desc, sr, bs,
             [this, key, pluginId, desc, initialStateBase64]
             (std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error)

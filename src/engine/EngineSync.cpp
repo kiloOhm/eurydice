@@ -79,6 +79,7 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
         ps.id = p[ids::id];
         ps.lengthTicks = p[ids::lengthTicks];
         ps.swing = model.getSwingForPattern (p);
+        ps.overridesSwing = model.patternOverridesSwing (p);
         patternIdToIndex[ps.id] = i;
 
         for (const auto lane : p)
@@ -240,6 +241,11 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
                             as.genKeepAlive = std::move (generator);
                             valid = true;
                         }
+        }
+        else if (targetType == "project" && paramId == "swing")
+        {
+            as.kind = AutomationSnapshot::Kind::projectSwing;
+            valid = true;
         }
         else if (targetType == "plugin-channel")
         {

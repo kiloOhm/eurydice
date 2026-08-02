@@ -23,6 +23,9 @@ struct SeqNote
 
 struct PatternSnapshot
 {
+    // True when the pattern pins its own swing; automation of the project
+    // swing must not touch those.
+    bool overridesSwing = false;
     int id = 0;
     int lengthTicks = 3840;
     double swing = 0.0;           // already resolved against the project default
@@ -64,7 +67,8 @@ struct AutomationPoint
 struct AutomationSnapshot
 {
     enum class Kind { channelVolume, channelPan, insertVolume, insertPan,
-                      pluginParam, generatorParam, builtinParam, sandboxParam };
+                      pluginParam, generatorParam, builtinParam, sandboxParam,
+                      projectSwing };
     Kind kind = Kind::channelVolume;
     int  channelIndex = -1;                       // for channel* kinds
     int  insertIndex = -1;                        // for insert* kinds

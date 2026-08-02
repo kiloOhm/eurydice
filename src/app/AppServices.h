@@ -29,7 +29,9 @@ public:
         {
             const auto err = engine.initialise();
             if (err.isNotEmpty())
+            {
                 DBG ("Audio device error: " + err);
+            }
         }
         else
         {
