@@ -105,6 +105,8 @@ DECLARE_ID (patternId)
 DECLARE_ID (audioPath)
 DECLARE_ID (audioOffsetTicks)   // trim start inside source
 DECLARE_ID (stretchRatio)       // 1 = natural speed
+DECLARE_ID (stretchMode)        // 0 = smooth, 1 = percussive, 2 = formant preserved
+DECLARE_ID (followTempo)        // re-stretch on tempo change so tick length stays musical
 DECLARE_ID (automationId)
 DECLARE_ID (trackIndex)
 DECLARE_ID (muted)

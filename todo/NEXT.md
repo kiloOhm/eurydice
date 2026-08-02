@@ -38,7 +38,18 @@ the active work.
    src/app/TakeSplitter.h); the latest pass lands unmuted, earlier passes
    muted on the tracks below, and audio clips grew a right-click Mute/Unmute
    menu. A partial last pass >= 0.05 s is kept as a shorter clip.
-9. Realtime time-stretch (Rubber Band is offline-only today).
+9. ~~Time-stretch modes~~ — shipped the pragmatic version: per-clip stretch
+   mode (Smooth / Percussive / Formant preserved, on the CLIP tree, playlist
+   right-click menu) and an opt-in per-clip "Follow tempo" flag —
+   StretchFollower recomputes the ratio on tempo change (coalesced per
+   message-loop tick) so tick lengths stay musically constant.
+   TRUE realtime stretching in the audio callback stays open, and is a real
+   project: RubberBandStretcher has an OptionProcessRealTime mode, but it
+   allocates/locks internally unless carefully pre-primed, needs per-clip
+   stretcher instances owned outside the snapshot, latency compensation
+   (R3 realtime reports ~2k+ samples startDelay), and a feeder thread. The
+   offline cache is the right call until clips get a dedicated worker-thread
+   render pipeline.
 
 ## Big rocks (schedule deliberately)
 

@@ -341,7 +341,8 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
                 cs.type = ClipSnapshot::Type::audio;
                 const double ratio = clip.hasProperty (ids::stretchRatio)
                                          ? (double) clip[ids::stretchRatio] : 1.0;
-                cs.audio = audioClips.getStretched (clip[ids::audioPath].toString(), ratio);
+                cs.audio = audioClips.getStretched (clip[ids::audioPath].toString(), ratio,
+                                                    AudioClipCache::modeFrom ((int) clip[ids::stretchMode]));
                 if (cs.audio == nullptr)
                     continue;
                 const double tps = (snap->tempo / 60.0) * ids::ticksPerQuarter

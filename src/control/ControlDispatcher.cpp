@@ -271,7 +271,9 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
                                           { "patternId", (int) clip[ids::patternId] },
                                           { "start", (int) clip[ids::startTicks] },
                                           { "length", (int) clip[ids::lengthTicks] },
-                                          { "muted", (bool) clip[ids::muted] } }));
+                                          { "muted", (bool) clip[ids::muted] },
+                                          { "stretchMode", (int) clip[ids::stretchMode] },
+                                          { "followTempo", (bool) clip[ids::followTempo] } }));
             tracks.add (makeObj ({ { "index", i }, { "name", track[ids::name].toString() },
                                    { "mute", (bool) track[ids::mute] }, { "clips", clips } }));
         }
@@ -346,6 +348,16 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
                               juce::jmax (1, (int) getOr (params, "length", 1)), &undo);
         if (has (params, "muted"))
             clip.setProperty (ids::muted, (bool) getOr (params, "muted", false), &undo);
+        if (has (params, "stretchMode"))
+            clip.setProperty (ids::stretchMode,
+                              juce::jlimit (0, 2, (int) getOr (params, "stretchMode", 0)), &undo);
+        if (has (params, "followTempo"))
+        {
+            const bool follow = (bool) getOr (params, "followTempo", false);
+            clip.setProperty (ids::followTempo, follow, &undo);
+            if (follow)
+                services.stretchFollower.refit (clip, &undo);
+        }
         return true;
     }
     if (method == "playlist.clear")
