@@ -60,6 +60,10 @@ private:
     void restoreFromRecovery (const juce::File& recoveryFile);
     void transportPlay();
     void transportStop();
+    void toggleRecordArm();
+    // Renders the frontmost window (an editor if one is open, otherwise the
+    // main window) to a PNG. Message thread only.
+    bool writeSnapshot (const juce::File&);
     void openAutomationEditor (int index);
     void updateWindowTitle();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;

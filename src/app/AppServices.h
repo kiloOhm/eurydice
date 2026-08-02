@@ -67,6 +67,11 @@ public:
     // Set by the host window: show the playlist and highlight a fresh clip.
     std::function<void (juce::ValueTree clip)> onAutomationClipCreated;
 
+    // Set by the host window: render the UI to a PNG. Lets the control API
+    // (and so an AI driving the app) see what the user sees, which is the only
+    // way to catch "the engine is fine but nothing moves on screen" bugs.
+    std::function<bool (const juce::File&)> onSnapshotRequested;
+
     // Captures live plugin state into the tree, then writes the file.
     bool saveProject (const juce::File& file)
     {
@@ -76,11 +81,32 @@ public:
 
     bool loadProject (const juce::File& file)
     {
+        // Editors point at nodes of the outgoing project; close them before the
+        // tree underneath them is replaced.
+        closeAllEditors();
         if (! project.loadFromFile (file))
             return false;
         engineSync.attachToProject();
         return true;
     }
+
+    void newProject()
+    {
+        closeAllEditors();
+        project.createDefaultProject();
+        engineSync.attachToProject();
+    }
+
+    void closeAllEditors()
+    {
+        pluginWindows.closeAll();
+        builtinEditors.closeAll();
+        if (onCloseChannelEditors)
+            onCloseChannelEditors();
+    }
+
+    // Set by the host window: channel editor windows live there.
+    std::function<void()> onCloseChannelEditors;
 
     void capturePluginState()
     {

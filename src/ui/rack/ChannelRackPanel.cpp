@@ -515,7 +515,13 @@ void ChannelRackPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::Value
     if (child.hasType (ids::CHANNEL) || parent.hasType (ids::CHANNELS))
         rebuildRows();
     else if (child.hasType (ids::PATTERN))
+    {
         refreshHeader();
+        // A project load replaces the pattern set wholesale; rows built before
+        // that would keep drawing the pattern object they were handed.
+        for (auto& row : rows)
+            row->setPattern (activePattern());
+    }
     else if (child.hasType (ids::NOTE) || child.hasType (ids::LANE))
     {
         for (auto& row : rows)

@@ -14,9 +14,49 @@ AudioEngine::~AudioEngine()
 
 juce::String AudioEngine::initialise()
 {
-    auto err = deviceManager.initialiseWithDefaultDevices (2, 2);
+    // Output only. Opening the default input too usually means a *different*
+    // hardware device (mic vs speakers), which makes JUCE build an
+    // AudioIODeviceCombiner around a private aggregate device — and creating
+    // that aggregate fires a device-list notification that can re-enter the
+    // combiner's restart path from a CoreAudio dispatch thread while it is
+    // still being set up. That race corrupted the heap and crashed most
+    // launches. Input is enabled on demand when recording arms.
+    auto err = deviceManager.initialiseWithDefaultDevices (0, 2);
     deviceManager.addAudioCallback (this);
     return err;
+}
+
+juce::String AudioEngine::setInputEnabled (bool enabled)
+{
+    auto setup = deviceManager.getAudioDeviceSetup();
+    const bool hasInput = setup.inputChannels.countNumberOfSetBits() > 0;
+    if (enabled == hasInput)
+        return {};
+
+    if (enabled)
+    {
+        if (auto* type = deviceManager.getCurrentDeviceTypeObject())
+        {
+            const auto names = type->getDeviceNames (true);
+            const int def = type->getDefaultDeviceIndex (true);
+            if (names.isEmpty())
+                return "no input devices available";
+            setup.inputDeviceName = names[juce::jlimit (0, names.size() - 1, def)];
+        }
+        setup.useDefaultInputChannels = true;
+    }
+    else
+    {
+        setup.inputDeviceName.clear();
+        setup.useDefaultInputChannels = false;
+        setup.inputChannels.clear();
+    }
+    return deviceManager.setAudioDeviceSetup (setup, true);
+}
+
+bool AudioEngine::isInputEnabled() const
+{
+    return deviceManager.getAudioDeviceSetup().inputChannels.countNumberOfSetBits() > 0;
 }
 
 void AudioEngine::publishSnapshot (std::shared_ptr<const EngineSnapshot> snapshot)

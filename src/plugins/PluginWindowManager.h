@@ -27,6 +27,8 @@ public:
         windows.push_back (std::make_unique<Window> (*this, plugin, title));
     }
 
+    void closeAll() { windows.clear(); }
+
     void closeFor (const HostedPlugin* plugin)
     {
         windows.erase (std::remove_if (windows.begin(), windows.end(),

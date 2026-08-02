@@ -19,6 +19,11 @@ public:
     juce::String initialise();   // returns error string if device open failed
     juce::AudioDeviceManager& getDeviceManager() { return deviceManager; }
 
+    // The app starts output-only (see initialise); recording turns input on.
+    // Returns an error string if the device could not be reopened.
+    juce::String setInputEnabled (bool enabled);
+    bool isInputEnabled() const;
+
     // Message thread: publish a freshly built snapshot.
     void publishSnapshot (std::shared_ptr<const EngineSnapshot>);
 

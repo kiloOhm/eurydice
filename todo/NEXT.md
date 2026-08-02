@@ -67,6 +67,21 @@ hardcore / frenchcore.
 - ~~Per-pattern swing~~ — the rack swing knob now writes to the pattern;
   patterns without one follow the project value.
 
+## Follow-ups from the dead-transport / crashy-startup fix (2026-08-02)
+
+- **JUCE AudioIODeviceCombiner is unsafe on this machine.** Opening default
+  input + output (different hardware devices) builds a combiner around a
+  private aggregate device; creating it fires a device-list notification that
+  re-enters the combiner's restart path from a CoreAudio dispatch thread
+  (use-after-free caught under Guard Malloc; 7/8 launches died, and when it
+  survived the device could come up dead/half-dead — frozen transport,
+  right channel silent). We now start output-only and enable input when
+  recording arms, which avoids the combiner at startup but still uses it
+  while record is armed. Real fix: try a newer JUCE (races in this area have
+  had upstream fixes) or drive input via a second AudioDeviceManager.
+- Disarming record leaves the input open (avoids a device restart per toggle);
+  revisit if the extra latency/CPU of a combined device while armed matters.
+
 ## Known smaller gaps
 
 - Per-note pan is stored but not applied at playback (needs an engine event

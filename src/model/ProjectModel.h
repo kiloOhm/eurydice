@@ -113,6 +113,10 @@ public:
     static juce::ValueTree makeInsert (int index, const juce::String& name);
 
 private:
+    // Replaces the project contents while keeping the root object identity, so
+    // listeners attached to it survive a load.
+    void adoptLoadedTree (const juce::ValueTree& loaded);
+
     juce::ValueTree root { ids::PROJECT };
     juce::UndoManager undo;
 

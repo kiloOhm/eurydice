@@ -178,10 +178,7 @@ MainComponent::MainComponent()
     addAndMakeVisible (transportBar);
     transportBar.onPlay  = [this] { transportPlay(); };
     transportBar.onStop  = [this] { transportStop(); };
-    transportBar.onRecordToggled = [this]
-    {
-        midiInput->recordArmed.store (! midiInput->recordArmed.load());
-    };
+    transportBar.onRecordToggled = [this] { toggleRecordArm(); };
     transportBar.onTempoChanged    = [this] (double bpm) { services.project.setTempo (bpm); };
     undoGesture::attach (transportBar.getTempoSlider(), services.project, "Tempo");
     transportBar.onSongModeChanged = [this] (bool song) { services.project.setSongMode (song); };
@@ -205,6 +202,8 @@ MainComponent::MainComponent()
     };
     transportBar.getMetronomeEnabled = [this] { return services.engine.isMetronomeEnabled(); };
     transportBar.getBeatPosition   = [this] { return services.engine.getPositionBeats(); };
+    transportBar.getTempo          = [this] { return services.project.getTempo(); };
+    transportBar.getSongMode       = [this] { return services.project.isSongMode(); };
     transportBar.getIsPlaying      = [this] { return services.engine.isPlaying(); };
     transportBar.getLoopEnabled    = [this] { return services.project.isLoopEnabled(); };
     transportBar.onPanelToggled    = [this] (juce::CommandID id)
@@ -242,6 +241,9 @@ MainComponent::MainComponent()
     playlist->onShowPianoRoll = [this] { commandManager.invokeDirectly (CommandIDs::viewPianoRoll, false); };
     playlistView = playlist.get();
     playlistPanel = std::make_unique<FloatingPanel> ("Playlist", std::move (playlist));
+
+    services.onSnapshotRequested = [this] (const juce::File& file) { return writeSnapshot (file); };
+    services.onCloseChannelEditors = [this] { channelEditors.closeAll(); };
 
     // Creating an automation clip used to be silent; show where it landed.
     services.onAutomationClipCreated = [this] (juce::ValueTree clip)
@@ -350,23 +352,8 @@ MainComponent::MainComponent()
                                    .getIntValue();
         juce::Timer::callAfterDelay (shotDelay, [this, shotPath]
         {
-            // If a separate editor window is open, capture that instead — it
-            // is what the check is about.
-            juce::Component* target = this;
-            for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
-            {
-                auto* window = juce::TopLevelWindow::getTopLevelWindow (i);
-                if (window != nullptr && window->isVisible()
-                    && window != findParentComponentOfClass<juce::DocumentWindow>())
-                    target = window;
-            }
-            auto image = target->createComponentSnapshot (target->getLocalBounds());
-            juce::File file (shotPath);
-            file.deleteFile();
-            juce::FileOutputStream out (file);
-            juce::PNGImageFormat png;
-            png.writeImageToStream (image, out);
-            std::cout << "SCREENSHOT_SAVED " << shotPath << "\n" << std::flush;
+            if (writeSnapshot (juce::File (shotPath)))
+                std::cout << "SCREENSHOT_SAVED " << shotPath << "\n" << std::flush;
         });
     }
 
@@ -485,6 +472,8 @@ MainComponent::~MainComponent()
     // The panels die before AppServices does, so drop the callback that
     // reaches back into them.
     services.onAutomationClipCreated = nullptr;
+    services.onSnapshotRequested = nullptr;
+    services.onCloseChannelEditors = nullptr;
     fileState.removeChangeListener (this);
     removeKeyListener (commandManager.getKeyMappings());
     commandManager.setFirstCommandTarget (nullptr);
@@ -819,8 +808,7 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
             commandManager.commandStatusChanged();
             return true;
         case CommandIDs::transportToggleRecord:
-            midiInput->recordArmed.store (! midiInput->recordArmed.load());
-            transportBar.setRecordArmed (midiInput->recordArmed.load());
+            toggleRecordArm();
             commandManager.commandStatusChanged();
             return true;
         case CommandIDs::transportToggleLoop:
@@ -935,8 +923,7 @@ void MainComponent::newProject()
 {
     if (! okToCloseProject ("starting a new project"))
         return;
-    services.project.createDefaultProject();
-    services.engineSync.attachToProject();
+    services.newProject();
     fileState.markNewProject();
 }
 
@@ -1098,12 +1085,58 @@ void MainComponent::transportPlay()
         });
 }
 
+void MainComponent::toggleRecordArm()
+{
+    const bool arming = ! midiInput->recordArmed.load();
+
+    // The device runs output-only until recording needs the input (opening the
+    // mic at startup meant a combined device and a crashy CoreAudio race).
+    if (arming)
+    {
+        const auto err = services.engine.setInputEnabled (true);
+        if (err.isNotEmpty())
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                "Record", "Could not open the audio input: " + err
+                          + "\nMIDI recording still works; audio recording needs an input device.");
+    }
+
+    midiInput->recordArmed.store (arming);
+    transportBar.setRecordArmed (arming);
+}
+
 void MainComponent::transportStop()
 {
     services.engine.stop();
     services.automationWriter.finaliseAll();
     if (recorder->isRecording())
         recorder->stopAndPlaceClip();
+}
+
+bool MainComponent::writeSnapshot (const juce::File& file)
+{
+    // If a separate editor window is open, capture that instead — it is what
+    // the caller is almost always asking about.
+    juce::Component* target = this;
+    for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+    {
+        auto* window = juce::TopLevelWindow::getTopLevelWindow (i);
+        if (window != nullptr && window->isVisible()
+            && window != findParentComponentOfClass<juce::DocumentWindow>())
+            target = window;
+    }
+
+    const auto image = target->createComponentSnapshot (target->getLocalBounds());
+    if (! image.isValid())
+        return false;
+
+    file.getParentDirectory().createDirectory();
+    file.deleteFile();
+    juce::FileOutputStream out (file);
+    if (! out.openedOk())
+        return false;
+
+    juce::PNGImageFormat png;
+    return png.writeImageToStream (image, out);
 }
 
 // ---------------- window / layout ----------------

@@ -9,7 +9,12 @@ void ProjectModel::createDefaultProject()
 {
     undo.clearUndoHistory();
 
-    root = juce::ValueTree (ids::PROJECT);
+    // Rebuild in place instead of assigning a new tree — see adoptLoadedTree.
+    if (! root.isValid())
+        root = juce::ValueTree (ids::PROJECT);
+    root.removeAllChildren (nullptr);
+    root.removeAllProperties (nullptr);
+
     root.setProperty (ids::name, "Untitled", nullptr);
     root.setProperty (ids::tempo, 140.0, nullptr);
     root.setProperty (ids::swing, 0.0, nullptr);
@@ -311,7 +316,7 @@ bool ProjectModel::loadFromFile (const juce::File& file)
         return false;
 
     undo.clearUndoHistory();
-    root = loaded;
+    adoptLoadedTree (loaded);
 
     // ids::writing only means "a write pass is running right now". A project
     // saved mid-pass would otherwise come back with automation permanently
@@ -320,4 +325,38 @@ bool ProjectModel::loadFromFile (const juce::File& file)
         automation.removeProperty (ids::writing, nullptr);
 
     return true;
+}
+
+void ProjectModel::adoptLoadedTree (const juce::ValueTree& loaded)
+{
+    // Copy the loaded content into the existing root rather than rebinding
+    // `root` to the loaded tree. Every panel and the engine hold a listener on
+    // the root *object*; swapping the object out left them all listening to a
+    // tree nobody edits again, so the UI kept showing the previous project
+    // (most visibly: the channel rack's pattern list) until something else
+    // forced a repaint.
+    if (! root.isValid())
+    {
+        root = loaded.createCopy();
+        return;
+    }
+
+    root.copyPropertiesFrom (loaded, nullptr);
+
+    // Sync the top-level containers (CHANNELS, PATTERNS, PLAYLIST, ...) in
+    // place too: panels react to child events *inside* those containers, so
+    // replacing a container object wholesale would go unnoticed just like
+    // replacing the root would.
+    for (int i = root.getNumChildren(); --i >= 0;)
+        if (! loaded.getChildWithName (root.getChild (i).getType()).isValid())
+            root.removeChild (i, nullptr);
+
+    for (const auto& child : loaded)
+    {
+        auto mine = root.getChildWithName (child.getType());
+        if (mine.isValid())
+            mine.copyPropertiesAndChildrenFrom (child, nullptr);
+        else
+            root.appendChild (child.createCopy(), nullptr);
+    }
 }

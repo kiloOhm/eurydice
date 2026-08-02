@@ -210,6 +210,11 @@ void TransportBar::timerCallback()
         autoButton.setToggleState (getAutomationWrite(), juce::dontSendNotification);
     if (getMetronomeEnabled)
         metronomeButton.setToggleState (getMetronomeEnabled(), juce::dontSendNotification);
+    if (getSongMode)
+        setSongMode (getSongMode());
+    // Don't fight the user's own drag; otherwise follow the model.
+    if (getTempo && ! tempoSlider.isMouseButtonDown())
+        tempoSlider.setValue (getTempo(), juce::dontSendNotification);
 
     const bool playing = getIsPlaying ? getIsPlaying() : false;
     playButton.setColour (juce::TextButton::textColourOffId,

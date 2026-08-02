@@ -59,6 +59,7 @@ public:
     void show (ProjectModel& model, juce::ValueTree slot, const fx::BuiltinEntry& entry,
                int insertIndex, int slotIndex, const juce::String& title);
     void closeFor (int insertIndex, int slotIndex);
+    void closeAll() { windows.clear(); }
 
 private:
     struct Window : juce::DocumentWindow

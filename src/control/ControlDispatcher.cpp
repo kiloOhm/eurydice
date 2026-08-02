@@ -476,6 +476,20 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         return "scanning";
     }
 
+    // ---------- ui ----------
+    if (method == "ui.snapshot")
+    {
+        const auto path = getOr (params, "path", "").toString();
+        if (path.isEmpty())
+            throw ControlError { "path required" };
+        if (! services.onSnapshotRequested)
+            throw ControlError { "no window to capture" };
+        const juce::File file (path);
+        if (! services.onSnapshotRequested (file))
+            throw ControlError { "snapshot failed" };
+        return makeObj ({ { "path", file.getFullPathName() } });
+    }
+
     // ---------- meters ----------
     if (method == "meters.get")
     {
@@ -641,8 +655,7 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     }
     if (method == "project.new")
     {
-        services.project.createDefaultProject();
-        services.engineSync.attachToProject();
+        services.newProject();
         return true;
     }
 

@@ -34,6 +34,8 @@ public:
     std::function<bool()>   getLoopEnabled;
     std::function<bool()>   getAutomationWrite;
     std::function<bool()>   getMetronomeEnabled;
+    std::function<double()> getTempo;          // tempo/mode can change under us
+    std::function<bool()>   getSongMode;       // (project load, API, undo)
 
     // Exposed so the owner can bracket tempo drags into one undo transaction
     // without this bar needing to know about the project model.

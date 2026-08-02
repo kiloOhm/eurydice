@@ -105,6 +105,52 @@ TEST (ProjectModel, SaveLoadRoundTrip)
     file.deleteFile();
 }
 
+// Panels and the engine hold listeners on the root and container *objects*.
+// A load must keep those objects alive and notify through them, or the whole
+// UI silently keeps showing the previous project.
+TEST (ProjectModel, LoadKeepsTreeIdentityAndNotifiesListeners)
+{
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getNonexistentChildFile ("eurytest-identity", ".eury");
+    {
+        ProjectModel saved;
+        saved.setTempo (148.0);
+        saved.addChannel ("sampler", "Rumble");
+        saved.addChannel ("sampler", "Stab");
+        ASSERT_TRUE (saved.saveToFile (file));
+    }
+
+    ProjectModel model;
+    auto rootBefore = model.getRoot();
+    auto channelsBefore = model.getRoot().getChildWithName (ids::CHANNELS);
+    const int defaultChannels = model.numChannels();
+
+    struct Counter : juce::ValueTree::Listener
+    {
+        int channelsAdded = 0;
+        void valueTreeChildAdded (juce::ValueTree&, juce::ValueTree& child) override
+        {
+            if (child.hasType (ids::CHANNEL))
+                ++channelsAdded;
+        }
+    } counter;
+    rootBefore.addListener (&counter);
+
+    ASSERT_TRUE (model.loadFromFile (file));
+
+    // Same objects, new content.
+    EXPECT_TRUE (model.getRoot() == rootBefore);
+    EXPECT_TRUE (model.getRoot().getChildWithName (ids::CHANNELS) == channelsBefore);
+    EXPECT_DOUBLE_EQ ((double) rootBefore[ids::tempo], 148.0);
+    EXPECT_EQ (model.numChannels(), defaultChannels + 2);
+
+    // The pre-existing listener heard about the new channels.
+    EXPECT_EQ (counter.channelsAdded, defaultChannels + 2);
+
+    rootBefore.removeListener (&counter);
+    file.deleteFile();
+}
+
 TEST (ProjectModel, PatternSwingFallsBackToTheProject)
 {
     ProjectModel model;
