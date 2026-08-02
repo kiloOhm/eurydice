@@ -44,7 +44,7 @@ inline juce::Path rack()
     juce::Path p;
     for (int row = 0; row < 2; ++row)
         for (int col = 0; col < 4; ++col)
-            p.addRoundedRectangle (col * 0.26f, 0.18f + row * 0.38f, 0.20f, 0.26f, 0.04f);
+            p.addRoundedRectangle ((float) col * 0.26f, 0.18f + (float) row * 0.38f, 0.20f, 0.26f, 0.04f);
     return p;
 }
 
@@ -53,7 +53,7 @@ inline juce::Path piano()
 {
     juce::Path p;
     for (int i = 0; i < 3; ++i)
-        p.addRectangle (i * 0.35f, 0.0f, 0.30f, 1.0f);
+        p.addRectangle ((float) i * 0.35f, 0.0f, 0.30f, 1.0f);
     p.addRectangle (0.24f, 0.0f, 0.17f, 0.55f);
     p.addRectangle (0.59f, 0.0f, 0.17f, 0.55f);
     p.setUsingNonZeroWinding (false);   // black keys punch through
@@ -67,7 +67,7 @@ inline juce::Path mixer()
     const float caps[3] = { 0.55f, 0.20f, 0.70f };
     for (int i = 0; i < 3; ++i)
     {
-        const float x = 0.08f + i * 0.36f;
+        const float x = 0.08f + (float) i * 0.36f;
         p.addRectangle (x + 0.05f, 0.0f, 0.06f, 1.0f);      // track
         p.addRoundedRectangle (x, caps[i], 0.16f, 0.18f, 0.04f);   // cap
     }
