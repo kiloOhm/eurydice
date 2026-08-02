@@ -74,3 +74,11 @@ hardcore / frenchcore.
 - Time signature is assumed 4/4 throughout — fine for these genres, wrong for
   anything else.
 - The browser supports double-click-to-add but not drag-and-drop into the rack.
+
+## Noticed while verifying the merges
+
+- **Compressor defaults are heavy-handed.** A kick through Clipper → EQ →
+  Compressor → Reverb lost ~5x RMS versus Clipper alone (0.350 -> 0.066).
+  The DSP is correct and tested; the stock threshold/ratio just clamp hard
+  with no makeup. Worth retuning the defaults so dropping one on a bus is
+  roughly unity to start with.

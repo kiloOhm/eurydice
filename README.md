@@ -32,7 +32,8 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 | Mixer | 32 inserts + master, 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters |
 | Generators | Sampler channel (drop a WAV in, ADSR + lowpass, one-shot or sustained, start/end trim, reverse, pitch envelope, drive), a built-in 2-osc subtractive synth, and a synthesised kick channel (swept body, click, noise, drive) — all with editor windows |
 | Plugins | VST3 + AU hosting: background scan, instrument channels, effect slots, native editor windows, state saved in the project |
-| Automation | Right-click any parameter (including plugin params) → automation clip with a tension-curve editor |
+| Automation | Right-click any knob or fader → automation clip with a tension-curve editor; arm `AUTO` to record moves live |
+| Transport | Loop range (drag the playlist ruler), metronome with count-in, per-pattern swing |
 | Audio | Input recording to audio clips; Rubber Band R3 offline time-stretch |
 | MIDI | CoreMIDI input with hot-plug, note recording, FL-style typing keyboard |
 | Export | Dialog with bit depth, sample rate, loop-range-only, MP3 via LAME, per-insert or per-channel stems, peak normalisation |
