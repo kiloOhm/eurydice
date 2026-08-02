@@ -612,6 +612,37 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     }
 
     // ---------- render ----------
+    if (method == "render.analyze")
+    {
+        OfflineRenderer::AnalysisOptions opts;
+        opts.loopRangeOnly = (bool) getOr (params, "loopRangeOnly", false);
+        opts.tailSeconds = (double) getOr (params, "tailSeconds", 0.5);
+
+        const auto analysis = OfflineRenderer::analyze (services.engine, project, opts);
+        if (! analysis.ok)
+            throw ControlError { analysis.error };
+
+        const auto statsToVar = [] (const OfflineRenderer::TargetStats& s)
+        {
+            return makeObj ({ { "insert", s.insertIndex },
+                              { "name", s.name },
+                              { "peakDb", s.peakDb },
+                              { "rmsDb", s.rmsDb },
+                              { "bands", makeObj ({ { "subDb", s.bands.subDb },
+                                                    { "lowDb", s.bands.lowDb },
+                                                    { "lowMidDb", s.bands.lowMidDb },
+                                                    { "highMidDb", s.bands.highMidDb },
+                                                    { "highDb", s.bands.highDb } }) } });
+        };
+
+        juce::Array<juce::var> inserts;
+        for (const auto& s : analysis.inserts)
+            inserts.add (statsToVar (s));
+        return makeObj ({ { "durationSeconds", analysis.durationSeconds },
+                          { "sampleRate", analysis.sampleRate },
+                          { "master", statsToVar (analysis.master) },
+                          { "inserts", inserts } });
+    }
     if (method == "render.export")
     {
         const auto path = getOr (params, "path", "").toString();

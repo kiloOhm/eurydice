@@ -75,7 +75,7 @@ the playlist to edit that pattern.
 ## AI control (MCP)
 
 The app hosts a JSON-RPC 2.0 server on `127.0.0.1:44890` (override with
-`EURYDICE_CONTROL_PORT`). `mcp/index.mjs` bridges it to any MCP client as 37
+`EURYDICE_CONTROL_PORT`). `mcp/index.mjs` bridges it to any MCP client as 38
 typed tools — transport, channels, notes, patterns, playlist, mixer, plugins,
 automation, meters, render, project I/O.
 

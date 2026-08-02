@@ -16,13 +16,14 @@ the active work.
 
 ## Next — the AI angle
 
-4. **Let the AI hear.** `render.analyze` (or extend `render.export`): render a
-   range offline and return RMS/peak/spectral summary per insert, so an AI
-   can iterate on a mix instead of working deaf. `ui.snapshot`/`ui.showPanel`
-   are the eyes; this is the ears.
-5. **AI-recordable automation.** An explicit API to write automation points
-   from live-style input (channel.set deliberately doesn't record while
-   armed).
+4. ~~Let the AI hear~~ — shipped: `render.analyze` / `daw_render_analyze`
+   returns peak dB, RMS dB and five-band spectral shares for the master and
+   every insert carrying signal, without writing files. Verified against the
+   schranz project (rumble bus reads sub-heavy, clap bus high-heavy).
+5. **AI-recordable automation** — mostly moot: `automation.create` +
+   `automation.setPoints` already let an AI write any curve directly, which
+   beats emulating live recording. Only revisit if live capture over the API
+   turns out to matter.
 
 ## Then — workflow depth
 

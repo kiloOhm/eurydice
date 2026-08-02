@@ -241,6 +241,13 @@ tool("daw_ui_snapshot",
   "Save a PNG screenshot of the Eurydice UI (the frontmost editor window if one is open, otherwise the main window). Use it to see what the user sees.",
   { path: z.string().describe("destination .png path") }, "ui.snapshot");
 
+tool("daw_render_analyze",
+  "Hear the mix without writing files: offline-render the project (or the loop range) and return peak dB, RMS dB and spectral band shares (sub/low/lowMid/highMid/high, dB relative to the target's total energy) for the master and every insert carrying signal. Use it to judge levels and balance, then adjust and re-analyze.",
+  {
+    loopRangeOnly: z.boolean().optional().describe("bound the analysis to the project's loop range"),
+    tailSeconds: z.number().optional().describe("extra ring-out time (default 0.5)"),
+  }, "render.analyze");
+
 tool("daw_render_export",
   "Render the project to a WAV (plus optional MP3 and stems). Renders the whole arrangement in song mode, or the active pattern otherwise; an armed loop is ignored unless loopRangeOnly is set.",
   {

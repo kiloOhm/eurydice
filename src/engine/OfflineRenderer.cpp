@@ -1,4 +1,5 @@
 #include "OfflineRenderer.h"
+#include <juce_dsp/juce_dsp.h>
 #include <set>
 #include <map>
 
@@ -329,4 +330,216 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
 
     result.ok = true;
     return result;
+}
+
+// ===================== analysis =====================
+
+namespace
+{
+// Accumulates peak / RMS / averaged power spectrum for one bus.
+struct StatAccumulator
+{
+    static constexpr int fftOrder = 11;
+    static constexpr int fftSize = 1 << fftOrder;   // 2048
+
+    StatAccumulator() : fft (fftOrder)
+    {
+        window.resize (fftSize);
+        for (int i = 0; i < fftSize; ++i)
+            window[(size_t) i] = 0.5f * (1.0f - std::cos (juce::MathConstants<float>::twoPi
+                                                          * (float) i / (float) (fftSize - 1)));
+    }
+
+    void push (const juce::AudioBuffer<float>& bus, int numSamples)
+    {
+        const int numCh = juce::jmin (2, bus.getNumChannels());
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float mono = 0.0f;
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                const float s = bus.getSample (ch, i);
+                peak = juce::jmax (peak, std::abs (s));
+                sumSquares += (double) s * s;
+                mono += s;
+            }
+            samples += numCh;
+
+            fill[(size_t) fillCount++] = mono / (float) juce::jmax (1, numCh);
+            if (fillCount == fftSize)
+                flushFft();
+        }
+    }
+
+    void flushFft()
+    {
+        std::array<float, fftSize * 2> data {};
+        for (int i = 0; i < fillCount; ++i)
+            data[(size_t) i] = fill[(size_t) i] * window[(size_t) i];
+        fillCount = 0;
+        fft.performFrequencyOnlyForwardTransform (data.data());
+        for (int bin = 0; bin < fftSize / 2; ++bin)
+            power[(size_t) bin] += (double) data[(size_t) bin] * data[(size_t) bin];
+        ++fftFrames;
+    }
+
+    OfflineRenderer::TargetStats finish (double sampleRate)
+    {
+        if (fillCount > fftSize / 8)   // don't drop a mostly-full last frame
+        {
+            std::fill (fill.begin() + fillCount, fill.end(), 0.0f);
+            fillCount = fftSize;
+            flushFft();
+        }
+
+        OfflineRenderer::TargetStats stats;
+        stats.peakDb = juce::Decibels::gainToDecibels (peak, -120.0f);
+        stats.rmsDb = juce::Decibels::gainToDecibels (
+            (float) std::sqrt (sumSquares / juce::jmax<juce::int64> (1, samples)), -120.0f);
+
+        double total = 0.0;
+        std::array<double, 5> bands {};
+        const double binHz = sampleRate / fftSize;
+        for (int bin = 1; bin < fftSize / 2; ++bin)
+        {
+            const double f = bin * binHz;
+            const double p = power[(size_t) bin];
+            total += p;
+            bands[f < 60.0 ? 0 : f < 250.0 ? 1 : f < 1000.0 ? 2 : f < 4000.0 ? 3 : 4] += p;
+        }
+        if (total > 1.0e-18)
+        {
+            const auto shareDb = [total] (double p)
+            { return (float) juce::jmax (-120.0, 10.0 * std::log10 (juce::jmax (1.0e-18, p) / total)); };
+            stats.bands.subDb     = shareDb (bands[0]);
+            stats.bands.lowDb     = shareDb (bands[1]);
+            stats.bands.lowMidDb  = shareDb (bands[2]);
+            stats.bands.highMidDb = shareDb (bands[3]);
+            stats.bands.highDb    = shareDb (bands[4]);
+        }
+        return stats;
+    }
+
+    juce::dsp::FFT fft;
+    std::vector<float> window;
+    std::array<float, fftSize> fill {};
+    int fillCount = 0;
+    float peak = 0.0f;
+    double sumSquares = 0.0;
+    juce::int64 samples = 0;
+    std::array<double, fftSize / 2> power {};
+    juce::int64 fftFrames = 0;
+};
+}
+
+OfflineRenderer::Analysis OfflineRenderer::analyze (AudioEngine& engine, ProjectModel& project,
+                                                    const AnalysisOptions& opts)
+{
+    Analysis analysis;
+
+    double startTick = 0.0, endTick = 0.0;
+    if (opts.loopRangeOnly)
+    {
+        startTick = (double) project.getLoopStart();
+        endTick   = (double) project.getLoopEnd();
+        if (endTick <= startTick)
+        {
+            analysis.error = "Loop range is empty.";
+            return analysis;
+        }
+    }
+    else if (project.isSongMode())
+    {
+        for (const auto track : project.playlist())
+            for (const auto clip : track)
+                if (clip.hasType (ids::CLIP) && ! (bool) clip[ids::muted])
+                    endTick = juce::jmax (endTick, (double) ((int) clip[ids::startTicks]
+                                                             + (int) clip[ids::lengthTicks]));
+    }
+    else
+    {
+        const auto pattern = project.getPatternById (project.getRoot()[ids::activePattern]);
+        if (pattern.isValid())
+            endTick = (double) (int) pattern[ids::lengthTicks];
+    }
+
+    if (endTick <= startTick)
+    {
+        analysis.error = "Nothing to analyze (empty pattern/playlist).";
+        return analysis;
+    }
+
+    // Every insert that carries a channel or receives a send gets stats.
+    std::set<int> used;
+    for (int i = 0; i < project.numChannels(); ++i)
+        used.insert ((int) project.getChannel (i)[ids::insertIndex]);
+    for (int i = 0; i < project.numInserts(); ++i)
+        for (const auto send : project.getInsert (i).getChildWithName (ids::SENDS))
+            if (used.count (i))
+                used.insert ((int) send[ids::destInsert]);
+    used.erase (0);
+
+    const double sampleRate = engine.getSampleRate();
+    const int blockSize = engine.getBlockSize();
+    const double tps = (project.getTempo() / 60.0) * ids::ticksPerQuarter / sampleRate;
+    const juce::int64 totalSamples = (juce::int64) std::ceil ((endTick - startTick) / tps)
+                                   + (juce::int64) (opts.tailSeconds * sampleRate);
+
+    StatAccumulator masterStats;
+    std::map<int, StatAccumulator> insertStats;
+    for (int idx : used)
+        insertStats.try_emplace (idx);
+
+    const bool metronomeWasOn = engine.isMetronomeEnabled();
+    engine.setMetronomeEnabled (false);
+    engine.detachFromDevice();
+    engine.setLoopBypassed (true);
+    engine.prepareOffline (sampleRate, blockSize);
+    engine.stop();
+    engine.setPositionTicks (startTick);
+    engine.play();
+
+    juce::AudioBuffer<float> out (2, blockSize);
+    float* outPtrs[2] = { out.getWritePointer (0), out.getWritePointer (1) };
+    const juce::int64 mainSamples = (juce::int64) std::ceil ((endTick - startTick) / tps);
+    juce::int64 rendered = 0;
+    bool tailStarted = false;
+
+    while (rendered < totalSamples)
+    {
+        const int n = (int) juce::jmin<juce::int64> (blockSize, totalSamples - rendered);
+        if (! tailStarted && rendered >= mainSamples)
+        {
+            engine.pausePlayback();
+            tailStarted = true;
+        }
+        engine.processBlockOffline (outPtrs, 2, n);
+
+        masterStats.push (out, n);
+        for (auto& [idx, acc] : insertStats)
+            acc.push (engine.getInsertBusForStem (idx), n);
+        rendered += n;
+    }
+
+    engine.stop();
+    engine.setLoopBypassed (false);
+    engine.setMetronomeEnabled (metronomeWasOn);
+    engine.reattachToDevice();
+
+    analysis.sampleRate = sampleRate;
+    analysis.durationSeconds = (double) totalSamples / sampleRate;
+    analysis.master = masterStats.finish (sampleRate);
+    analysis.master.insertIndex = 0;
+    analysis.master.name = project.getInsert (0)[ids::name].toString();
+
+    for (auto& [idx, acc] : insertStats)
+    {
+        auto stats = acc.finish (sampleRate);
+        stats.insertIndex = idx;
+        stats.name = project.getInsert (idx)[ids::name].toString();
+        analysis.inserts.push_back (std::move (stats));
+    }
+
+    analysis.ok = true;
+    return analysis;
 }

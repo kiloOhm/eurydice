@@ -500,3 +500,62 @@ TEST (OfflineRenderer, ChannelStemCaptureIsOffAfterRendering)
     deleteAll (result);
     deleteAll (second);
 }
+
+TEST (Analyze, ReportsLevelsAndSpectralBalancePerInsert)
+{
+    test::EngineFixture fx;
+
+    // Kick to insert 1, hat to insert 2: analysis must see bass on one bus
+    // and treble on the other.
+    fx.model.getChannel (0).setProperty (ids::insertIndex, 1, nullptr);   // Kick
+    fx.model.getChannel (2).setProperty (ids::insertIndex, 2, nullptr);   // Hat
+    fx.sync.rebuildNow();
+
+    OfflineRenderer::AnalysisOptions opts;
+    opts.tailSeconds = 0.2;
+    const auto analysis = OfflineRenderer::analyze (fx.engine, fx.model, opts);
+    ASSERT_TRUE (analysis.ok) << analysis.error;
+
+    EXPECT_GT (analysis.durationSeconds, 1.0);
+    EXPECT_GT (analysis.master.rmsDb, -40.0f) << "the stock beat is not silent";
+    EXPECT_LT (analysis.master.peakDb, 0.5f);
+    EXPECT_GE (analysis.master.peakDb, analysis.master.rmsDb);
+
+    const auto find = [&analysis] (int index) -> const OfflineRenderer::TargetStats*
+    {
+        for (const auto& s : analysis.inserts)
+            if (s.insertIndex == index)
+                return &s;
+        return nullptr;
+    };
+    const auto* kick = find (1);
+    const auto* hat = find (2);
+    ASSERT_NE (kick, nullptr);
+    ASSERT_NE (hat, nullptr);
+    EXPECT_EQ (kick->name, "Insert 1");
+
+    // The kick bus carries far more of its energy below 250 Hz than the hat
+    // bus; the hat is the other way round above 1 kHz.
+    const auto lowShare  = [] (const OfflineRenderer::TargetStats* s)
+    { return juce::jmax (s->bands.subDb, s->bands.lowDb); };
+    const auto highShare = [] (const OfflineRenderer::TargetStats* s)
+    { return juce::jmax (s->bands.highMidDb, s->bands.highDb); };
+
+    EXPECT_GT (lowShare (kick), highShare (kick)) << "kick bus should be bass-heavy";
+    EXPECT_GT (highShare (hat), lowShare (hat)) << "hat bus should be treble-heavy";
+    EXPECT_GT (kick->rmsDb, -60.0f);
+    EXPECT_GT (hat->rmsDb, -60.0f);
+}
+
+TEST (Analyze, EmptyProjectFailsCleanly)
+{
+    test::EngineFixture fx;
+    fx.model.setSongMode (true);   // song mode with an empty playlist
+    for (auto track : fx.model.playlist())
+        track.removeAllChildren (nullptr);
+    fx.sync.rebuildNow();
+
+    const auto analysis = OfflineRenderer::analyze (fx.engine, fx.model, {});
+    EXPECT_FALSE (analysis.ok);
+    EXPECT_TRUE (analysis.error.isNotEmpty());
+}
