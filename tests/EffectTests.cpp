@@ -948,7 +948,7 @@ TEST (BuiltinEffectEditor, LaysOutEveryParameterInsideItsBounds)
         slot.setProperty (ids::pluginId, entry.id, nullptr);
         BuiltinEffect::writeDefaults (slot, entry.specs, nullptr);
 
-        BuiltinEffectEditor editor (model, slot, entry.specs, 1);
+        BuiltinEffectEditor editor (model, slot, entry, 1);
         editor.setBounds (editor.getBounds());
 
         EXPECT_GT (editor.getWidth(), 0) << entry.id;
@@ -978,7 +978,7 @@ TEST (BuiltinEffectEditor, ComboBoxWritesTheSelectionToTheSlotTree)
     slot.setProperty (ids::pluginId, entry->id, nullptr);
     BuiltinEffect::writeDefaults (slot, entry->specs, nullptr);
 
-    BuiltinEffectEditor editor (model, slot, entry->specs, 0);
+    BuiltinEffectEditor editor (model, slot, *entry, 0);
 
     juce::ComboBox* sidechainBox = nullptr;
     for (int i = 0; i < editor.getNumChildComponents(); ++i)
@@ -1003,7 +1003,7 @@ TEST (BuiltinEffectEditor, FollowsUndoOfAParameterChange)
     slot.setProperty (ids::pluginId, entry->id, nullptr);
     BuiltinEffect::writeDefaults (slot, entry->specs, nullptr);
 
-    BuiltinEffectEditor editor (model, slot, entry->specs, 1);
+    BuiltinEffectEditor editor (model, slot, *entry, 1);
 
     auto& undo = model.getUndoManager();
     undo.beginNewTransaction();
@@ -1086,4 +1086,82 @@ TEST (CompressorEffect, DuckPresetPumpsABusFromTheKick)
     // The pad bus must visibly pump: several dB down right at the kick.
     EXPECT_LT (atHit, before * 0.72f)
         << "pad peak before hit " << before << ", at hit " << atHit;
+}
+
+namespace
+{
+// Measured gain of a sine through an effect, after settling.
+float measuredGainAt (BuiltinEffect& effect, double freqHz, double sampleRate = 44100.0)
+{
+    const int n = 8192;
+    juce::AudioBuffer<float> buffer (2, n);
+    for (int i = 0; i < n; ++i)
+    {
+        const float s = std::sin ((float) (juce::MathConstants<double>::twoPi * freqHz * i / sampleRate));
+        buffer.setSample (0, i, s);
+        buffer.setSample (1, i, s);
+    }
+    effect.reset();
+    // Feed in prepare-sized chunks; effects bound their scratch to the block size.
+    for (int pos = 0; pos < n; pos += 512)
+    {
+        float* ptrs[2] = { buffer.getWritePointer (0, pos), buffer.getWritePointer (1, pos) };
+        juce::AudioBuffer<float> view (ptrs, 2, juce::jmin (512, n - pos));
+        effect.process (view, view.getNumSamples(), {});
+    }
+    // Skip the first half (filter transient), measure steady-state RMS * sqrt(2).
+    return buffer.getRMSLevel (0, n / 2, n / 2) * juce::MathConstants<float>::sqrt2;
+}
+}
+
+TEST (EqEffect, PlottedResponseMatchesTheDsp)
+{
+    // The editor plots magnitudeAt(); prove it equals what process() does.
+    EqEffect eq;
+    eq.prepare (44100.0, 512);
+    eq.setParameter (ids::fxHpFreq, 80.0);
+    eq.setParameter (ids::fxBandType2, 0.0);      // bell
+    eq.setParameter (ids::fxBandFreq2, 1000.0);
+    eq.setParameter (ids::fxBandGain2, 9.0);
+    eq.setParameter (ids::fxBandQ2, 1.5);
+
+    for (const double f : { 40.0, 200.0, 1000.0, 4000.0, 12000.0 })
+    {
+        const double plotted  = eq.magnitudeAt (f);
+        EqEffect dsp;   // fresh instance so filter state can't leak between probes
+        dsp.prepare (44100.0, 512);
+        dsp.setParameter (ids::fxHpFreq, 80.0);
+        dsp.setParameter (ids::fxBandType2, 0.0);
+        dsp.setParameter (ids::fxBandFreq2, 1000.0);
+        dsp.setParameter (ids::fxBandGain2, 9.0);
+        dsp.setParameter (ids::fxBandQ2, 1.5);
+        const double measured = measuredGainAt (dsp, f);
+        EXPECT_NEAR (plotted, measured, juce::jmax (0.02, measured * 0.06))
+            << "at " << f << " Hz";
+    }
+}
+
+TEST (FilterEffect, PlottedResponseMatchesTheDsp)
+{
+    for (const int mode : { 0, 1, 2 })   // LP, HP, BP
+    {
+        FilterEffect analysis;
+        analysis.prepare (44100.0, 512);
+        analysis.setParameter (ids::fxFilterType, mode);
+        analysis.setParameter (ids::fxCutoff, 900.0);
+        analysis.setParameter (ids::fxResonance, 0.3);
+
+        for (const double f : { 150.0, 900.0, 5000.0 })
+        {
+            FilterEffect dsp;
+            dsp.prepare (44100.0, 512);
+            dsp.setParameter (ids::fxFilterType, mode);
+            dsp.setParameter (ids::fxCutoff, 900.0);
+            dsp.setParameter (ids::fxResonance, 0.3);
+            const double plotted  = analysis.magnitudeAt (f);
+            const double measured = measuredGainAt (dsp, f);
+            EXPECT_NEAR (plotted, measured, juce::jmax (0.03, measured * 0.08))
+                << "mode " << mode << " at " << f << " Hz";
+        }
+    }
 }

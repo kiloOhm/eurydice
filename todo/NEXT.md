@@ -5,17 +5,14 @@ the active work.
 
 ## Now — finish the sound
 
-1. **Retune compressor defaults.** A stock Clipper → EQ → Compressor → Reverb
-   chain loses ~5x RMS versus Clipper alone (0.350 → 0.066); threshold/ratio
-   clamp hard with no makeup. A fresh instance should be roughly unity on a
-   busy bus. Verify with before/after RMS renders.
-2. **One-click sidechain ducking.** Insert context menu: "Duck from <insert>"
-   — drops a compressor in the first free slot, wires the sidechain source,
-   sets pumping-friendly defaults (fast attack, ~100ms release, deep ratio).
-   The defining genre move; today it takes four manual steps.
-3. **Effect editors show what they do.** EQ/filter frequency-response curves
-   and a compressor gain-reduction meter. Today they're knob grids and you
-   mix blind.
+1. ~~Retune compressor defaults~~ — shipped: -12 dB / 2.5:1 / +2.5 dB makeup,
+   measured +0.9 dB RMS on the stock beat (was -4.9 dB), pinned by a test.
+2. ~~One-click sidechain ducking~~ — shipped: insert menu → "Sidechain duck >
+   from <insert>"; preset lives in CompressorEffect::configureDuckSlot with an
+   engine-level pump test.
+3. ~~Effect editors show what they do~~ — shipped: EQ and filter editors plot
+   their true response (drift tests prove plotted == processed), the
+   compressor draws its transfer curve with a live gain-reduction meter.
 
 ## Next — the AI angle
 

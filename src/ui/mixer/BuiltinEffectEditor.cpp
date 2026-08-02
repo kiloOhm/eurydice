@@ -2,10 +2,14 @@
 #include "app/Theme.h"
 
 BuiltinEffectEditor::BuiltinEffectEditor (ProjectModel& projectModel, juce::ValueTree slot,
-                                          const std::vector<fx::ParamSpec>& specs, int ownInsertIndex)
+                                          const fx::BuiltinEntry& entry, int ownInsertIndex,
+                                          std::shared_ptr<BuiltinEffect> liveInstance)
     : model (projectModel), slotTree (slot)
 {
+    const auto& specs = entry.specs;
     auto& undo = model.getUndoManager();
+
+    buildDisplay (entry, std::move (liveInstance));
 
     for (const auto& spec : specs)
     {
@@ -80,6 +84,28 @@ BuiltinEffectEditor::BuiltinEffectEditor (ProjectModel& projectModel, juce::Valu
     slotTree.addListener (this);
 }
 
+// Effects that can show their behaviour get a display strip above the knobs.
+void BuiltinEffectEditor::buildDisplay (const fx::BuiltinEntry& entry,
+                                        std::shared_ptr<BuiltinEffect> liveInstance)
+{
+    if (entry.id == EqEffect::identifier())
+        display = std::make_unique<ResponseCurveDisplay> (slotTree, entry.specs,
+            std::make_unique<EqEffect>(),
+            [] (BuiltinEffect& fx, double f) { return static_cast<EqEffect&> (fx).magnitudeAt (f); });
+    else if (entry.id == FilterEffect::identifier())
+        display = std::make_unique<ResponseCurveDisplay> (slotTree, entry.specs,
+            std::make_unique<FilterEffect>(),
+            [] (BuiltinEffect& fx, double f) { return static_cast<FilterEffect&> (fx).magnitudeAt (f); });
+    else if (entry.id == CompressorEffect::identifier())
+        display = std::make_unique<CompressorDisplay> (slotTree, std::move (liveInstance));
+
+    if (display != nullptr)
+    {
+        displayHeight = 110;
+        addAndMakeVisible (*display);
+    }
+}
+
 // Packs the controls into rows: combos with long labels take two cells, and a
 // spec can force a fresh row so grouped parameters (EQ bands) stay together.
 void BuiltinEffectEditor::layOutControls (const std::vector<fx::ParamSpec>& specs)
@@ -112,7 +138,8 @@ void BuiltinEffectEditor::layOutControls (const std::vector<fx::ParamSpec>& spec
         widest = juce::jmax (widest, column);
     }
 
-    setSize (widest * cellW + 16, (row + 1) * cellH + 16);
+    setSize (juce::jmax (widest * cellW + 16, display != nullptr ? 330 : 0),
+             displayHeight + (row + 1) * cellH + 16);
 }
 
 BuiltinEffectEditor::~BuiltinEffectEditor()
@@ -149,6 +176,10 @@ void BuiltinEffectEditor::paint (juce::Graphics& g)
 void BuiltinEffectEditor::resized()
 {
     auto area = getLocalBounds().reduced (8);
+    if (display != nullptr)
+        display->setBounds (area.removeFromTop (displayHeight - 6));
+    if (displayHeight > 0)
+        area.removeFromTop (6);
     for (auto& control : controls)
     {
         const juce::Rectangle<int> cell (area.getX() + control->column * cellW,
@@ -193,7 +224,8 @@ void BuiltinEffectWindows::Window::closeButtonPressed()
 }
 
 void BuiltinEffectWindows::show (ProjectModel& model, juce::ValueTree slot, const fx::BuiltinEntry& entry,
-                                 int insertIndex, int slotIndex, const juce::String& title)
+                                 int insertIndex, int slotIndex, const juce::String& title,
+                                 std::shared_ptr<BuiltinEffect> liveInstance)
 {
     for (auto& w : windows)
         if (w->insertIndex == insertIndex && w->slotIndex == slotIndex)
@@ -202,7 +234,8 @@ void BuiltinEffectWindows::show (ProjectModel& model, juce::ValueTree slot, cons
             return;
         }
 
-    auto editor = std::make_unique<BuiltinEffectEditor> (model, slot, entry.specs, insertIndex);
+    auto editor = std::make_unique<BuiltinEffectEditor> (model, slot, entry, insertIndex,
+                                                         std::move (liveInstance));
     windows.push_back (std::make_unique<Window> (*this, title, std::move (editor),
                                                  insertIndex, slotIndex));
 }

@@ -554,7 +554,8 @@ void MixerPanel::showEditorForSlot (int slotIndex)
     if (const auto* builtin = fx::findBuiltin (pluginId))
     {
         services.builtinEditors.show (services.project, slot, *builtin, selectedInsert, slotIndex,
-                                      insertName + " / " + builtin->name);
+                                      insertName + " / " + builtin->name,
+                                      services.builtinEffects.peek (selectedInsert, slotIndex));
         return;
     }
 

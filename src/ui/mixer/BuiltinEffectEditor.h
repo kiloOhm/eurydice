@@ -6,6 +6,7 @@
 #include "effects/EffectRegistry.h"
 #include "model/ProjectModel.h"
 #include "ui/common/LabelledKnob.h"
+#include "ui/mixer/EffectDisplays.h"
 
 // Generic editor for a built-in effect: one control per fx::ParamSpec, bound
 // straight to the SLOT tree, so every tweak is undoable and automatable
@@ -14,8 +15,11 @@ class BuiltinEffectEditor : public juce::Component,
                             private juce::ValueTree::Listener
 {
 public:
+    // liveInstance (may be null) powers live readouts like the compressor's
+    // gain-reduction meter; curves come from offline analysis instances.
     BuiltinEffectEditor (ProjectModel& projectModel, juce::ValueTree slot,
-                         const std::vector<fx::ParamSpec>& specs, int ownInsertIndex);
+                         const fx::BuiltinEntry& entry, int ownInsertIndex,
+                         std::shared_ptr<BuiltinEffect> liveInstance = nullptr);
     ~BuiltinEffectEditor() override;
 
     void paint (juce::Graphics&) override;
@@ -39,7 +43,10 @@ private:
     ProjectModel& model;
     juce::ValueTree slotTree;
     std::vector<std::unique_ptr<Control>> controls;
+    std::unique_ptr<juce::Component> display;   // response curve / GR meter
+    int displayHeight = 0;
 
+    void buildDisplay (const fx::BuiltinEntry&, std::shared_ptr<BuiltinEffect> liveInstance);
     void layOutControls (const std::vector<fx::ParamSpec>& specs);
 
     static constexpr int cellW = 62;
@@ -57,7 +64,8 @@ public:
     ~BuiltinEffectWindows() { windows.clear(); }
 
     void show (ProjectModel& model, juce::ValueTree slot, const fx::BuiltinEntry& entry,
-               int insertIndex, int slotIndex, const juce::String& title);
+               int insertIndex, int slotIndex, const juce::String& title,
+               std::shared_ptr<BuiltinEffect> liveInstance = nullptr);
     void closeFor (int insertIndex, int slotIndex);
     void closeAll() { windows.clear(); }
 

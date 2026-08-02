@@ -90,7 +90,7 @@ void CompressorEffect::process (juce::AudioBuffer<float>& stereoBus, int numSamp
 
     const float threshold = thresholdDb.load (std::memory_order_relaxed);
     const float knee = juce::jmax (0.01f, kneeDb.load (std::memory_order_relaxed));
-    const float slope = 1.0f / juce::jmax (1.0f, ratio.load (std::memory_order_relaxed)) - 1.0f;
+    const float ratioValue = ratio.load (std::memory_order_relaxed);
     const float makeup = juce::Decibels::decibelsToGain (makeupDb.load (std::memory_order_relaxed));
     const auto gains = fx::mixGains (mix.load (std::memory_order_relaxed));
 
@@ -113,16 +113,7 @@ void CompressorEffect::process (juce::AudioBuffer<float>& stereoBus, int numSamp
         }
 
         const float levelDb = juce::Decibels::gainToDecibels (detector, -120.0f);
-        const float over = levelDb - threshold;
-
-        float targetReduction = 0.0f;
-        if (2.0f * over > knee)
-            targetReduction = -slope * over;
-        else if (2.0f * over > -knee)
-        {
-            const float t = over + knee * 0.5f;
-            targetReduction = -slope * t * t / (2.0f * knee);
-        }
+        const float targetReduction = gainReductionDbFor (levelDb, threshold, ratioValue, knee);
 
         const float coeff = targetReduction > envelopeDb ? attackCoeff : releaseCoeff;
         envelopeDb = targetReduction + coeff * (envelopeDb - targetReduction);

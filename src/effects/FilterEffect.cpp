@@ -151,3 +151,29 @@ void FilterEffect::process (juce::AudioBuffer<float>& stereoBus, int numSamples,
                 data[i] = data[i] * gains.wet + dryData[i] * gains.dry;
         }
 }
+
+double FilterEffect::magnitudeAt (double freqHz) const
+{
+    // The TPT SVF is the bilinear transform of the analog SVF, so its exact
+    // digital response is the analog one at prewarped frequencies.
+    const double nyq = sampleRateHz * 0.5;
+    const double fc = juce::jlimit (20.0, nyq * 0.98, (double) cutoffHz.load (std::memory_order_relaxed));
+    const double f  = juce::jlimit (1.0,  nyq * 0.999, freqHz);
+
+    const float reso = juce::jlimit (0.0f, 1.0f, resonance.load (std::memory_order_relaxed));
+    const double q = 0.5 + (double) (reso * reso) * 15.0;   // matches process()
+
+    const double warped = std::tan (juce::MathConstants<double>::pi * f / sampleRateHz)
+                        / std::tan (juce::MathConstants<double>::pi * fc / sampleRateHz);
+    const double denom = std::sqrt (std::pow (1.0 - warped * warped, 2.0)
+                                    + std::pow (warped / q, 2.0));
+
+    switch ((Mode) juce::jlimit (0, 2, mode.load (std::memory_order_relaxed)))
+    {
+        case Mode::highPass: return warped * warped / juce::jmax (1.0e-12, denom);
+        // JUCE's TPT bandpass is the constant-skirt form: peak gain Q at fc.
+        case Mode::bandPass: return warped / juce::jmax (1.0e-12, denom);
+        case Mode::lowPass:
+        default:             return 1.0 / juce::jmax (1.0e-12, denom);
+    }
+}

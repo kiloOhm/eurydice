@@ -28,6 +28,12 @@ public:
     const std::vector<fx::ParamSpec>& getParamSpecs() const override { return specs(); }
     void setParameter (const juce::Identifier& paramId, double value) override;
 
+    // Combined magnitude response of the current settings, exactly as process()
+    // would apply them (same coefficients, same activity gates). Message
+    // thread; the editors drive an offline instance of the effect with the
+    // slot's values and plot this.
+    double magnitudeAt (double freqHz);
+
 private:
     struct BandParams
     {

@@ -26,6 +26,17 @@ struct Biquad
         b0 = 1.0f; b1 = 0.0f; b2 = 0.0f; a1 = 0.0f; a2 = 0.0f;
     }
 
+    // |H(e^jw)| of the current coefficients; w in radians per sample. Feeds
+    // the editors' response curves, so what is drawn is what runs.
+    double magnitudeAt (double w) const noexcept
+    {
+        const double c1 = std::cos (w),       s1 = std::sin (w);
+        const double c2 = std::cos (2.0 * w), s2 = std::sin (2.0 * w);
+        const double nr = b0 + b1 * c1 + b2 * c2, ni = b1 * s1 + b2 * s2;
+        const double dr = 1.0 + a1 * c1 + a2 * c2, di = a1 * s1 + a2 * s2;
+        return std::sqrt ((nr * nr + ni * ni) / juce::jmax (1.0e-24, dr * dr + di * di));
+    }
+
     void setLowPass (double sampleRate, double freq, double q) noexcept
     {
         const auto c = common (sampleRate, freq, q);

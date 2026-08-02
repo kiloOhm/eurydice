@@ -164,3 +164,23 @@ void EqEffect::process (juce::AudioBuffer<float>& stereoBus, int numSamples, con
         }
     }
 }
+
+double EqEffect::magnitudeAt (double freqHz)
+{
+    if (dirty.exchange (false, std::memory_order_relaxed))
+        updateCoefficients();
+
+    const double w = juce::MathConstants<double>::twoPi
+                     * juce::jlimit (1.0, sampleRateHz * 0.5, freqHz) / sampleRateHz;
+    double magnitude = 1.0;
+    if (hpActive)
+        for (const auto& f : hpFilters[0])
+            magnitude *= f.magnitudeAt (w);
+    if (lpActive)
+        for (const auto& f : lpFilters[0])
+            magnitude *= f.magnitudeAt (w);
+    for (int b = 0; b < numBands; ++b)
+        if (bandActive[(size_t) b])
+            magnitude *= bandFilters[0][(size_t) b].magnitudeAt (w);
+    return magnitude;
+}

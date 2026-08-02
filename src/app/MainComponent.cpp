@@ -439,7 +439,8 @@ MainComponent::MainComponent()
             insert.appendChild (slot, nullptr);
 
             services.builtinEditors.show (services.project, slot, *entry, insertIndex, slotIndex,
-                                          insert[ids::name].toString() + " / " + entry->name);
+                                          insert[ids::name].toString() + " / " + entry->name,
+                                          services.builtinEffects.peek (insertIndex, slotIndex));
         });
     }
 

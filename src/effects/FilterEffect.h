@@ -26,6 +26,11 @@ public:
     const std::vector<fx::ParamSpec>& getParamSpecs() const override { return specs(); }
     void setParameter (const juce::Identifier& paramId, double value) override;
 
+    // Magnitude response at the base cutoff (envelope and LFO at rest),
+    // matching the TPT SVF the effect runs (bilinear-prewarped analog
+    // prototype). Feeds the editor's curve.
+    double magnitudeAt (double freqHz) const;
+
 private:
     static float lfoValue (int shape, double phase) noexcept;
     void processControlBlock (juce::AudioBuffer<float>& bus, int start, int numSamples);

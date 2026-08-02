@@ -36,6 +36,25 @@ public:
         return lastReductionDb.load (std::memory_order_relaxed);
     }
 
+    // Static transfer curve: gain reduction in dB (>= 0) for an input level,
+    // given threshold/ratio/knee. process() uses this same function per
+    // sample, so the editor's plotted curve is the real one.
+    static float gainReductionDbFor (float levelDb, float thresholdDb,
+                                     float ratio, float kneeDb) noexcept
+    {
+        const float knee = juce::jmax (0.01f, kneeDb);
+        const float slope = 1.0f - 1.0f / juce::jmax (1.0f, ratio);
+        const float over = levelDb - thresholdDb;
+        if (2.0f * over > knee)
+            return slope * over;
+        if (2.0f * over > -knee)
+        {
+            const float t = over + knee * 0.5f;
+            return slope * t * t / (2.0f * knee);
+        }
+        return 0.0f;
+    }
+
     // Writes the one-click "duck this bus from <source>" preset onto a slot:
     // compressor id, pumping ballistics (fast attack, deep ratio, ~100 ms
     // release) and the sidechain source. Shared by the mixer menu and tests.
