@@ -6,8 +6,36 @@
 #include "ui/common/LabelledKnob.h"
 
 // Editor panels for the built-in generators, opened by clicking a channel
-// name in the rack. Both write straight to the channel's ValueTree; the
+// name in the rack. All of them write straight to the channel's ValueTree; the
 // GeneratorPool picks the values up on the next snapshot rebuild.
+
+// Knobs grouped under painted section captions and wrapped into rows. Shared
+// by the sampler, synth and kick editors so they lay out identically.
+class KnobGrid
+{
+public:
+    void beginSection (const juce::String& caption);
+
+    void add (juce::Component& owner, const juce::String& caption, ProjectModel&,
+              juce::ValueTree channel, const juce::Identifier& property,
+              juce::NormalisableRange<double> range, double defaultValue,
+              const juce::String& suffix = {}, int decimals = 2);
+
+    // Lays the grid out inside area and returns the height it actually used.
+    int layout (juce::Rectangle<int> area);
+    void paintCaptions (juce::Graphics&) const;
+    void refresh();
+
+    static constexpr int captionHeight = 14;
+    static constexpr int rowGap = 8;
+    static constexpr int sectionGap = 18;
+    static int rowHeight() { return captionHeight + LabelledKnob::preferredHeight; }
+
+private:
+    std::vector<std::unique_ptr<LabelledKnob>> knobs;
+    std::vector<std::pair<juce::String, int>> sections;   // caption, first knob index
+    std::vector<std::pair<juce::String, juce::Point<int>>> captionPositions;
+};
 
 class SamplerEditor : public juce::Component,
                       public juce::FileDragAndDropTarget,
@@ -34,10 +62,11 @@ private:
 
     juce::TextButton loadButton { "Load sample..." };
     juce::TextButton previewButton { juce::CharPointer_UTF8 ("\xe2\x96\xb6") };
-    juce::ToggleButton oneShotButton { "One-shot (ignore note-off)" };
+    juce::ToggleButton oneShotButton { "One-shot" };
+    juce::ToggleButton reverseButton { "Reverse" };
     juce::Label pathLabel;
 
-    std::vector<std::unique_ptr<LabelledKnob>> knobs;
+    KnobGrid grid;
     std::vector<float> waveform;
     juce::String waveformForPath;
 
@@ -57,11 +86,36 @@ private:
     juce::ValueTree channel;
     juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
-    std::vector<std::unique_ptr<LabelledKnob>> knobs;
-    std::vector<std::pair<juce::String, int>> sections;   // caption, knob index it starts at
+    KnobGrid grid;
     std::unique_ptr<juce::MidiKeyboardState::Listener> bridge;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthEditor)
+};
+
+// Editor for the synthesised kick channel. The keyboard is the tuning tool:
+// the body sweep tracks the note, so auditioning across keys is how the kick
+// gets tuned to the track.
+class KickEditor : public juce::Component,
+                   private juce::Timer
+{
+public:
+    KickEditor (AppServices&, juce::ValueTree channel);
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
+    void timerCallback() override;
+
+    AppServices& services;
+    juce::ValueTree channel;
+    juce::TextButton previewButton { juce::CharPointer_UTF8 ("\xe2\x96\xb6") };
+    juce::MidiKeyboardState keyboardState;
+    juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
+    KnobGrid grid;
+    std::unique_ptr<juce::MidiKeyboardState::Listener> bridge;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KickEditor)
 };
 
 // Owns the open channel-editor windows. Lives on MainComponent so the windows

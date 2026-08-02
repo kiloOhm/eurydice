@@ -44,7 +44,7 @@ DECLARE_ID (activePattern)   // id of the pattern selected in the rack
 DECLARE_ID (selectedChannel) // id of the channel focused for piano roll / typing keys
 
 // Channel
-DECLARE_ID (type)          // "sampler" | "synth" | "plugin"
+DECLARE_ID (type)          // "sampler" | "synth" | "kick" | "plugin"
 DECLARE_ID (volume)        // 0..1 linear gain scale (1 = unity-ish)
 DECLARE_ID (pan)           // -1..1
 DECLARE_ID (mute)
@@ -67,6 +67,26 @@ DECLARE_ID (osc2Detune)    // synth: cents
 DECLARE_ID (osc2Mix)       // synth: 0..1
 DECLARE_ID (oscShape)      // synth: 0 = saw, 1 = square
 DECLARE_ID (filterEnvAmt)  // synth: 0..1
+
+// Kick-design parameters. The sampler and the kick synth share the drive
+// stage and the envelope-shape control; the rest is per-generator.
+DECLARE_ID (sampleStart)   // sampler: 0..1 of the sample length
+DECLARE_ID (sampleEnd)     // sampler: 0..1, must stay above sampleStart
+DECLARE_ID (reverse)       // sampler: play the trimmed region backwards
+DECLARE_ID (pitchEnvDepth) // sampler: semitones added at note start
+DECLARE_ID (pitchEnvDecay) // seconds
+DECLARE_ID (drive)         // 0..1 distortion amount
+DECLARE_ID (driveCurve)    // 0 = soft, 1 = hard clip, 2 = foldback
+DECLARE_ID (envShape)      // 0 = linear decay, 1 = exponential
+DECLARE_ID (kickStartFreq) // kick: body sweep start, Hz at the root note
+DECLARE_ID (kickEndFreq)   // kick: body sweep end, Hz at the root note
+DECLARE_ID (kickPitchDecay)
+DECLARE_ID (kickAmpDecay)
+DECLARE_ID (kickBodyShape) // kick: 0 = sine, 1 = triangle
+DECLARE_ID (kickClickLevel)
+DECLARE_ID (kickClickDecay)
+DECLARE_ID (kickNoiseLevel)
+DECLARE_ID (kickNoiseDecay)
 
 // Pattern
 DECLARE_ID (lengthTicks)

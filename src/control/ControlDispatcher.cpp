@@ -146,8 +146,8 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     if (method == "channel.add")
     {
         const auto type = getOr (params, "type", "sampler").toString();
-        if (type != "sampler" && type != "synth" && type != "plugin")
-            throw ControlError { "type must be sampler|synth|plugin" };
+        if (type != "sampler" && type != "synth" && type != "kick" && type != "plugin")
+            throw ControlError { "type must be sampler|synth|kick|plugin" };
         auto ch = project.addChannel (type, getOr (params, "name", type).toString());
         if (has (params, "pluginId"))
         {
@@ -170,6 +170,20 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         if (has (params, "name"))   ch.setProperty (ids::name, getOr (params, "name", "").toString(), &undo);
         if (has (params, "rootNote")) ch.setProperty (ids::rootNote, (int) getOr (params, "rootNote", 60), &undo);
         if (has (params, "samplePath")) ch.setProperty (ids::samplePath, getOr (params, "samplePath", "").toString(), &undo);
+
+        // Kick-design parameters, shared by the sampler and the kick synth.
+        for (const auto* id : { &ids::sampleStart, &ids::sampleEnd, &ids::pitchEnvDepth,
+                                &ids::pitchEnvDecay, &ids::drive, &ids::driveCurve, &ids::envShape,
+                                &ids::kickStartFreq, &ids::kickEndFreq, &ids::kickPitchDecay,
+                                &ids::kickAmpDecay, &ids::kickBodyShape, &ids::kickClickLevel,
+                                &ids::kickClickDecay, &ids::kickNoiseLevel, &ids::kickNoiseDecay })
+        {
+            const auto key = id->toString();
+            if (has (params, key.toRawUTF8()))
+                ch.setProperty (*id, (double) getOr (params, key.toRawUTF8(), 0.0), &undo);
+        }
+
+        if (has (params, "reverse")) ch.setProperty (ids::reverse, (bool) getOr (params, "reverse", false), &undo);
         return true;
     }
     if (method == "channel.remove")

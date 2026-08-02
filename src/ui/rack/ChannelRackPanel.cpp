@@ -169,6 +169,7 @@ void ChannelRackPanel::showAddChannelMenu()
     juce::PopupMenu menu;
     menu.addItem (1, "Sampler channel");
     menu.addItem (2, "Synth channel (built-in)");
+    menu.addItem (4, "Kick synth channel");
 
     const auto instruments = services.plugins.getInstruments();
     juce::PopupMenu instrumentMenu;
@@ -189,6 +190,8 @@ void ChannelRackPanel::showAddChannelMenu()
                 project.addChannel ("synth", "Synth " + juce::String (project.numChannels() + 1));
             else if (result == 3)
                 services.plugins.startScan ([] {});
+            else if (result == 4)
+                project.addChannel ("kick", "Kick " + juce::String (project.numChannels() + 1));
             else if (result >= 1000)
             {
                 const auto desc = instruments[result - 1000];

@@ -1,4 +1,5 @@
 #include "SamplerGenerator.h"
+#include "Drive.h"
 
 SamplerGenerator::SamplerGenerator() = default;
 
@@ -192,12 +193,30 @@ void SamplerGenerator::startVoice (int key, float velocity)
                 slot = &v;
     }
 
+    // Interpolation reads pos and pos+1, so the region must end two frames
+    // short of the buffer.
+    const double lastFrame = sample->data.getNumSamples() - 2.0;
+    if (lastFrame < 2.0)
+        return;
+
+    const double lo = juce::jlimit (0.0, lastFrame - 1.0,
+                                    juce::jlimit (0.0f, 1.0f, p.sampleStart.load()) * lastFrame);
+    const double hi = juce::jlimit (lo + 1.0, lastFrame,
+                                    juce::jlimit (0.0f, 1.0f, p.sampleEnd.load()) * lastFrame);
+
     const double semis = key - rootNote.load();
     slot->rate     = std::pow (2.0, semis / 12.0) * sample->sourceSampleRate / deviceSampleRate;
-    slot->pos      = 0.0;
+    slot->startPos = lo;
+    slot->endPos   = hi;
+    slot->reverse  = p.reverse.load();
+    slot->pos      = slot->reverse ? hi - 1.0 : lo;
     slot->key      = key;
     slot->velocity = velocity * p.gain.load();
     slot->sample   = std::move (sample);
+
+    slot->pitchEnvDepth = p.pitchEnvDepth.load();
+    slot->pitchEnv      = 1.0;
+    slot->pitchEnvCoef  = std::exp (-1.0 / (juce::jmax (0.0005f, p.pitchEnvDecay.load()) * deviceSampleRate));
 
     slot->env.setSampleRate (deviceSampleRate);
     slot->env.setParameters ({ p.attack.load(), p.decay.load(),
@@ -251,6 +270,7 @@ void SamplerGenerator::renderSegment (juce::AudioBuffer<float>& out, int from, i
     auto* r = out.getWritePointer (1);
     const float cutoffHz = juce::jlimit (40.0f, 20000.0f, p.cutoff.load());
     const float reso = juce::jmap (p.resonance.load(), 0.707f, 8.0f);
+    const float shape = juce::jlimit (0.0f, 1.0f, p.envShape.load());
 
     for (auto& v : voices)
     {
@@ -260,14 +280,13 @@ void SamplerGenerator::renderSegment (juce::AudioBuffer<float>& out, int from, i
         const auto& data = v.sample->data;
         const float* srcL = data.getReadPointer (0);
         const float* srcR = data.getReadPointer (1);
-        const int last = data.getNumSamples() - 2;
 
         v.filter.setCutoffFrequency (cutoffHz);
         v.filter.setResonance (reso);
 
         for (int i = from; i < to; ++i)
         {
-            if (v.pos >= last)
+            if (v.pos < v.startPos || v.pos >= v.endPos)
             {
                 v.active = false;
                 break;
@@ -284,11 +303,21 @@ void SamplerGenerator::renderSegment (juce::AudioBuffer<float>& out, int from, i
             const float frac = (float) (v.pos - idx);
             const float sl = (srcL[idx] + frac * (srcL[idx + 1] - srcL[idx]));
             const float sr = (srcR[idx] + frac * (srcR[idx + 1] - srcR[idx]));
-            const float gain = envValue * v.velocity;
+            const float gain = drive::shapeEnvelope (envValue, shape) * v.velocity;
 
             l[i] += v.filter.processSample (0, sl) * gain;
             r[i] += v.filter.processSample (1, sr) * gain;
-            v.pos += v.rate;
+
+            double step = v.rate;
+            if (v.pitchEnvDepth != 0.0f)
+            {
+                step *= std::exp2 (v.pitchEnvDepth * v.pitchEnv / 12.0);
+                v.pitchEnv *= v.pitchEnvCoef;
+            }
+            v.pos += v.reverse ? -step : step;
         }
     }
+
+    drive::processBlock (out, from, to, juce::jlimit (0.0f, 1.0f, p.drive.load()),
+                         p.driveCurve.load());
 }

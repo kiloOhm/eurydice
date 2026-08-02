@@ -31,10 +31,11 @@ hardcore / frenchcore.
 - **Sidechain ducking.** Insert-to-insert routing exists in the engine, but
   there is no UI for "duck this bus from the kick", which is the defining
   sound of the genre.
-- **Kick design tooling.** For hardcore/frenchcore the kick *is* the track.
-  The sampler needs sample-start offset, a pitch envelope (for the classic
-  downward kick tail), reverse, and a distortion stage. A dedicated kick
-  synth channel would be better still.
+- ~~Kick design tooling.~~ — the sampler now has start/end trim, reverse, a
+  pitch envelope, a drive stage (soft / hard clip / foldback) and a
+  linear-to-exponential gain envelope shape. There is also a dedicated `kick`
+  channel type — swept sine/triangle body, click and noise layers, drive — in
+  the rack's add-channel menu and over the control API.
 - **Time-stretch modes.** Rubber Band is wired for offline stretching only;
   no per-clip formant/transient options, and no realtime stretch.
 

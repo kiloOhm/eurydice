@@ -95,21 +95,35 @@ server.tool("daw_transport",
   });
 
 tool("daw_channel_add",
-  "Add a channel to the rack. type: 'sampler' (drum/one-shot, give samplePath for a wav), 'synth' (built-in subtractive synth), or 'plugin' (needs pluginId from daw_plugins_list).",
+  "Add a channel to the rack. type: 'sampler' (drum/one-shot, give samplePath for a wav), 'synth' (built-in subtractive synth), 'kick' (synthesised hardcore kick) or 'plugin' (needs pluginId from daw_plugins_list).",
   {
-    type: z.enum(["sampler", "synth", "plugin"]),
+    type: z.enum(["sampler", "synth", "kick", "plugin"]),
     name: z.string(),
     pluginId: z.string().optional(),
     samplePath: z.string().optional(),
   }, "channel.add");
 
 tool("daw_channel_set",
-  "Update a channel: volume (0..1), pan (-1..1), mute, insert (mixer routing 0=master), name, rootNote, samplePath.",
+  "Update a channel: volume (0..1), pan (-1..1), mute, insert (mixer routing 0=master), name, rootNote, samplePath. "
+  + "Sampler kick design: sampleStart/sampleEnd (0..1 trim), reverse, pitchEnvDepth (semitones) + pitchEnvDecay (s), "
+  + "envShape (0 linear .. 1 exponential), drive (0..1) + driveCurve (0 soft, 1 hard, 2 fold). "
+  + "Kick synth: kickStartFreq/kickEndFreq (Hz), kickPitchDecay/kickAmpDecay (s), kickBodyShape (0 sine .. 1 triangle), "
+  + "kickClickLevel/kickClickDecay, kickNoiseLevel/kickNoiseDecay.",
   {
     channelId: z.number(),
     volume: z.number().optional(), pan: z.number().optional(), mute: z.boolean().optional(),
     insert: z.number().optional(), name: z.string().optional(),
     rootNote: z.number().optional(), samplePath: z.string().optional(),
+    sampleStart: z.number().optional(), sampleEnd: z.number().optional(),
+    reverse: z.boolean().optional(),
+    pitchEnvDepth: z.number().optional(), pitchEnvDecay: z.number().optional(),
+    envShape: z.number().optional(),
+    drive: z.number().optional(), driveCurve: z.number().optional(),
+    kickStartFreq: z.number().optional(), kickEndFreq: z.number().optional(),
+    kickPitchDecay: z.number().optional(), kickAmpDecay: z.number().optional(),
+    kickBodyShape: z.number().optional(),
+    kickClickLevel: z.number().optional(), kickClickDecay: z.number().optional(),
+    kickNoiseLevel: z.number().optional(), kickNoiseDecay: z.number().optional(),
   }, "channel.set");
 
 tool("daw_channel_remove", "Delete a channel and its notes.", { channelId: z.number() }, "channel.remove");

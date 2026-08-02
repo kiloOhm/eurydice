@@ -2,6 +2,102 @@
 #include "engine/SamplerGenerator.h"
 #include "plugins/PluginGenerator.h"
 
+namespace
+{
+// The drive curve is an index, not a continuous value; the section caption
+// spells the choices out because a rotary can only show the number.
+const juce::String driveSectionCaption { "DRIVE   0 SOFT   1 HARD   2 FOLD" };
+
+// Routes an on-screen keyboard through the engine's preview path.
+struct KeyboardBridge : juce::MidiKeyboardState::Listener
+{
+    KeyboardBridge (AppServices& s, juce::ValueTree c) : services (s), channel (c) {}
+
+    void handleNoteOn (juce::MidiKeyboardState*, int, int note, float vel) override
+    {
+        services.engine.previewNote (channel[ids::id], note, juce::jmax (0.3f, vel), 0);
+    }
+
+    void handleNoteOff (juce::MidiKeyboardState*, int, int note, float) override
+    {
+        services.engine.previewNoteOff (channel[ids::id], note);
+    }
+
+    AppServices& services;
+    juce::ValueTree channel;
+};
+} // namespace
+
+// ================= KnobGrid =================
+
+void KnobGrid::beginSection (const juce::String& caption)
+{
+    sections.emplace_back (caption, (int) knobs.size());
+}
+
+void KnobGrid::add (juce::Component& owner, const juce::String& caption, ProjectModel& model,
+                    juce::ValueTree channel, const juce::Identifier& property,
+                    juce::NormalisableRange<double> range, double defaultValue,
+                    const juce::String& suffix, int decimals)
+{
+    auto knob = std::make_unique<LabelledKnob> (caption, model, channel, property, range,
+                                                defaultValue, suffix, decimals);
+    owner.addAndMakeVisible (*knob);
+    knobs.push_back (std::move (knob));
+}
+
+int KnobGrid::layout (juce::Rectangle<int> area)
+{
+    captionPositions.clear();
+    if (knobs.empty())
+        return 0;
+
+    const int knobStep = LabelledKnob::preferredWidth + 2;
+    int x = area.getX();
+    int y = area.getY();
+
+    for (size_t s = 0; s < sections.size(); ++s)
+    {
+        const int first = sections[s].second;
+        const int last = s + 1 < sections.size() ? sections[s + 1].second : (int) knobs.size();
+        if (first >= last)
+            continue;
+
+        if (x > area.getX() && x + (last - first) * knobStep > area.getRight())
+        {
+            x = area.getX();
+            y += rowHeight() + rowGap;
+        }
+
+        captionPositions.emplace_back (sections[s].first, juce::Point<int> (x, y));
+
+        for (int i = first; i < last; ++i)
+        {
+            knobs[(size_t) i]->setBounds (x, y + captionHeight,
+                                          LabelledKnob::preferredWidth, LabelledKnob::preferredHeight);
+            x += knobStep;
+        }
+        x += sectionGap;
+    }
+
+    return y + rowHeight() - area.getY();
+}
+
+void KnobGrid::paintCaptions (juce::Graphics& g) const
+{
+    g.setColour (theme::textFaint);
+    g.setFont (theme::uiFont (9.5f, true));
+    for (const auto& [caption, position] : captionPositions)
+        g.drawText (caption, position.x, position.y, 240, captionHeight,
+                    juce::Justification::centredLeft);
+}
+
+void KnobGrid::refresh()
+{
+    for (auto& knob : knobs)
+        knob->refresh();
+}
+
 // ================= SamplerEditor =================
 
 SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
@@ -34,6 +130,7 @@ SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
     addAndMakeVisible (previewButton);
 
     oneShotButton.setWantsKeyboardFocus (false);
+    oneShotButton.setTooltip ("Ignore note-offs and play the sample out");
     oneShotButton.setToggleState (channel.getProperty (ids::oneShot, true),
                                   juce::dontSendNotification);
     oneShotButton.onClick = [this]
@@ -43,32 +140,48 @@ SamplerEditor::SamplerEditor (AppServices& s, juce::ValueTree ch)
     };
     addAndMakeVisible (oneShotButton);
 
+    reverseButton.setWantsKeyboardFocus (false);
+    reverseButton.setToggleState (channel.getProperty (ids::reverse, false),
+                                  juce::dontSendNotification);
+    reverseButton.onClick = [this]
+    {
+        channel.setProperty (ids::reverse, reverseButton.getToggleState(),
+                             &services.project.getUndoManager());
+    };
+    addAndMakeVisible (reverseButton);
+
     pathLabel.setFont (theme::uiFont (11.0f));
     pathLabel.setColour (juce::Label::textColourId, theme::textDim);
     pathLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (pathLabel);
 
-    auto addKnob = [this, &model] (const juce::String& caption, const juce::Identifier& id,
-                                   juce::NormalisableRange<double> range, double defaultValue,
-                                   const juce::String& suffix, int decimals)
-    {
-        auto knob = std::make_unique<LabelledKnob> (caption, model, channel, id, range,
-                                                    defaultValue, suffix, decimals);
-        addAndMakeVisible (*knob);
-        knobs.push_back (std::move (knob));
-    };
+    grid.beginSection ("SAMPLE");
+    grid.add (*this, "ROOT",  model, channel, ids::rootNote,    { 0.0, 127.0, 1.0 }, 60.0, {}, 0);
+    grid.add (*this, "START", model, channel, ids::sampleStart, { 0.0, 1.0 }, 0.0, {}, 3);
+    grid.add (*this, "END",   model, channel, ids::sampleEnd,   { 0.0, 1.0 }, 1.0, {}, 3);
 
-    addKnob ("ROOT", ids::rootNote, { 0.0, 127.0, 1.0 }, 60.0, {}, 0);
-    addKnob ("ATT",  ids::attack,  { 0.0, 2.0, 0.0, 0.35 }, 0.001, " s", 3);
-    addKnob ("DEC",  ids::decay,   { 0.0, 4.0, 0.0, 0.35 }, 0.0, " s", 2);
-    addKnob ("SUS",  ids::sustain, { 0.0, 1.0 }, 1.0, {}, 2);
-    addKnob ("REL",  ids::release, { 0.0, 4.0, 0.0, 0.35 }, 0.02, " s", 2);
-    addKnob ("CUT",  ids::cutoff,  { 40.0, 20000.0, 0.0, 0.28 }, 20000.0, " Hz", 0);
-    addKnob ("RES",  ids::resonance, { 0.0, 1.0 }, 0.0, {}, 2);
+    grid.beginSection ("PITCH ENV");
+    grid.add (*this, "DEPTH", model, channel, ids::pitchEnvDepth, { -48.0, 48.0 }, 0.0, " st", 1);
+    grid.add (*this, "PDEC",  model, channel, ids::pitchEnvDecay, { 0.001, 2.0, 0.0, 0.35 }, 0.08, " s", 3);
+
+    grid.beginSection ("AMP");
+    grid.add (*this, "ATT",   model, channel, ids::attack,   { 0.0, 2.0, 0.0, 0.35 }, 0.001, " s", 3);
+    grid.add (*this, "DEC",   model, channel, ids::decay,    { 0.0, 4.0, 0.0, 0.35 }, 0.0, " s", 2);
+    grid.add (*this, "SUS",   model, channel, ids::sustain,  { 0.0, 1.0 }, 1.0, {}, 2);
+    grid.add (*this, "REL",   model, channel, ids::release,  { 0.0, 4.0, 0.0, 0.35 }, 0.02, " s", 2);
+    grid.add (*this, "SHAPE", model, channel, ids::envShape, { 0.0, 1.0 }, 0.0, {}, 2);
+
+    grid.beginSection ("FILTER");
+    grid.add (*this, "CUT", model, channel, ids::cutoff,    { 40.0, 20000.0, 0.0, 0.28 }, 20000.0, " Hz", 0);
+    grid.add (*this, "RES", model, channel, ids::resonance, { 0.0, 1.0 }, 0.0, {}, 2);
+
+    grid.beginSection (driveSectionCaption);
+    grid.add (*this, "DRIVE", model, channel, ids::drive,      { 0.0, 1.0 }, 0.0, {}, 2);
+    grid.add (*this, "CURVE", model, channel, ids::driveCurve, { 0.0, 2.0, 1.0 }, 0.0, {}, 0);
 
     refreshWaveform();
     startTimerHz (4);
-    setSize (480, 300);
+    setSize (680, 344);
 }
 
 void SamplerEditor::loadSample (const juce::File& file)
@@ -104,8 +217,10 @@ void SamplerEditor::timerCallback()
 
     oneShotButton.setToggleState (channel.getProperty (ids::oneShot, true),
                                   juce::dontSendNotification);
-    for (auto& knob : knobs)
-        knob->refresh();
+    reverseButton.setToggleState (channel.getProperty (ids::reverse, false),
+                                  juce::dontSendNotification);
+    grid.refresh();
+    repaint (waveformArea());
 }
 
 juce::Rectangle<int> SamplerEditor::waveformArea() const
@@ -163,15 +278,21 @@ void SamplerEditor::paint (juce::Graphics& g)
             const float h = juce::jmax (1.0f, waveform[i] * halfH);
             g.fillRect (x, midY - h, juce::jmax (1.0f, step - 0.5f), h * 2.0f);
         }
+
+        // Grey out whatever the start/end trim excludes.
+        const auto startX = (float) juce::jlimit (0.0, 1.0, (double) channel.getProperty (ids::sampleStart, 0.0));
+        const auto endX   = (float) juce::jlimit (0.0, 1.0, (double) channel.getProperty (ids::sampleEnd, 1.0));
+        g.setColour (theme::panelBg.withAlpha (0.72f));
+        g.fillRect ((float) wave.getX(), (float) wave.getY(),
+                    startX * (float) wave.getWidth(), (float) wave.getHeight());
+        g.fillRect ((float) wave.getX() + endX * (float) wave.getWidth(), (float) wave.getY(),
+                    (1.0f - endX) * (float) wave.getWidth(), (float) wave.getHeight());
     }
 
     g.setColour (theme::outline);
     g.drawRoundedRectangle (wave.toFloat(), 3.0f, 1.0f);
 
-    g.setColour (theme::textFaint);
-    g.setFont (theme::uiFont (9.5f, true));
-    g.drawText ("AMP ENVELOPE / FILTER", 10, wave.getBottom() + 6, 240, 12,
-                juce::Justification::centredLeft);
+    grid.paintCaptions (g);
 }
 
 void SamplerEditor::resized()
@@ -186,16 +307,14 @@ void SamplerEditor::resized()
     pathLabel.setBounds (top);
 
     r.removeFromTop (4);
-    oneShotButton.setBounds (r.removeFromTop (22));
+    auto toggles = r.removeFromTop (22);
+    oneShotButton.setBounds (toggles.removeFromLeft (100));
+    toggles.removeFromLeft (8);
+    reverseButton.setBounds (toggles.removeFromLeft (90));
 
-    r.removeFromTop (78 + 24);   // waveform + section caption (painted)
+    r.removeFromTop (78 + 10);   // waveform (painted) + gap
 
-    auto knobRow = r.removeFromTop (LabelledKnob::preferredHeight);
-    for (auto& knob : knobs)
-    {
-        knob->setBounds (knobRow.removeFromLeft (LabelledKnob::preferredWidth));
-        knobRow.removeFromLeft (2);
-    }
+    grid.layout (r);
 }
 
 // ================= SynthEditor =================
@@ -205,51 +324,26 @@ SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
 {
     auto& model = services.project;
 
-    auto addKnob = [this, &model] (const juce::String& caption, const juce::Identifier& id,
-                                   juce::NormalisableRange<double> range, double defaultValue,
-                                   const juce::String& suffix, int decimals)
-    {
-        auto knob = std::make_unique<LabelledKnob> (caption, model, channel, id, range,
-                                                    defaultValue, suffix, decimals);
-        addAndMakeVisible (*knob);
-        knobs.push_back (std::move (knob));
-    };
+    grid.beginSection ("OSCILLATORS");
+    grid.add (*this, "SHAPE",  model, channel, ids::oscShape,   { 0.0, 1.0 }, 0.0, {}, 2);
+    grid.add (*this, "DETUNE", model, channel, ids::osc2Detune, { -50.0, 50.0 }, 7.0, " ct", 1);
+    grid.add (*this, "OSC2",   model, channel, ids::osc2Mix,    { 0.0, 1.0 }, 0.35, {}, 2);
 
-    sections.emplace_back ("OSCILLATORS", 0);
-    addKnob ("SHAPE",  ids::oscShape,   { 0.0, 1.0 }, 0.0, {}, 2);
-    addKnob ("DETUNE", ids::osc2Detune, { -50.0, 50.0 }, 7.0, " ct", 1);
-    addKnob ("OSC2",   ids::osc2Mix,    { 0.0, 1.0 }, 0.35, {}, 2);
+    grid.beginSection ("FILTER");
+    grid.add (*this, "CUT", model, channel, ids::cutoff,       { 40.0, 18000.0, 0.0, 0.28 }, 4000.0, " Hz", 0);
+    grid.add (*this, "RES", model, channel, ids::resonance,    { 0.0, 1.0 }, 0.3, {}, 2);
+    grid.add (*this, "ENV", model, channel, ids::filterEnvAmt, { 0.0, 1.0 }, 0.35, {}, 2);
 
-    sections.emplace_back ("FILTER", (int) knobs.size());
-    addKnob ("CUT",    ids::cutoff,       { 40.0, 18000.0, 0.0, 0.28 }, 4000.0, " Hz", 0);
-    addKnob ("RES",    ids::resonance,    { 0.0, 1.0 }, 0.3, {}, 2);
-    addKnob ("ENV",    ids::filterEnvAmt, { 0.0, 1.0 }, 0.35, {}, 2);
-
-    sections.emplace_back ("ENVELOPE", (int) knobs.size());
-    addKnob ("ATT", ids::attack,  { 0.0, 2.0, 0.0, 0.35 }, 0.004, " s", 3);
-    addKnob ("DEC", ids::decay,   { 0.0, 4.0, 0.0, 0.35 }, 0.25, " s", 2);
-    addKnob ("SUS", ids::sustain, { 0.0, 1.0 }, 0.7, {}, 2);
-    addKnob ("REL", ids::release, { 0.0, 4.0, 0.0, 0.35 }, 0.08, " s", 2);
+    grid.beginSection ("ENVELOPE");
+    grid.add (*this, "ATT", model, channel, ids::attack,  { 0.0, 2.0, 0.0, 0.35 }, 0.004, " s", 3);
+    grid.add (*this, "DEC", model, channel, ids::decay,   { 0.0, 4.0, 0.0, 0.35 }, 0.25, " s", 2);
+    grid.add (*this, "SUS", model, channel, ids::sustain, { 0.0, 1.0 }, 0.7, {}, 2);
+    grid.add (*this, "REL", model, channel, ids::release, { 0.0, 4.0, 0.0, 0.35 }, 0.08, " s", 2);
 
     keyboard.setAvailableRange (36, 96);
     keyboard.setWantsKeyboardFocus (false);
     addAndMakeVisible (keyboard);
 
-    // Route the on-screen keyboard through the engine's preview path.
-    struct KeyboardBridge : juce::MidiKeyboardState::Listener
-    {
-        KeyboardBridge (AppServices& s, juce::ValueTree c) : services (s), channel (c) {}
-        void handleNoteOn (juce::MidiKeyboardState*, int, int note, float vel) override
-        {
-            services.engine.previewNote (channel[ids::id], note, juce::jmax (0.3f, vel), 0);
-        }
-        void handleNoteOff (juce::MidiKeyboardState*, int, int note, float) override
-        {
-            services.engine.previewNoteOff (channel[ids::id], note);
-        }
-        AppServices& services;
-        juce::ValueTree channel;
-    };
     bridge = std::make_unique<KeyboardBridge> (services, channel);
     keyboardState.addListener (bridge.get());
 
@@ -259,17 +353,7 @@ SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
 void SynthEditor::paint (juce::Graphics& g)
 {
     g.fillAll (theme::panelBg);
-
-    g.setColour (theme::textFaint);
-    g.setFont (theme::uiFont (9.5f, true));
-    for (const auto& [caption, firstKnob] : sections)
-    {
-        if (firstKnob >= (int) knobs.size())
-            continue;
-        const auto bounds = knobs[(size_t) firstKnob]->getBounds();
-        g.drawText (caption, bounds.getX(), bounds.getY() - 16, 160, 12,
-                    juce::Justification::centredLeft);
-    }
+    grid.paintCaptions (g);
 }
 
 void SynthEditor::resized()
@@ -281,19 +365,84 @@ void SynthEditor::resized()
     keyboard.setKeyWidth (juce::jmax (8.0f, (float) keyboardArea.getWidth() / 36.0f));
     keyboard.setBounds (keyboardArea);
     r.removeFromBottom (8);
-    r.removeFromTop (16);   // room for the first section caption
 
-    auto row = r.removeFromTop (LabelledKnob::preferredHeight);
-    for (size_t i = 0; i < knobs.size(); ++i)
+    grid.layout (r);
+}
+
+// ================= KickEditor =================
+
+KickEditor::KickEditor (AppServices& s, juce::ValueTree ch)
+    : services (s), channel (ch)
+{
+    auto& model = services.project;
+
+    previewButton.setWantsKeyboardFocus (false);
+    previewButton.setTooltip ("Preview at the root note");
+    previewButton.onClick = [this]
     {
-        // Gap between sections.
-        for (const auto& [caption, firstKnob] : sections)
-            if (firstKnob == (int) i && i != 0)
-                row.removeFromLeft (18);
+        services.engine.previewNote (channel[ids::id],
+                                     (int) channel.getProperty (ids::rootNote, 60), 1.0f, 200);
+    };
+    addAndMakeVisible (previewButton);
 
-        knobs[i]->setBounds (row.removeFromLeft (LabelledKnob::preferredWidth));
-        row.removeFromLeft (2);
-    }
+    grid.beginSection ("BODY");
+    grid.add (*this, "ROOT",  model, channel, ids::rootNote,       { 0.0, 127.0, 1.0 }, 60.0, {}, 0);
+    grid.add (*this, "FROM",  model, channel, ids::kickStartFreq,  { 40.0, 2000.0, 0.0, 0.4 }, 240.0, " Hz", 0);
+    grid.add (*this, "TO",    model, channel, ids::kickEndFreq,    { 20.0, 400.0, 0.0, 0.5 }, 48.0, " Hz", 1);
+    grid.add (*this, "PDEC",  model, channel, ids::kickPitchDecay, { 0.001, 1.0, 0.0, 0.35 }, 0.035, " s", 3);
+    grid.add (*this, "ADEC",  model, channel, ids::kickAmpDecay,   { 0.02, 4.0, 0.0, 0.4 }, 0.5, " s", 2);
+    grid.add (*this, "SHAPE", model, channel, ids::kickBodyShape,  { 0.0, 1.0 }, 0.0, {}, 2);
+
+    grid.beginSection ("CLICK");
+    grid.add (*this, "LEVEL", model, channel, ids::kickClickLevel, { 0.0, 1.0 }, 0.3, {}, 2);
+    grid.add (*this, "CDEC",  model, channel, ids::kickClickDecay, { 0.0005, 0.2, 0.0, 0.35 }, 0.004, " s", 4);
+
+    grid.beginSection ("NOISE");
+    grid.add (*this, "LEVEL", model, channel, ids::kickNoiseLevel, { 0.0, 1.0 }, 0.12, {}, 2);
+    grid.add (*this, "NDEC",  model, channel, ids::kickNoiseDecay, { 0.001, 0.5, 0.0, 0.35 }, 0.02, " s", 3);
+
+    grid.beginSection (driveSectionCaption);
+    grid.add (*this, "CURVE",  model, channel, ids::driveCurve, { 0.0, 2.0, 1.0 }, 0.0, {}, 0);
+    grid.add (*this, "DRIVE",  model, channel, ids::drive,      { 0.0, 1.0 }, 0.25, {}, 2);
+    grid.add (*this, "ENVSHP", model, channel, ids::envShape,   { 0.0, 1.0 }, 1.0, {}, 2);
+
+    keyboard.setAvailableRange (24, 72);
+    keyboard.setWantsKeyboardFocus (false);
+    addAndMakeVisible (keyboard);
+
+    bridge = std::make_unique<KeyboardBridge> (services, channel);
+    keyboardState.addListener (bridge.get());
+
+    startTimerHz (4);
+    setSize (700, 340);
+}
+
+void KickEditor::timerCallback()
+{
+    grid.refresh();
+}
+
+void KickEditor::paint (juce::Graphics& g)
+{
+    g.fillAll (theme::panelBg);
+    grid.paintCaptions (g);
+}
+
+void KickEditor::resized()
+{
+    auto r = getLocalBounds().reduced (10);
+
+    auto top = r.removeFromTop (26);
+    previewButton.setBounds (top.removeFromLeft (32));
+    r.removeFromTop (6);
+
+    auto keyboardArea = r.removeFromBottom (56);
+    // 24..72 spans 29 white keys.
+    keyboard.setKeyWidth (juce::jmax (8.0f, (float) keyboardArea.getWidth() / 29.0f));
+    keyboard.setBounds (keyboardArea);
+    r.removeFromBottom (8);
+
+    grid.layout (r);
 }
 
 // ================= window management =================
@@ -356,6 +505,8 @@ void ChannelEditorManager::show (AppServices& services, juce::ValueTree channel)
     auto window = std::make_unique<Window> (*this, name, channelId);
     if (type == "sampler")
         window->setContentOwned (new SamplerEditor (services, channel), true);
+    else if (type == "kick")
+        window->setContentOwned (new KickEditor (services, channel), true);
     else
         window->setContentOwned (new SynthEditor (services, channel), true);
 
