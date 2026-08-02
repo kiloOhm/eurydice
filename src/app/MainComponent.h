@@ -6,6 +6,7 @@
 #include "Commands.h"
 #include "EurydiceLookAndFeel.h"
 #include "MidiInputManager.h"
+#include "TypingPiano.h"
 #include "ProjectFileState.h"
 #include "TransportBar.h"
 #include "ui/common/FloatingPanel.h"
@@ -80,6 +81,7 @@ private:
 
     std::unique_ptr<class ControlServer> controlServer;
     std::unique_ptr<MidiInputManager> midiInput;
+    std::unique_ptr<TypingPiano> typingPiano;   // after midiInput: it feeds it
     std::unique_ptr<class AudioRecorder> recorder;
     ChannelEditorManager channelEditors;
 
@@ -95,9 +97,6 @@ private:
 
     bool initialLayoutDone = false;
     bool browserVisible = true;
-
-    int typingOctaveShift = 0;
-    std::map<juce::juce_wchar, int> typingKeysDown;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

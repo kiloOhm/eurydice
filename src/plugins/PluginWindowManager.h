@@ -25,9 +25,16 @@ public:
             }
 
         windows.push_back (std::make_unique<Window> (*this, plugin, title));
+        if (typingKeys != nullptr)
+            windows.back()->addKeyListener (typingKeys);
     }
 
     void closeAll() { windows.clear(); }
+
+    // Shared typing-piano listener, attached to each plugin window. Native
+    // plugin views often keep key events to themselves, but when the window
+    // frame has focus the laptop keyboard still plays.
+    juce::KeyListener* typingKeys = nullptr;
 
     void closeFor (const HostedPlugin* plugin)
     {

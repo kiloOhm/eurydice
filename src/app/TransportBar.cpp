@@ -8,7 +8,6 @@ TransportBar::TransportBar()
     recordButton.setWantsKeyboardFocus (false);
     patButton.setWantsKeyboardFocus (false);
     songButton.setWantsKeyboardFocus (false);
-    loopButton.setWantsKeyboardFocus (false);
 
     playButton.onClick   = [this] { if (onPlay) onPlay(); };
     stopButton.onClick   = [this] { if (onStop) onStop(); };
@@ -24,15 +23,6 @@ TransportBar::TransportBar()
     patButton.onClick  = [this] { if (onSongModeChanged) onSongModeChanged (false); };
     songButton.onClick = [this] { if (onSongModeChanged) onSongModeChanged (true); };
 
-    loopButton.setClickingTogglesState (true);
-    loopButton.setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
-    loopButton.onClick = [this] { if (onLoopToggled) onLoopToggled(); };
-
-    autoButton.setWantsKeyboardFocus (false);
-    autoButton.setClickingTogglesState (true);
-    autoButton.setTooltip ("Write automation: while playing, moving a knob records it");
-    autoButton.setColour (juce::TextButton::buttonOnColourId, theme::record);
-    autoButton.onClick = [this] { if (onAutomationWriteToggled) onAutomationWriteToggled(); };
     metronomeButton.setWantsKeyboardFocus (false);
     metronomeButton.setClickingTogglesState (true);
     metronomeButton.setTooltip ("Metronome: accented click on the bar, plain click on the beat");
@@ -68,8 +58,7 @@ TransportBar::TransportBar()
     positionLabel.setText ("  1 : 1 : 00", juce::dontSendNotification);
 
     for (auto* c : std::initializer_list<juce::Component*> { &playButton, &stopButton, &recordButton,
-                                                             &patButton, &songButton, &loopButton,
-                                                             &autoButton, &metronomeButton,
+                                                             &patButton, &songButton, &metronomeButton,
                                                              &metronomeSlider, &tempoSlider,
                                                              &positionLabel })
         addAndMakeVisible (c);
@@ -118,39 +107,43 @@ void TransportBar::paint (juce::Graphics& g)
     g.fillAll (theme::panelHeader);
     g.setColour (theme::outline);
     g.fillRect (getLocalBounds().removeFromBottom (1));
+
+    // Faint separators between the control groups.
+    for (const int x : separatorX)
+        g.fillRect (x, 10, 1, getHeight() - 21);
 }
 
 void TransportBar::resized()
 {
     auto r = getLocalBounds().reduced (8, 7);
+    separatorX.clear();
+    const auto separator = [this, &r]
+    {
+        separatorX.push_back (r.removeFromLeft (16).getCentreX());
+    };
 
     playButton.setBounds (r.removeFromLeft (36));
     r.removeFromLeft (4);
     stopButton.setBounds (r.removeFromLeft (36));
     r.removeFromLeft (4);
     recordButton.setBounds (r.removeFromLeft (36));
-    r.removeFromLeft (16);
+    separator();
 
     patButton.setBounds (r.removeFromLeft (48));
     r.removeFromLeft (2);
     songButton.setBounds (r.removeFromLeft (48));
-    r.removeFromLeft (8);
-
-    loopButton.setBounds (r.removeFromLeft (48));
-    r.removeFromLeft (2);
-    autoButton.setBounds (r.removeFromLeft (48));
-    r.removeFromLeft (8);
+    separator();
 
     metronomeButton.setBounds (r.removeFromLeft (52));
     r.removeFromLeft (2);
-    metronomeSlider.setBounds (r.removeFromLeft (60));
-    r.removeFromLeft (16);
+    metronomeSlider.setBounds (r.removeFromLeft (48));
+    separator();
 
     tempoSlider.setBounds (r.removeFromLeft (110));
     r.removeFromLeft (16);
 
     positionLabel.setBounds (r.removeFromLeft (130));
-    r.removeFromLeft (16);
+    separator();
 
     for (auto& entry : panelButtons)
     {
@@ -202,12 +195,8 @@ void TransportBar::timerCallback()
     // or hidden by their own close button, startup flags, or the API.
     refreshPanelButtons();
 
-    // The loop can also be toggled from the playlist ruler, a command or the
-    // control API, so poll rather than tracking it from the click callback.
-    if (getLoopEnabled)
-        loopButton.setToggleState (getLoopEnabled(), juce::dontSendNotification);
-    if (getAutomationWrite)
-        autoButton.setToggleState (getAutomationWrite(), juce::dontSendNotification);
+    // These can also change from menus, commands or the control API, so poll
+    // rather than tracking click callbacks.
     if (getMetronomeEnabled)
         metronomeButton.setToggleState (getMetronomeEnabled(), juce::dontSendNotification);
     if (getSongMode)

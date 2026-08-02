@@ -525,6 +525,8 @@ void ChannelEditorManager::show (AppServices& services, juce::ValueTree channel)
     else
         window->setContentOwned (new SynthEditor (services, channel), true);
 
+    if (typingKeys != nullptr)
+        window->addKeyListener (typingKeys);
     window->centreWithSize (window->getWidth(), window->getHeight());
     window->setVisible (true);
     windows[channelId] = std::move (window);

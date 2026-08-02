@@ -15,8 +15,7 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
 
-    std::function<void()> onPlay, onStop, onRecordToggled, onLoopToggled, onMetronomeToggled;
-    std::function<void()> onAutomationWriteToggled;
+    std::function<void()> onPlay, onStop, onRecordToggled, onMetronomeToggled;
     std::function<void (double)> onTempoChanged, onMetronomeLevelChanged;
     std::function<void (bool)> onSongModeChanged;
 
@@ -31,8 +30,6 @@ public:
     std::function<double()> getBeatPosition;   // in quarter notes
     std::function<bool()>   getIsPlaying;
     std::function<bool()>   getIsRecording;
-    std::function<bool()>   getLoopEnabled;
-    std::function<bool()>   getAutomationWrite;
     std::function<bool()>   getMetronomeEnabled;
     std::function<double()> getTempo;          // tempo/mode can change under us
     std::function<bool()>   getSongMode;       // (project load, API, undo)
@@ -56,8 +53,6 @@ private:
     juce::TextButton recordButton { juce::CharPointer_UTF8 ("\xe2\x97\x8f") };
     juce::TextButton patButton  { "PAT" };
     juce::TextButton songButton { "SONG" };
-    juce::TextButton loopButton { "LOOP" };
-    juce::TextButton autoButton { "AUTO" };
     juce::TextButton metronomeButton { "CLICK" };
     juce::Slider metronomeSlider;
     juce::Slider tempoSlider;
@@ -65,6 +60,7 @@ private:
 
     struct PanelButton { juce::TextButton button; juce::CommandID command; };
     std::vector<std::unique_ptr<PanelButton>> panelButtons;
+    std::vector<int> separatorX;   // group separators, computed in resized()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TransportBar)
 };

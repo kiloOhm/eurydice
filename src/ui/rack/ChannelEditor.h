@@ -137,6 +137,10 @@ public:
     void close (int channelId);
     void closeAll();
 
+    // Shared typing-piano listener; attached to every editor window so the
+    // laptop keyboard keeps playing while an editor has focus.
+    juce::KeyListener* typingKeys = nullptr;
+
 private:
     struct Window;
     std::map<int, std::unique_ptr<Window>> windows;

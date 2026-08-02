@@ -121,11 +121,23 @@ void FloatingPanel::paint (juce::Graphics& g)
     g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 4.0f, 1.0f);
 }
 
+void FloatingPanel::setTitleBarComponent (std::unique_ptr<juce::Component> extra)
+{
+    titleBarExtra = std::move (extra);
+    if (titleBarExtra != nullptr)
+        addAndMakeVisible (*titleBarExtra);
+    resized();
+}
+
 void FloatingPanel::resized()
 {
     auto bounds = getLocalBounds();
     auto header = bounds.removeFromTop (titleBarHeight);
     closeButton.setBounds (header.removeFromRight (titleBarHeight).reduced (4));
+    if (titleBarExtra != nullptr)
+        titleBarExtra->setBounds (header.removeFromRight (titleBarExtra->getWidth())
+                                        .withSizeKeepingCentre (titleBarExtra->getWidth(),
+                                                                titleBarHeight - 4));
     content->setBounds (bounds.reduced (1));
 
     if (resizer != nullptr)

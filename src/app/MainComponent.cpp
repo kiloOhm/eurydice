@@ -16,17 +16,55 @@
 
 namespace
 {
-// FL-style typing piano: Z-row = lower octave from C4, Q-row = octave above.
-int typingKeyToNote (juce::juce_wchar c)
-{
-    static const juce::String lowRow  ("zsxdcvgbhnjm");
-    static const juce::String highRow ("q2w3er5t6y7ui9o0p");
-    if (const int i = lowRow.indexOfChar (c); i >= 0)   return 60 + i;
-    if (const int i = highRow.indexOfChar (c); i >= 0)  return 72 + i;
-    return -1;
-}
-
 constexpr int recentFilesBaseId = 3000;
+constexpr int recentFilesClearId = 3999;
+
+// Small toggle strip for a FloatingPanel title bar (LOOP/AUTO on the
+// playlist). State is polled: these can also change from menus, shortcuts,
+// the playlist ruler or the control API.
+class TitleBarToggles : public juce::Component,
+                        private juce::Timer
+{
+public:
+    TitleBarToggles() { startTimerHz (10); }
+
+    void add (const juce::String& label, const juce::String& tooltip, juce::Colour onColour,
+              std::function<void()> onClick, std::function<bool()> getState)
+    {
+        auto item = std::make_unique<Item>();
+        item->button.setButtonText (label);
+        item->button.setTooltip (tooltip);
+        item->button.setWantsKeyboardFocus (false);
+        item->button.setClickingTogglesState (false);   // state follows the model
+        item->button.setColour (juce::TextButton::buttonOnColourId, onColour);
+        item->button.onClick = std::move (onClick);
+        item->getState = std::move (getState);
+        addAndMakeVisible (item->button);
+        items.push_back (std::move (item));
+        setSize ((int) items.size() * (buttonWidth + gap), 20);
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        for (auto& item : items)
+        {
+            item->button.setBounds (r.removeFromLeft (buttonWidth));
+            r.removeFromLeft (gap);
+        }
+    }
+
+private:
+    void timerCallback() override
+    {
+        for (auto& item : items)
+            item->button.setToggleState (item->getState(), juce::dontSendNotification);
+    }
+
+    static constexpr int buttonWidth = 46, gap = 3;
+    struct Item { juce::TextButton button; std::function<bool()> getState; };
+    std::vector<std::unique_ptr<Item>> items;
+};
 constexpr int automationBaseId = 4000;
 
 // Export settings sheet. Collects the render options, then hands them to the
@@ -170,6 +208,11 @@ MainComponent::MainComponent()
 
     controlServer = std::make_unique<ControlServer> (services);
     midiInput = std::make_unique<MidiInputManager> (services);
+    typingPiano = std::make_unique<TypingPiano> (
+        [this] (int note, float velocity) { midiInput->noteOn (note, velocity); },
+        [this] (int note) { midiInput->noteOff (note); });
+    channelEditors.typingKeys = typingPiano.get();
+    services.pluginWindows.typingKeys = typingPiano.get();
     recorder = std::make_unique<AudioRecorder> (services);
 
     fileState.addChangeListener (this);
@@ -182,15 +225,6 @@ MainComponent::MainComponent()
     transportBar.onTempoChanged    = [this] (double bpm) { services.project.setTempo (bpm); };
     undoGesture::attach (transportBar.getTempoSlider(), services.project, "Tempo");
     transportBar.onSongModeChanged = [this] (bool song) { services.project.setSongMode (song); };
-    transportBar.onLoopToggled     = [this]
-    {
-        commandManager.invokeDirectly (CommandIDs::transportToggleLoop, false);
-    };
-    transportBar.onAutomationWriteToggled = [this]
-    {
-        commandManager.invokeDirectly (CommandIDs::transportToggleAutomationWrite, false);
-    };
-    transportBar.getAutomationWrite = [this] { return services.automationWriter.isArmed(); };
     transportBar.onMetronomeToggled = [this]
     {
         commandManager.invokeDirectly (CommandIDs::transportToggleMetronome, false);
@@ -205,7 +239,6 @@ MainComponent::MainComponent()
     transportBar.getTempo          = [this] { return services.project.getTempo(); };
     transportBar.getSongMode       = [this] { return services.project.isSongMode(); };
     transportBar.getIsPlaying      = [this] { return services.engine.isPlaying(); };
-    transportBar.getLoopEnabled    = [this] { return services.project.isLoopEnabled(); };
     transportBar.onPanelToggled    = [this] (juce::CommandID id)
     {
         commandManager.invokeDirectly (id, false);
@@ -241,6 +274,19 @@ MainComponent::MainComponent()
     playlist->onShowPianoRoll = [this] { commandManager.invokeDirectly (CommandIDs::viewPianoRoll, false); };
     playlistView = playlist.get();
     playlistPanel = std::make_unique<FloatingPanel> ("Playlist", std::move (playlist));
+
+    // Loop and automation-write live with the playlist they act on, not in
+    // the transport bar.
+    {
+        auto toggles = std::make_unique<TitleBarToggles>();
+        toggles->add ("LOOP", "Loop the marked range during playback", theme::accentDim,
+                      [this] { commandManager.invokeDirectly (CommandIDs::transportToggleLoop, false); },
+                      [this] { return services.project.isLoopEnabled(); });
+        toggles->add ("AUTO", "Write automation: while playing, moving a knob records it", theme::record,
+                      [this] { commandManager.invokeDirectly (CommandIDs::transportToggleAutomationWrite, false); },
+                      [this] { return services.automationWriter.isArmed(); });
+        playlistPanel->setTitleBarComponent (std::move (toggles));
+    }
 
     services.onSnapshotRequested = [this] (const juce::File& file) { return writeSnapshot (file); };
     services.onCloseChannelEditors = [this] { channelEditors.closeAll(); };
@@ -498,8 +544,14 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         menu.addCommandItem (&commandManager, CommandIDs::fileOpen);
 
         juce::PopupMenu recentMenu;
-        recentFiles.createPopupMenuItems (recentMenu, recentFilesBaseId, true, true);
-        menu.addSubMenu ("Open Recent", recentMenu, recentFiles.getNumFiles() > 0);
+        recentFiles.createPopupMenuItems (recentMenu, recentFilesBaseId,
+                                          false /* names, not full paths */, true);
+        if (recentFiles.getNumFiles() > 0)
+        {
+            recentMenu.addSeparator();
+            recentMenu.addItem (recentFilesClearId, "Clear Menu");
+        }
+        menu.addSubMenu ("Recent Projects", recentMenu, recentFiles.getNumFiles() > 0);
 
         menu.addSeparator();
         menu.addCommandItem (&commandManager, CommandIDs::fileSave);
@@ -557,6 +609,14 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
 
 void MainComponent::menuItemSelected (int menuItemID, int)
 {
+    if (menuItemID == recentFilesClearId)
+    {
+        recentFiles.clear();
+        settings->setValue ("recentFiles", recentFiles.toString());
+        settings->saveIfNeeded();
+        menuItemsChanged();
+        return;
+    }
     if (menuItemID >= recentFilesBaseId && menuItemID < recentFilesBaseId + 100)
     {
         const auto file = recentFiles.getFile (menuItemID - recentFilesBaseId);
@@ -1174,46 +1234,16 @@ void MainComponent::resized()
 }
 
 // The typing piano. Command shortcuts are handled by the command manager's
-// key listener first, so only unbound plain keys reach here.
+// key listener first, so only unbound plain keys reach here. The logic lives
+// in TypingPiano so editor windows can share it.
 bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
-    if (key.getModifiers().isAnyModifierKeyDown())
-        return false;
-
-    const auto c = (juce::juce_wchar) juce::CharacterFunctions::toLowerCase (
-                       (juce::juce_wchar) key.getTextCharacter());
-
-    if (c == ',') { typingOctaveShift = juce::jmax (typingOctaveShift - 12, -36); return true; }
-    if (c == '.') { typingOctaveShift = juce::jmin (typingOctaveShift + 12,  36); return true; }
-
-    if (const int base = typingKeyToNote (c); base >= 0)
-    {
-        const int note = juce::jlimit (0, 127, base + typingOctaveShift);
-        if (typingKeysDown.find (c) == typingKeysDown.end())
-        {
-            typingKeysDown[c] = note;
-            midiInput->noteOn (note, 0.8f);
-        }
-        return true;
-    }
-    return false;
+    return typingPiano->keyPressed (key, this);
 }
 
-bool MainComponent::keyStateChanged (bool)
+bool MainComponent::keyStateChanged (bool isKeyDown)
 {
-    bool handled = false;
-    for (auto it = typingKeysDown.begin(); it != typingKeysDown.end();)
-    {
-        if (! juce::KeyPress::isKeyCurrentlyDown ((int) it->first))
-        {
-            midiInput->noteOff (it->second);
-            it = typingKeysDown.erase (it);
-            handled = true;
-        }
-        else
-            ++it;
-    }
-    return handled;
+    return typingPiano->keyStateChanged (isKeyDown, this);
 }
 
 juce::Rectangle<int> MainComponent::defaultBoundsFor (const FloatingPanel* panel) const

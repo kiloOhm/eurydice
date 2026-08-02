@@ -25,6 +25,11 @@ public:
     void toggleVisibility();
     void bringToFrontAndShow();
 
+    // Optional controls shown in the title bar, right-aligned next to the
+    // close button (e.g. the playlist's LOOP/AUTO toggles). The panel owns
+    // the component; give it a fixed width via setSize before handing over.
+    void setTitleBarComponent (std::unique_ptr<juce::Component>);
+
     std::function<void()> onVisibilityToggled;
 
     static constexpr int titleBarHeight = 24;
@@ -55,6 +60,7 @@ private:
 
     juce::String title;
     std::unique_ptr<juce::Component> content;
+    std::unique_ptr<juce::Component> titleBarExtra;
     juce::TextButton closeButton { "x" };
     juce::ComponentDragger dragger;
     SnappingConstrainer constrainer { *this };
