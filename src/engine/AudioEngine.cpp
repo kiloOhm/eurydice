@@ -122,8 +122,15 @@ void AudioEngine::processPreviewEvents (const EngineSnapshot& snap, int numSampl
 }
 
 void AudioEngine::play()                     { playing.store (true); }
+void AudioEngine::playWithCountIn()
+{
+    if (countInBars.load() > 0)
+        countInRequest.store (true);
+    playing.store (true);
+}
 void AudioEngine::stop()
 {
+    countInRequest.store (false);
     if (playing.exchange (false))
         stopRequest.store (true);
     else
@@ -146,6 +153,10 @@ void AudioEngine::prepareInternal (double newSampleRate, int newBlockSize)
 
     insertBus.resize (maxInserts);
     for (auto& bus : insertBus)
+        bus.setSize (2, blockSize);
+
+    channelStemBus.resize (maxChannels);
+    for (auto& bus : channelStemBus)
         bus.setSize (2, blockSize);
 
     channelMidi.resize (maxChannels);
@@ -199,6 +210,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
         allNotesOff (*snap);
         // keep position (FL: stop keeps pos at 0 anyway since we rewind below on 2nd stop)
         tickPos = 0.0;
+        countInTicksLeft = 0.0;
     }
     const double seek = seekRequest.exchange (-1.0);
     if (seek >= 0.0)
@@ -206,6 +218,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
         allNotesOff (*snap);
         tickPos = seek;
     }
+    if (countInRequest.exchange (false))
+    {
+        countInTicksLeft = (double) countInBars.load() * ids::ticksPerBar;
+        countInTick = 0.0;
+    }
+    clickStartSample = -1;
 
     const int numChannels = juce::jmin ((int) snap->channels.size(), maxChannels);
     for (int i = 0; i < numChannels; ++i)
@@ -229,7 +247,19 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     if (isPlayingNow)
     {
         const double loopEnd = (double) snap->loopEndTicks;
+        const bool loopActive = snap->loopEnabled && ! loopBypassed.load (std::memory_order_relaxed);
         int done = 0;
+
+        // Count-in: the transport stands still, only the click runs.
+        if (countInTicksLeft > 0.0)
+        {
+            const int countInSamples = (int) std::ceil (countInTicksLeft / tps);
+            done = juce::jmin (numSamples, countInSamples);
+            const double consumed = done * tps;
+            scheduleClicks (countInTick, countInTick + consumed, tps, 0);
+            countInTick += consumed;
+            countInTicksLeft = juce::jmax (0.0, countInTicksLeft - consumed);
+        }
 
         // The block is sequenced in sub-ranges cut at the loop end, so the
         // wrap lands on its exact sample instead of the next block boundary.
@@ -238,7 +268,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
             int chunk = numSamples - done;
             bool wrapAfterChunk = false;
 
-            if (snap->loopEnabled && tickPos < loopEnd)
+            if (loopActive && tickPos < loopEnd)
             {
                 const int samplesToLoopEnd = juce::jmax (1, (int) std::ceil ((loopEnd - tickPos) / tps));
                 if (samplesToLoopEnd <= chunk)
@@ -251,6 +281,9 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
             const double t0 = tickPos;
             const double t1 = t0 + tps * chunk;
             blockSampleBase = done;
+
+            if (metronomeEnabled.load (std::memory_order_relaxed))
+                scheduleClicks (t0, t1, tps, done);
 
             flushNoteOffs (*snap, t0, t1, tps);
             generateMidiForRange (*snap, t0, t1, tps);
@@ -269,7 +302,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
                 releaseActiveNotes (*snap, done + chunk - 1);
                 tickPos = (double) snap->loopStartTicks;
             }
-            else if (! snap->loopEnabled && ! snap->songMode
+            else if (! loopActive && ! snap->songMode
                      && snap->activePatternIndex >= 0
                      && snap->activePatternIndex < (int) snap->patterns.size())
             {
@@ -284,6 +317,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     }
 
     publishedTickPos.store (tickPos, std::memory_order_relaxed);
+    countingIn.store (isPlayingNow && countInTicksLeft > 0.0, std::memory_order_relaxed);
 
     processPreviewEvents (*snap, numSamples);
 
@@ -291,6 +325,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     for (int i = 0; i < numChannels; ++i)
     {
         const auto& ch = snap->channels[(size_t) i];
+        if (channelStemCapture)
+            channelStemBus[(size_t) i].clear (0, numSamples);
         if (ch.generator == nullptr)
             continue;
 
@@ -309,6 +345,13 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
         auto& bus = insertBus[(size_t) juce::jlimit (0, numInserts - 1, ch.insertIndex)];
         bus.addFrom (0, 0, scratchView, 0, 0, numSamples, gain * panL);
         bus.addFrom (1, 0, scratchView, 1, 0, numSamples, gain * panR);
+
+        if (channelStemCapture)
+        {
+            auto& stem = channelStemBus[(size_t) i];
+            stem.addFrom (0, 0, scratchView, 0, 0, numSamples, gain * panL);
+            stem.addFrom (1, 0, scratchView, 1, 0, numSamples, gain * panR);
+        }
     }
 
     // --- process inserts in topological order (master index 0 comes last) ---
@@ -350,6 +393,46 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     {
         juce::FloatVectorOperations::copy (outputChannelData[ch], master.getReadPointer (ch), numSamples);
         masterPeak[ch].store (master.getMagnitude (ch, 0, numSamples), std::memory_order_relaxed);
+    }
+
+    renderMetronome (outputChannelData, numOutputChannels, numSamples);
+}
+
+void AudioEngine::scheduleClicks (double t0, double t1, double tps, int sampleBase)
+{
+    const double beat = (double) ids::ticksPerQuarter;
+    const double firstBeat = std::ceil (t0 / beat) * beat;
+    if (firstBeat >= t1)
+        return;
+
+    clickStartSample = juce::jlimit (0, juce::jmax (0, currentBlockSamples - 1),
+                                     sampleBase + (int) ((firstBeat - t0) / tps));
+
+    // The downbeat is higher and louder so bars are audible without counting.
+    const bool accent = std::fmod (firstBeat, (double) ids::ticksPerBar) < 0.5;
+    clickPhaseDelta = 2.0 * juce::MathConstants<double>::pi * (accent ? 1600.0 : 1000.0) / sampleRate;
+    clickPhase = 0.0;
+    clickEnv = accent ? 1.0 : 0.7;
+    clickDecay = std::exp (-1.0 / (0.02 * sampleRate));
+}
+
+void AudioEngine::renderMetronome (float* const* outs, int numOuts, int numSamples)
+{
+    if (numOuts < 1 || (clickStartSample < 0 && clickEnv <= 0.0001))
+        return;
+
+    const auto level = (double) metronomeLevel.load (std::memory_order_relaxed);
+    const int start = clickStartSample >= 0 ? clickStartSample : 0;
+
+    for (int i = start; i < numSamples; ++i)
+    {
+        if (clickEnv <= 0.0001)
+            break;
+        const auto s = (float) (std::sin (clickPhase) * clickEnv * level);
+        for (int ch = 0; ch < juce::jmin (2, numOuts); ++ch)
+            outs[ch][i] += s;
+        clickPhase += clickPhaseDelta;
+        clickEnv *= clickDecay;
     }
 }
 
@@ -496,7 +579,7 @@ void AudioEngine::emitPatternSegment (const EngineSnapshot& snap, const PatternS
                                       double segStart, double segEnd, double blockStartTick,
                                       int tickOffsetToSong, double tps)
 {
-    const double swingShift = snap.swing * (double) ids::ticksPerStep * 0.5;
+    const double swingShift = pat.swing * (double) ids::ticksPerStep * 0.5;
 
     for (const auto& note : pat.notes)
     {

@@ -240,10 +240,6 @@ def main():
         project = OUT / "Schranz Full.eury"
         daw("project.save", {"path": str(project)})
 
-        # The engine honours the loop range during offline render, so a song
-        # render would wrap at the loop end and never reach the outro. Save the
-        # project with the loop armed for working, then disarm it to render.
-        daw("transport.set", {"loopEnabled": False})
         wav = OUT / "Schranz Full.wav"
         result = daw("render.export", {"path": str(wav), "tailSeconds": 2.0})
         print(f"  {info['bars']} bars @ {TEMPO} BPM")

@@ -28,6 +28,130 @@ int typingKeyToNote (juce::juce_wchar c)
 
 constexpr int recentFilesBaseId = 3000;
 constexpr int automationBaseId = 4000;
+
+// Export settings sheet. Collects the render options, then hands them to the
+// caller, which picks the destination and runs the render.
+class ExportOptionsPanel : public juce::Component
+{
+public:
+    ExportOptionsPanel (bool loopAvailable, bool lameAvailable)
+    {
+        bitDepthBox.addItemList ({ "16 bit", "24 bit", "32 bit float" }, 1);
+        bitDepthBox.setSelectedItemIndex (1, juce::dontSendNotification);
+
+        sampleRateBox.addItemList ({ "Project rate", "44100 Hz", "48000 Hz", "88200 Hz", "96000 Hz" }, 1);
+        sampleRateBox.setSelectedItemIndex (0, juce::dontSendNotification);
+
+        stemsBox.addItemList ({ "None", "Per mixer insert", "Per channel" }, 1);
+        stemsBox.setSelectedItemIndex (0, juce::dontSendNotification);
+
+        loopToggle.setButtonText ("Render the loop range only");
+        loopToggle.setEnabled (loopAvailable);
+        if (! loopAvailable)
+            loopToggle.setTooltip ("Mark a loop range in the playlist ruler first");
+
+        mp3Toggle.setButtonText ("Also write a 320 kbps MP3");
+        mp3Toggle.setEnabled (lameAvailable);
+        if (! lameAvailable)
+            mp3Toggle.setTooltip ("Needs the `lame` encoder (brew install lame)");
+
+        normaliseToggle.setButtonText ("Normalise peak to");
+        normaliseToggle.onClick = [this]
+        {
+            normaliseSlider.setEnabled (normaliseToggle.getToggleState());
+        };
+
+        normaliseSlider.setSliderStyle (juce::Slider::LinearBar);
+        normaliseSlider.setRange (-24.0, 0.0, 0.1);
+        normaliseSlider.setValue (-0.3, juce::dontSendNotification);
+        normaliseSlider.setTextValueSuffix (" dBFS");
+        normaliseSlider.setEnabled (false);
+
+        exportButton.onClick = [this]
+        {
+            if (onExport)
+                onExport (buildOptions());
+            closeDialog();
+        };
+        cancelButton.onClick = [this] { closeDialog(); };
+
+        for (auto* c : std::initializer_list<juce::Component*> {
+                 &bitDepthLabel, &sampleRateLabel, &stemsLabel,
+                 &bitDepthBox, &sampleRateBox, &stemsBox,
+                 &loopToggle, &mp3Toggle, &normaliseToggle, &normaliseSlider,
+                 &exportButton, &cancelButton })
+            addAndMakeVisible (c);
+    }
+
+    std::function<void (const OfflineRenderer::Options&)> onExport;
+
+    void resized() override
+    {
+        auto r = getLocalBounds().reduced (16);
+        constexpr int rowHeight = 26;
+        constexpr int labelWidth = 130;
+
+        auto row = [&r] { auto line = r.removeFromTop (rowHeight); r.removeFromTop (8); return line; };
+        auto labelled = [] (juce::Rectangle<int> line, juce::Component& label,
+                            juce::Component& control)
+        {
+            label.setBounds (line.removeFromLeft (labelWidth));
+            control.setBounds (line);
+        };
+
+        labelled (row(), bitDepthLabel, bitDepthBox);
+        labelled (row(), sampleRateLabel, sampleRateBox);
+        labelled (row(), stemsLabel, stemsBox);
+        loopToggle.setBounds (row());
+        mp3Toggle.setBounds (row());
+
+        auto normaliseRow = row();
+        normaliseToggle.setBounds (normaliseRow.removeFromLeft (160));
+        normaliseSlider.setBounds (normaliseRow.removeFromLeft (120));
+
+        auto buttons = r.removeFromBottom (rowHeight + 4);
+        exportButton.setBounds (buttons.removeFromRight (110));
+        buttons.removeFromRight (8);
+        cancelButton.setBounds (buttons.removeFromRight (90));
+    }
+
+    static constexpr int preferredWidth = 420;
+    static constexpr int preferredHeight = 274;
+
+private:
+    OfflineRenderer::Options buildOptions() const
+    {
+        OfflineRenderer::Options options;
+        options.bitDepth = std::array { 16, 24, 32 }[(size_t) juce::jlimit (0, 2, bitDepthBox.getSelectedItemIndex())];
+        options.sampleRate = std::array { 0, 44100, 48000, 88200, 96000 }
+                                 [(size_t) juce::jlimit (0, 4, sampleRateBox.getSelectedItemIndex())];
+        options.stems = std::array { OfflineRenderer::Stems::none,
+                                     OfflineRenderer::Stems::perInsert,
+                                     OfflineRenderer::Stems::perChannel }
+                            [(size_t) juce::jlimit (0, 2, stemsBox.getSelectedItemIndex())];
+        options.loopRangeOnly = loopToggle.isEnabled() && loopToggle.getToggleState();
+        options.renderMp3 = mp3Toggle.isEnabled() && mp3Toggle.getToggleState();
+        options.normalise = normaliseToggle.getToggleState();
+        options.normaliseTargetDb = normaliseSlider.getValue();
+        return options;
+    }
+
+    void closeDialog()
+    {
+        if (auto* dialog = findParentComponentOfClass<juce::DialogWindow>())
+            dialog->exitModalState (0);
+    }
+
+    juce::Label bitDepthLabel { {}, "Bit depth" };
+    juce::Label sampleRateLabel { {}, "Sample rate" };
+    juce::Label stemsLabel { {}, "Stems" };
+    juce::ComboBox bitDepthBox, sampleRateBox, stemsBox;
+    juce::ToggleButton loopToggle, mp3Toggle, normaliseToggle;
+    juce::Slider normaliseSlider;
+    juce::TextButton exportButton { "Export..." }, cancelButton { "Cancel" };
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ExportOptionsPanel)
+};
 }
 
 MainComponent::MainComponent()
@@ -70,6 +194,16 @@ MainComponent::MainComponent()
         commandManager.invokeDirectly (CommandIDs::transportToggleAutomationWrite, false);
     };
     transportBar.getAutomationWrite = [this] { return services.automationWriter.isArmed(); };
+    transportBar.onMetronomeToggled = [this]
+    {
+        commandManager.invokeDirectly (CommandIDs::transportToggleMetronome, false);
+    };
+    transportBar.onMetronomeLevelChanged = [this] (double level)
+    {
+        services.engine.setMetronomeLevel ((float) level);
+        settings->setValue ("metronomeLevel", level);
+    };
+    transportBar.getMetronomeEnabled = [this] { return services.engine.isMetronomeEnabled(); };
     transportBar.getBeatPosition   = [this] { return services.engine.getPositionBeats(); };
     transportBar.getIsPlaying      = [this] { return services.engine.isPlaying(); };
     transportBar.getLoopEnabled    = [this] { return services.project.isLoopEnabled(); };
@@ -85,6 +219,11 @@ MainComponent::MainComponent()
                                              : (panel != nullptr && panel->isVisible());
     };
     transportBar.setTempoDisplay (services.project.getTempo());
+
+    services.engine.setMetronomeEnabled (settings->getBoolValue ("metronomeEnabled", false));
+    services.engine.setMetronomeLevel ((float) settings->getDoubleValue ("metronomeLevel", 0.5));
+    services.engine.setCountInBars (settings->getIntValue ("countInBars", 0));
+    transportBar.setMetronomeLevelDisplay (services.engine.getMetronomeLevel());
 
     // --- panels ---
     browser = std::make_unique<BrowserPanel> (services);
@@ -159,6 +298,7 @@ MainComponent::MainComponent()
     const auto showList = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SHOW", "");
     if (showList.contains ("pianoroll")) pianoRollPanel->bringToFrontAndShow();
     if (showList.contains ("mixer"))     mixerPanel->bringToFrontAndShow();
+    if (showList.contains ("export"))    juce::Timer::callAfterDelay (300, [this] { showExportDialog(); });
 
     // EURYDICE_EDITOR=<channel index>|synth|kick opens that channel's editor.
     const auto editorIndex = juce::SystemStats::getEnvironmentVariable ("EURYDICE_EDITOR", "");
@@ -386,6 +526,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         menu.addCommandItem (&commandManager, CommandIDs::transportToggleSongMode);
         menu.addCommandItem (&commandManager, CommandIDs::transportToggleLoop);
         menu.addCommandItem (&commandManager, CommandIDs::transportToggleRecord);
+        menu.addCommandItem (&commandManager, CommandIDs::transportToggleMetronome);
+        menu.addCommandItem (&commandManager, CommandIDs::transportCountIn);
         menu.addSeparator();
         menu.addCommandItem (&commandManager, CommandIDs::optionsAudioSettings);
         menu.addCommandItem (&commandManager, CommandIDs::optionsScanPlugins);
@@ -439,6 +581,8 @@ void MainComponent::getAllCommands (juce::Array<juce::CommandID>& commands)
         CommandIDs::transportPlayStop, CommandIDs::transportRewind,
         CommandIDs::transportToggleSongMode, CommandIDs::transportToggleRecord,
         CommandIDs::transportToggleLoop, CommandIDs::transportToggleAutomationWrite,
+        CommandIDs::transportToggleLoop, CommandIDs::transportToggleMetronome,
+        CommandIDs::transportCountIn,
         CommandIDs::optionsAudioSettings, CommandIDs::optionsScanPlugins });
 }
 
@@ -546,6 +690,21 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
             info.setTicked (services.automationWriter.isArmed());
             break;
 
+        case CommandIDs::transportToggleMetronome:
+            info.setInfo ("Metronome", "Click on every beat, accented on the bar", "Transport", 0);
+            info.addDefaultKeypress ('m', cmd | shift);
+            info.setTicked (services.engine.isMetronomeEnabled());
+            break;
+        case CommandIDs::transportCountIn:
+        {
+            const int bars = services.engine.getCountInBars();
+            info.setInfo (bars == 0 ? "Count-in: off"
+                                    : "Count-in: " + juce::String (bars) + (bars == 1 ? " bar" : " bars"),
+                          "Click one or two bars before armed recording starts", "Transport", 0);
+            info.setTicked (bars > 0);
+            break;
+        }
+
         case CommandIDs::optionsAudioSettings:
             info.setInfo ("Audio & MIDI Settings...", "Choose the audio device", "Options", 0);
             info.addDefaultKeypress (',', cmd);
@@ -643,6 +802,24 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
             commandManager.commandStatusChanged();
             menuItemsChanged();
             return true;
+
+        case CommandIDs::transportToggleMetronome:
+        {
+            const bool on = ! services.engine.isMetronomeEnabled();
+            services.engine.setMetronomeEnabled (on);
+            settings->setValue ("metronomeEnabled", on);
+            commandManager.commandStatusChanged();
+            return true;
+        }
+        case CommandIDs::transportCountIn:
+        {
+            const int bars = (services.engine.getCountInBars() + 1) % 3;
+            services.engine.setCountInBars (bars);
+            settings->setValue ("countInBars", bars);
+            commandManager.commandStatusChanged();
+            menuItemsChanged();
+            return true;
+        }
 
         case CommandIDs::optionsAudioSettings: showAudioSettings(); return true;
         case CommandIDs::optionsScanPlugins:
@@ -806,23 +983,38 @@ void MainComponent::saveProject (bool forceChooser)
 
 void MainComponent::showExportDialog()
 {
+    const bool loopAvailable = services.project.getLoopEnd() > services.project.getLoopStart();
+    auto panel = std::make_unique<ExportOptionsPanel> (loopAvailable,
+                                                       OfflineRenderer::findLameBinary() != juce::File());
+    panel->setSize (ExportOptionsPanel::preferredWidth, ExportOptionsPanel::preferredHeight);
+    panel->onExport = [this] (const OfflineRenderer::Options& options) { chooseExportFile (options); };
+
+    juce::DialogWindow::LaunchOptions dialog;
+    dialog.content.setOwned (panel.release());
+    dialog.dialogTitle = "Export Audio";
+    dialog.dialogBackgroundColour = theme::panelBg;
+    dialog.escapeKeyTriggersCloseButton = true;
+    dialog.resizable = false;
+    dialog.launchAsync();
+}
+
+void MainComponent::chooseExportFile (const OfflineRenderer::Options& options)
+{
     auto chooser = std::make_shared<juce::FileChooser> ("Export render",
         juce::File::getSpecialLocation (juce::File::userDesktopDirectory)
             .getChildFile (fileState.getDisplayName() + ".wav"),
         "*.wav");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
-        [this, chooser] (const juce::FileChooser& fc)
+        [this, chooser, options] (const juce::FileChooser& fc)
         {
             const auto file = fc.getResult();
             if (file == juce::File())
                 return;
 
-            OfflineRenderer::Options options;
-            options.wavFile = file.withFileExtension (".wav");
-            options.renderMp3 = OfflineRenderer::findLameBinary() != juce::File();
-            options.renderStems = false;
+            auto renderOptions = options;
+            renderOptions.wavFile = file.withFileExtension (".wav");
 
-            const auto result = OfflineRenderer::render (services.engine, services.project, options);
+            const auto result = OfflineRenderer::render (services.engine, services.project, renderOptions);
             juce::AlertWindow::showMessageBoxAsync (
                 result.ok ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon,
                 "Export",
@@ -851,10 +1043,29 @@ void MainComponent::showAudioSettings()
 
 void MainComponent::transportPlay()
 {
-    if (midiInput->recordArmed.load() && services.project.isSongMode()
-        && ! recorder->isRecording())
+    const bool armed = midiInput->recordArmed.load();
+    if (! armed)
+    {
+        services.engine.play();
+        return;
+    }
+
+    services.engine.playWithCountIn();
+
+    const bool wantsTake = services.project.isSongMode() && ! recorder->isRecording();
+    // The take must start where the music does, so it waits out the count-in.
+    const int countInMs = (int) (services.engine.getCountInBars() * 4.0 * 60000.0
+                                 / juce::jmax (1.0, services.project.getTempo()));
+    if (wantsTake && countInMs <= 0)
         recorder->start();
-    services.engine.play();
+    else if (wantsTake)
+        juce::Timer::callAfterDelay (countInMs, [safeThis = juce::Component::SafePointer (this)]
+        {
+            if (safeThis == nullptr)
+                return;
+            if (safeThis->services.engine.isPlaying() && ! safeThis->recorder->isRecording())
+                safeThis->recorder->start();
+        });
 }
 
 void MainComponent::transportStop()

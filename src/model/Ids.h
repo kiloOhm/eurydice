@@ -35,7 +35,7 @@ DECLARE_ID (colour)
 
 // Project
 DECLARE_ID (tempo)
-DECLARE_ID (swing)         // 0..1 global swing
+DECLARE_ID (swing)         // 0..1; on PROJECT the default, on PATTERN an override
 DECLARE_ID (songMode)
 DECLARE_ID (loopStart)       // transport loop range, in ticks
 DECLARE_ID (loopEnd)

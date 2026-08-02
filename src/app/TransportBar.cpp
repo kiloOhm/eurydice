@@ -33,6 +33,23 @@ TransportBar::TransportBar()
     autoButton.setTooltip ("Write automation: while playing, moving a knob records it");
     autoButton.setColour (juce::TextButton::buttonOnColourId, theme::record);
     autoButton.onClick = [this] { if (onAutomationWriteToggled) onAutomationWriteToggled(); };
+    metronomeButton.setWantsKeyboardFocus (false);
+    metronomeButton.setClickingTogglesState (true);
+    metronomeButton.setTooltip ("Metronome: accented click on the bar, plain click on the beat");
+    metronomeButton.setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
+    metronomeButton.onClick = [this] { if (onMetronomeToggled) onMetronomeToggled(); };
+
+    metronomeSlider.setSliderStyle (juce::Slider::LinearBar);
+    metronomeSlider.setRange (0.0, 100.0, 1.0);
+    metronomeSlider.setValue (50.0, juce::dontSendNotification);
+    metronomeSlider.setTooltip ("Metronome level");
+    metronomeSlider.setTextValueSuffix ("%");
+    metronomeSlider.setColour (juce::Slider::trackColourId, theme::raised);
+    metronomeSlider.onValueChange = [this]
+    {
+        if (onMetronomeLevelChanged)
+            onMetronomeLevelChanged (metronomeSlider.getValue() * 0.01);
+    };
 
     tempoSlider.setSliderStyle (juce::Slider::LinearBar);
     tempoSlider.setRange (20.0, 999.0, 0.01);
@@ -52,7 +69,9 @@ TransportBar::TransportBar()
 
     for (auto* c : std::initializer_list<juce::Component*> { &playButton, &stopButton, &recordButton,
                                                              &patButton, &songButton, &loopButton,
-                                                             &autoButton, &tempoSlider, &positionLabel })
+                                                             &autoButton, &metronomeButton,
+                                                             &metronomeSlider, &tempoSlider,
+                                                             &positionLabel })
         addAndMakeVisible (c);
 
     // Visible panel toggles: the discoverable route to every window.
@@ -120,6 +139,11 @@ void TransportBar::resized()
     loopButton.setBounds (r.removeFromLeft (48));
     r.removeFromLeft (2);
     autoButton.setBounds (r.removeFromLeft (48));
+    r.removeFromLeft (8);
+
+    metronomeButton.setBounds (r.removeFromLeft (52));
+    r.removeFromLeft (2);
+    metronomeSlider.setBounds (r.removeFromLeft (60));
     r.removeFromLeft (16);
 
     tempoSlider.setBounds (r.removeFromLeft (110));
@@ -152,6 +176,11 @@ void TransportBar::setRecordArmed (bool armed)
     recordButton.setToggleState (armed, juce::dontSendNotification);
 }
 
+void TransportBar::setMetronomeLevelDisplay (double level)
+{
+    metronomeSlider.setValue (level * 100.0, juce::dontSendNotification);
+}
+
 void TransportBar::refreshPanelButtons()
 {
     if (! isPanelVisible)
@@ -179,6 +208,8 @@ void TransportBar::timerCallback()
         loopButton.setToggleState (getLoopEnabled(), juce::dontSendNotification);
     if (getAutomationWrite)
         autoButton.setToggleState (getAutomationWrite(), juce::dontSendNotification);
+    if (getMetronomeEnabled)
+        metronomeButton.setToggleState (getMetronomeEnabled(), juce::dontSendNotification);
 
     const bool playing = getIsPlaying ? getIsPlaying() : false;
     playButton.setColour (juce::TextButton::textColourOffId,

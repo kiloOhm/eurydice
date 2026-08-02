@@ -74,6 +74,7 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
         PatternSnapshot ps;
         ps.id = p[ids::id];
         ps.lengthTicks = p[ids::lengthTicks];
+        ps.swing = model.getSwingForPattern (p);
         patternIdToIndex[ps.id] = i;
 
         for (const auto lane : p)

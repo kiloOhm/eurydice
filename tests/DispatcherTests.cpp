@@ -332,6 +332,79 @@ TEST_F (DispatcherFixture, RenderExportViaDispatch)
     file.deleteFile();
 }
 
+TEST_F (DispatcherFixture, RenderExportOptionsViaDispatch)
+{
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getNonexistentChildFile ("eurytest-dispatchopts", ".wav");
+    const auto result = call ("render.export",
+        R"({"path": ")" + file.getFullPathName()
+            + R"(", "tailSeconds": 0.1, "stems": "channel", "normalise": true,)"
+              R"( "normaliseDb": -6.0, "bitDepth": 16, "sampleRate": 48000})");
+
+    // Master plus one stem per channel.
+    ASSERT_EQ (result["files"].getArray()->size(), 1 + services.project.numChannels());
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    ASSERT_NE (reader, nullptr);
+    EXPECT_DOUBLE_EQ (reader->sampleRate, 48000.0);
+    EXPECT_EQ ((int) reader->bitsPerSample, 16);
+    reader = nullptr;
+
+    for (const auto& f : *result["files"].getArray())
+        juce::File (f.toString()).deleteFile();
+}
+
+TEST_F (DispatcherFixture, RenderExportRejectsBadOptions)
+{
+    const auto path = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getNonexistentChildFile ("eurytest-badopts", ".wav")
+                          .getFullPathName();
+    EXPECT_CONTROL_ERROR (call ("render.export", R"({"path": ")" + path + R"(", "bitDepth": 12})"));
+    EXPECT_CONTROL_ERROR (call ("render.export", R"({"path": ")" + path + R"(", "stems": "buses"})"));
+    EXPECT_CONTROL_ERROR (call ("render.export", R"({"path": "")" R"("})"));
+}
+
+TEST_F (DispatcherFixture, RenderExportLoopRangeOnly)
+{
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getNonexistentChildFile ("eurytest-looprender", ".wav");
+    call ("transport.set", R"({"loopStart": 0, "loopEnd": 7680})");
+    const auto result = call ("render.export",
+        R"({"path": ")" + file.getFullPathName() + R"(", "tailSeconds": 0, "loopRangeOnly": true})");
+    ASSERT_EQ (result["files"].getArray()->size(), 1);
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    ASSERT_NE (reader, nullptr);
+    const double expected = 2.0 * (4.0 * 60.0 / services.project.getTempo()) * reader->sampleRate;
+    EXPECT_NEAR ((double) reader->lengthInSamples, expected, 2.0);
+    reader = nullptr;
+    file.deleteFile();
+}
+
+TEST_F (DispatcherFixture, PatternSwingViaDispatch)
+{
+    call ("transport.set", R"({"swing": 0.2})");
+    const int patternId = (int) services.project.getRoot()[ids::activePattern];
+
+    auto set = call ("pattern.setSwing", R"({"swing": 0.75})");
+    EXPECT_DOUBLE_EQ ((double) set["swing"], 0.75);
+    EXPECT_TRUE ((bool) set["swingOverridden"]);
+    EXPECT_DOUBLE_EQ (
+        services.project.getSwingForPattern (services.project.getPatternById (patternId)), 0.75);
+
+    const auto state = call ("state.get");
+    const auto pattern = state["patterns"].getArray()->getFirst();
+    EXPECT_DOUBLE_EQ ((double) pattern["swing"], 0.75);
+
+    const auto cleared = call ("pattern.setSwing", "{}");
+    EXPECT_FALSE ((bool) cleared["swingOverridden"]);
+    EXPECT_DOUBLE_EQ ((double) cleared["swing"], 0.2);
+}
+
 TEST_F (DispatcherFixture, MetersAndPluginsList)
 {
     const auto meters = call ("meters.get");

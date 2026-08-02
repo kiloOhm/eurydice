@@ -24,6 +24,7 @@ struct PatternSnapshot
 {
     int id = 0;
     int lengthTicks = 3840;
+    double swing = 0.0;           // already resolved against the project default
     std::vector<SeqNote> notes;   // sorted by startTicks
 };
 

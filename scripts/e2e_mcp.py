@@ -18,7 +18,7 @@ import time
 import wave
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORT = "44899"  # dedicated port so a user session isn't disturbed
+PORT = os.environ.get("EURYDICE_CONTROL_PORT", "44899")  # dedicated port so a user session isn't disturbed
 
 
 def find_app_binary():
@@ -175,8 +175,7 @@ def main():
         print("== render ==")
         if os.path.exists(render_path):
             os.remove(render_path)
-        result = mcp.call("daw_rpc", {"method": "render.export", "params": {
-            "path": render_path, "tailSeconds": 0.5}})
+        mcp.call("daw_render_export", {"path": render_path, "tailSeconds": 0.5})
         check(os.path.exists(render_path), "render file written")
         # 4 bars @150bpm = 6.4 s + 0.5 tail
         with wave.open(render_path) as w:
@@ -185,6 +184,20 @@ def main():
         check(wav_peak(render_path, 0, 1.5) > 0.05, "audio at the start")
         loud, quiet = wav_peak(render_path, 0.0, 1.0), wav_peak(render_path, 5.4, 6.4)
         check(quiet < loud * 0.5, f"automation fade audible ({loud:.2f} -> {quiet:.2f})")
+
+        stems = mcp.call("daw_render_export", {
+            "path": render_path, "tailSeconds": 0.5, "stems": "channel",
+            "normalise": True, "normaliseDb": -3.0})
+        numChannels = len(mcp.call("daw_state")["channels"])
+        check(len(stems["files"]) == 1 + numChannels,
+              f"one stem per channel ({len(stems['files'])} files)")
+        # wav_peak subsamples, so it can only bound the peak, never confirm the
+        # exact target — RendererTests measures that properly.
+        normalised = wav_peak(render_path, 0, duration)
+        check(0.3 < normalised <= 10 ** (-3 / 20) + 0.001,
+              f"normalised render peaks at or below -3 dBFS ({normalised:.3f})")
+        for path in stems["files"][1:]:
+            os.remove(path)
 
         print("== project round-trip ==")
         mcp.call("daw_project_save", {"path": "/tmp/eurydice-e2e.eury"})

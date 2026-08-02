@@ -31,6 +31,8 @@ public:
 
     // Transport control (any thread).
     void play();
+    // Clicks the count-in bars before the transport starts moving.
+    void playWithCountIn();
     void stop();
     void pausePlayback() { playing.store (false); }   // no rewind, voices ring out
     void togglePlayStop();
@@ -40,6 +42,17 @@ public:
     // browser preview). durationMs <= 0 means "until previewNoteOff".
     void previewNote (int channelId, int key, float velocity, int durationMs);
     void previewNoteOff (int channelId, int key);
+
+    // --- metronome / count-in (any thread) ---
+    // The click is synthesised, mixed straight into the hardware output after
+    // the master bus, so it never reaches the mixer, the meters or a stem.
+    void setMetronomeEnabled (bool on) { metronomeEnabled.store (on); }
+    bool isMetronomeEnabled() const    { return metronomeEnabled.load(); }
+    void setMetronomeLevel (float gain){ metronomeLevel.store (juce::jlimit (0.0f, 1.0f, gain)); }
+    float getMetronomeLevel() const    { return metronomeLevel.load(); }
+    void setCountInBars (int bars)     { countInBars.store (juce::jlimit (0, 2, bars)); }
+    int  getCountInBars() const        { return countInBars.load(); }
+    bool isCountingIn() const noexcept { return countingIn.load(); }
 
     bool   isPlaying() const noexcept        { return playing.load(); }
     double getPositionTicks() const noexcept { return publishedTickPos.load(); }
@@ -60,6 +73,9 @@ public:
     // --- offline rendering (call only while detached from the device) ---
     void detachFromDevice()   { deviceManager.removeAudioCallback (this); }
     void reattachToDevice()   { deviceManager.addAudioCallback (this); }
+    // Ignores the project's loop range without touching it, so a render plays
+    // the arrangement through to its end even with a loop armed.
+    void setLoopBypassed (bool on) { loopBypassed.store (on); }
     void prepareOffline (double offlineSampleRate, int offlineBlockSize)
     {
         prepareInternal (offlineSampleRate, offlineBlockSize);
@@ -71,6 +87,14 @@ public:
     const juce::AudioBuffer<float>& getInsertBusForStem (int index) const
     {
         return insertBus[(size_t) juce::jlimit (0, maxInserts - 1, index)];
+    }
+    // Per-channel isolation for stem rendering: each channel's own output at
+    // its rack volume/pan, before it reaches an insert. Off by default because
+    // it costs a clear + copy per channel per block.
+    void setChannelStemCapture (bool on) { channelStemCapture = on; }
+    const juce::AudioBuffer<float>& getChannelBusForStem (int index) const
+    {
+        return channelStemBus[(size_t) juce::jlimit (0, maxChannels - 1, index)];
     }
     double getSampleRate() const noexcept { return sampleRate; }
     int getBlockSize() const noexcept     { return blockSize; }
@@ -95,6 +119,8 @@ private:
                              double segStart, double segEnd, double blockStartTick,
                              int tickOffsetToSong, double tps);
     void addNoteOn (int channelIndex, int key, float velocity, int sampleOffset, double offTick);
+    void scheduleClicks (double t0, double t1, double tps, int sampleBase);
+    void renderMetronome (float* const* outs, int numOuts, int numSamples);
     void flushNoteOffs (const EngineSnapshot&, double t0, double t1, double tps);
     void releaseActiveNotes (const EngineSnapshot&, int sampleOffset);
     void allNotesOff (const EngineSnapshot&);
@@ -117,7 +143,21 @@ private:
     std::atomic<double> publishedTickPos { 0.0 };
     std::atomic<double> seekRequest { -1.0 };
     std::atomic<bool> stopRequest { false };
+    std::atomic<bool> loopBypassed { false };
     double tickPos = 0.0;                                       // audio thread
+
+    // --- metronome / count-in ---
+    std::atomic<bool>  metronomeEnabled { false };
+    std::atomic<float> metronomeLevel { 0.5f };
+    std::atomic<int>   countInBars { 0 };
+    std::atomic<bool>  countInRequest { false };
+    std::atomic<bool>  countingIn { false };
+    double countInTicksLeft = 0.0;      // audio thread
+    double countInTick = 0.0;           // audio thread: ticks since the count-in began
+    // One click voice: at any tempo a beat is far longer than a block, so a
+    // retrigger can never cut a still-sounding click short.
+    double clickPhase = 0.0, clickPhaseDelta = 0.0, clickEnv = 0.0, clickDecay = 0.0;
+    int    clickStartSample = -1;       // set while sequencing, consumed at mix time
 
     // --- audio-thread scratch state ---
     double sampleRate = 44100.0;
@@ -126,7 +166,9 @@ private:
     int blockSampleBase = 0;       // first sample of the sub-range being sequenced
     juce::AudioBuffer<float> channelScratch;
     std::vector<juce::AudioBuffer<float>> insertBus;            // sized maxInserts in prepare
+    std::vector<juce::AudioBuffer<float>> channelStemBus;       // sized maxChannels in prepare
     std::vector<juce::MidiBuffer> channelMidi;                  // sized maxChannels in prepare
+    bool channelStemCapture = false;   // only flipped while detached from the device
 
     struct ActiveNote { int channelIndex = -1; int key = 0; double offTick = 0.0; };
     std::array<ActiveNote, maxActiveNotes> activeNotes;

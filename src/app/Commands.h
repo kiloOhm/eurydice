@@ -28,6 +28,8 @@ enum
     transportToggleRecord,
     transportToggleLoop,
     transportToggleAutomationWrite,
+    transportToggleMetronome,
+    transportCountIn,
 
     optionsAudioSettings,
     optionsScanPlugins,

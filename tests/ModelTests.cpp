@@ -105,6 +105,51 @@ TEST (ProjectModel, SaveLoadRoundTrip)
     file.deleteFile();
 }
 
+TEST (ProjectModel, PatternSwingFallsBackToTheProject)
+{
+    ProjectModel model;
+    auto pattern = model.getPattern (0);
+    model.setSwing (0.25);
+
+    EXPECT_FALSE (model.patternOverridesSwing (pattern));
+    EXPECT_DOUBLE_EQ (model.getSwingForPattern (pattern), 0.25);
+
+    model.setPatternSwing (pattern, 0.8);
+    EXPECT_TRUE (model.patternOverridesSwing (pattern));
+    EXPECT_DOUBLE_EQ (model.getSwingForPattern (pattern), 0.8);
+
+    // A pattern is allowed to pin itself straight against a swinging project.
+    model.setPatternSwing (pattern, 0.0);
+    EXPECT_DOUBLE_EQ (model.getSwingForPattern (pattern), 0.0);
+
+    model.clearPatternSwing (pattern);
+    EXPECT_FALSE (model.patternOverridesSwing (pattern));
+    EXPECT_DOUBLE_EQ (model.getSwingForPattern (pattern), 0.25);
+}
+
+// Projects saved before per-pattern swing existed carry no pattern property
+// and must keep playing with the project's value.
+TEST (ProjectModel, PatternSwingSurvivesSaveAndLoad)
+{
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getNonexistentChildFile ("eurytest-swing", ".eury");
+    {
+        ProjectModel model;
+        model.setSwing (0.2);
+        model.setPatternSwing (model.getPattern (0), 0.7);
+        model.addPattern ("Straight");
+        ASSERT_TRUE (model.saveToFile (file));
+    }
+    {
+        ProjectModel model;
+        ASSERT_TRUE (model.loadFromFile (file));
+        EXPECT_DOUBLE_EQ (model.getSwingForPattern (model.getPattern (0)), 0.7);
+        EXPECT_FALSE (model.patternOverridesSwing (model.getPattern (1)));
+        EXPECT_DOUBLE_EQ (model.getSwingForPattern (model.getPattern (1)), 0.2);
+    }
+    file.deleteFile();
+}
+
 TEST (ProjectModel, LoadRejectsGarbage)
 {
     const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)

@@ -15,9 +15,9 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
 
-    std::function<void()> onPlay, onStop, onRecordToggled, onLoopToggled;
+    std::function<void()> onPlay, onStop, onRecordToggled, onLoopToggled, onMetronomeToggled;
     std::function<void()> onAutomationWriteToggled;
-    std::function<void (double)> onTempoChanged;
+    std::function<void (double)> onTempoChanged, onMetronomeLevelChanged;
     std::function<void (bool)> onSongModeChanged;
 
     // Panel toggle buttons route through the command manager so the menu,
@@ -33,6 +33,7 @@ public:
     std::function<bool()>   getIsRecording;
     std::function<bool()>   getLoopEnabled;
     std::function<bool()>   getAutomationWrite;
+    std::function<bool()>   getMetronomeEnabled;
 
     // Exposed so the owner can bracket tempo drags into one undo transaction
     // without this bar needing to know about the project model.
@@ -41,6 +42,7 @@ public:
     void setTempoDisplay (double bpm);
     void setSongMode (bool songMode);
     void setRecordArmed (bool armed);
+    void setMetronomeLevelDisplay (double level);
 
     static constexpr int preferredHeight = 44;
 
@@ -54,6 +56,8 @@ private:
     juce::TextButton songButton { "SONG" };
     juce::TextButton loopButton { "LOOP" };
     juce::TextButton autoButton { "AUTO" };
+    juce::TextButton metronomeButton { "CLICK" };
+    juce::Slider metronomeSlider;
     juce::Slider tempoSlider;
     juce::Label positionLabel;
 
