@@ -38,10 +38,13 @@ public:
     Params& params()            { return p; }
 
 private:
+    float pendingPan = 0.0f;   // CC10 latch, consumed by the next note-on
+
     struct Voice
     {
         bool active = false;
         float velocity = 1.0f;
+        float panL = 1.0f, panR = 1.0f;   // balance law, set per note
         double bodyPhase = 0.0, clickPhase = 0.0;
         double transpose = 1.0;
         double pitchEnv = 0.0, pitchEnvCoef = 0.0;

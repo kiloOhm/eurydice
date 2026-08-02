@@ -1,4 +1,5 @@
 #include "KickGenerator.h"
+#include "NotePan.h"
 #include "Drive.h"
 
 namespace
@@ -55,6 +56,8 @@ void KickGenerator::noteOn (int key, float velocity)
     const float ampDecay = juce::jmax (0.01f, p.ampDecay.load());
 
     slot->velocity      = velocity * p.gain.load();
+    notepan::gains (pendingPan, slot->panL, slot->panR);
+    pendingPan = 0.0f;   // consumed: the next un-CC'd note plays centred
     slot->transpose     = std::pow (2.0, (key - rootNote.load()) / 12.0);
     slot->bodyPhase     = 0.0;
     slot->clickPhase    = 0.0;
@@ -140,8 +143,8 @@ void KickGenerator::renderSegment (juce::AudioBuffer<float>& out, int from, int 
             s *= v.velocity * tail;
             --v.samplesRemaining;
 
-            l[i] += s;
-            r[i] += s;
+            l[i] += s * v.panL;
+            r[i] += s * v.panR;
         }
     }
 
@@ -157,6 +160,11 @@ void KickGenerator::render (juce::AudioBuffer<float>& out, const juce::MidiBuffe
     for (const auto meta : midi)
     {
         const auto msg = meta.getMessage();
+        if (msg.isController() && msg.getControllerNumber() == notepan::controller)
+        {
+            pendingPan = notepan::fromController (msg.getControllerValue());
+            continue;
+        }
         if (! msg.isNoteOn())
             continue;   // one-shot: note-offs never stop the decay
 

@@ -1,6 +1,7 @@
 #include "AudioEngine.h"
 #include "model/Ids.h"
 #include "sandbox/SandboxedPlugin.h"
+#include "NotePan.h"
 
 AudioEngine::AudioEngine()
 {
@@ -685,13 +686,19 @@ void AudioEngine::emitPatternSegment (const EngineSnapshot& snap, const PatternS
                                                blockSampleBase + (int) ((songTick - blockStartTick) / tps));
         const double offTick = songTick + note.lengthTicks;
 
-        addNoteOn (note.channelIndex, note.key, note.velocity, sampleOffset, offTick);
+        addNoteOn (note.channelIndex, note.key, note.velocity, sampleOffset, offTick, note.pan);
     }
 }
 
-void AudioEngine::addNoteOn (int channelIndex, int key, float velocity, int sampleOffset, double offTick)
+void AudioEngine::addNoteOn (int channelIndex, int key, float velocity, int sampleOffset,
+                             double offTick, float pan)
 {
     auto& midi = channelMidi[(size_t) channelIndex];
+    // Pan CC first, unconditionally: generators latch it for the note that
+    // follows and reset after, so previews stay centred.
+    midi.addEvent (juce::MidiMessage::controllerEvent (1, notepan::controller,
+                                                       notepan::toController (pan)),
+                   sampleOffset);
     midi.addEvent (juce::MidiMessage::noteOn (1, key, velocity), sampleOffset);
 
     for (auto& slot : activeNotes)

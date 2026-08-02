@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include "HostedPlugin.h"
 #include "PluginManager.h"
 #include "sandbox/SandboxedPlugin.h"
@@ -39,9 +40,11 @@ public:
     // Fired (message thread) when a helper process dies: (insert, slot, name).
     std::function<void (int, int, juce::String)> onSandboxCrashed;
 
+    // wantsSandbox: per-slot override; unset means follow the global option.
     std::shared_ptr<Effect> getReady (int insertIndex, int slotIndex,
                                       const juce::String& pluginId,
-                                      const juce::String& initialStateBase64)
+                                      const juce::String& initialStateBase64,
+                                      std::optional<bool> wantsSandbox = std::nullopt)
     {
         const auto key = std::make_pair (insertIndex, slotIndex);
         auto it = pool.find (key);
@@ -63,7 +66,7 @@ public:
             return nullptr;
 
         pool[key] = { pluginId, nullptr, nullptr, false };
-        if (sandboxEnabled)
+        if (wantsSandbox.value_or (sandboxEnabled))
             launchSandboxed (key, pluginId, initialStateBase64);
         else
             createInProcess (key, pluginId, initialStateBase64);

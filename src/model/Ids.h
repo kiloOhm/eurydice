@@ -158,6 +158,7 @@ DECLARE_ID (fxRelease)
 DECLARE_ID (fxKnee)
 DECLARE_ID (fxMakeup)
 DECLARE_ID (fxSidechain)    // source insert index, -1 = internal
+DECLARE_ID (sandboxed)      // per-slot/channel override: absent = follow the global option
 DECLARE_ID (fxScHpFreq)
 DECLARE_ID (fxDivision)
 DECLARE_ID (fxFeedback)

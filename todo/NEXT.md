@@ -70,9 +70,11 @@ the active work.
   helper when the option is on (SandboxedGenerator), a dead instrument goes
   silent and is flagged (rack context menu / channel editor click offer the
   restart), and the whole loop — play, SIGKILL, silence, restart, play — is
-  an engine-level test with a real instrument. Remaining polish: per-plugin
-  (not global) opt-in, latency reporting for the one-block delay, sysex and
-  >64-param automation for sandboxed plugins.
+  an engine-level test with a real instrument. Per-plugin opt-in shipped:
+  "Run sandboxed" per effect slot (reloads in place, moving state across) and
+  ids::sandboxed on channels; sandboxed slots show a marker and their tooltip
+  states the one-block latency cost in ms. Still open: sysex and >64-param
+  automation for sandboxed plugins (niche).
 - ~~JUCE upgrade~~ — shipped: 8.0.8 → 8.0.15, all deprecations migrated
   (options-based WAV writers via src/engine/WavWriter.h, unique_ptr
   addFormat, createEditorAndMakeActive). The AudioIODeviceCombiner race is
@@ -90,7 +92,11 @@ the active work.
   (verified by stress test). Output-only startup stays as a UX choice;
   disarming record still deliberately leaves the input open to avoid a
   device restart per toggle.
-- Per-note pan is stored but not applied at playback.
-- The rack swing knob is not automatable (project-level property, no engine
-  target kind).
-- Recovery files are never garbage-collected.
+- ~~Per-note pan~~ — applied at playback: the engine emits a CC10 before
+  every sequenced note-on; the built-in generators latch it per voice
+  (balance law, matching the channel/insert pan), plugins get standard MIDI
+  pan. The rack's per-step pan graph is audible now.
+- ~~Rack swing knob not automatable~~ — new "project"/"swing" target
+  (Kind::projectSwing); patterns pinning their own swing are exempt.
+- ~~Recovery files never garbage-collected~~ — AutoSaver::garbageCollect at
+  startup (14 days / newest 10).

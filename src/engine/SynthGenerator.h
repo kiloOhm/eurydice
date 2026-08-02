@@ -46,12 +46,15 @@ public:
     Params& params() { return p; }
 
 private:
+    float pendingPan = 0.0f;   // CC10 latch, consumed by the next note-on
+
     struct Voice
     {
         bool active = false;
         int key = -1;
         double phase1 = 0.0, phase2 = 0.0;
         float velocity = 1.0f;
+        float panL = 1.0f, panR = 1.0f;   // balance law, set per note
         juce::ADSR ampEnv, filterEnv;
         juce::dsp::StateVariableTPTFilter<float> filter;
     };

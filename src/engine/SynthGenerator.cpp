@@ -1,4 +1,5 @@
 #include "SynthGenerator.h"
+#include "NotePan.h"
 
 SynthGenerator::SynthGenerator() = default;
 
@@ -49,6 +50,8 @@ void SynthGenerator::noteOn (int key, float velocity)
 
     slot->key = key;
     slot->velocity = velocity;
+    notepan::gains (pendingPan, slot->panL, slot->panR);
+    pendingPan = 0.0f;   // consumed: the next un-CC'd note plays centred
     slot->phase1 = slot->phase2 = 0.0;
     slot->ampEnv.setParameters (ampParams);
     slot->filterEnv.setParameters (filtParams);
@@ -126,8 +129,8 @@ void SynthGenerator::renderSegment (juce::AudioBuffer<float>& out, int from, int
             s = v.filter.processSample (0, s);
 
             s *= aenv * v.velocity * gain;
-            l[i] += s;
-            r[i] += s;
+            l[i] += s * v.panL;
+            r[i] += s * v.panR;
         }
     }
 }
@@ -148,6 +151,8 @@ void SynthGenerator::render (juce::AudioBuffer<float>& out, const juce::MidiBuff
             noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
         else if (msg.isNoteOff())
             noteOff (msg.getNoteNumber());
+        else if (msg.isController() && msg.getControllerNumber() == notepan::controller)
+            pendingPan = notepan::fromController (msg.getControllerValue());
     }
     renderSegment (out, segmentStart, numSamples);
 }

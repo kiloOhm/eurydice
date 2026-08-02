@@ -123,7 +123,8 @@ private:
     void emitPatternSegment (const EngineSnapshot&, const PatternSnapshot&,
                              double segStart, double segEnd, double blockStartTick,
                              int tickOffsetToSong, double tps);
-    void addNoteOn (int channelIndex, int key, float velocity, int sampleOffset, double offTick);
+    void addNoteOn (int channelIndex, int key, float velocity, int sampleOffset,
+                    double offTick, float pan = 0.0f);
     void scheduleClicks (double t0, double t1, double tps, int sampleBase);
     void renderMetronome (float* const* outs, int numOuts, int numSamples);
     void flushNoteOffs (const EngineSnapshot&, double t0, double t1, double tps);

@@ -135,7 +135,9 @@ std::shared_ptr<Generator> GeneratorPool::getOrCreate (const juce::ValueTree& ch
         const auto pluginId = channel[ids::pluginId].toString();
         const auto stateBase64 = channel[ids::pluginState].toString();
 
-        if (sandboxEnabled)
+        const bool wantsSandbox = channel.hasProperty (ids::sandboxed)
+                                      ? (bool) channel[ids::sandboxed] : sandboxEnabled;
+        if (wantsSandbox)
         {
             auto sandboxGen = std::make_shared<SandboxedGenerator>();
             gen = sandboxGen;

@@ -155,7 +155,10 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
                     is.effects.push_back (std::move (effect));
             }
             else if (auto effect = effects.getReady (i, slot[ids::slotIndex], pluginId,
-                                                     slot[ids::pluginState].toString()))
+                                                     slot[ids::pluginState].toString(),
+                                                     slot.hasProperty (ids::sandboxed)
+                                                         ? std::optional<bool> ((bool) slot[ids::sandboxed])
+                                                         : std::nullopt))
             {
                 is.effects.push_back (std::move (effect));
             }

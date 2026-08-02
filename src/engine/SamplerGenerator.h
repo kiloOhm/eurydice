@@ -81,12 +81,14 @@ private:
         double pitchEnvCoef = 0.0;
         float pitchEnvDepth = 0.0f;
         float velocity = 1.0f;
+        float panL = 1.0f, panR = 1.0f;   // balance law, set per note
         juce::ADSR env;
         juce::dsp::StateVariableTPTFilter<float> filter;
         std::shared_ptr<const Sample> sample;   // voice keeps its sample alive
     };
 
     void startVoice (int key, float velocity);
+    float pendingPan = 0.0f;   // CC10 latch, consumed by the next note-on
     void stopVoice (int key);
     void renderSegment (juce::AudioBuffer<float>& out, int from, int to);
     std::shared_ptr<const Sample> getSample() const;

@@ -223,8 +223,26 @@ void MixerPanel::rebuildDetail()
                 label = "(missing)";
             if (services.effects.isCrashed (selectedInsert, slot))
                 label = "[crashed] " + label;
+            else if (services.effects.peekSandboxed (selectedInsert, slot) != nullptr)
+                label = label + " \xe2\xa7\x89";   // sandboxed marker
         }
         effectSlots[(size_t) slot].setButtonText (label);
+
+        // The slot tooltip names the cost of sandboxing honestly.
+        if (services.effects.peekSandboxed (selectedInsert, slot) != nullptr)
+        {
+            const double ms = 1000.0 * services.engine.getBlockSize()
+                                     / juce::jmax (1.0, services.engine.getSampleRate());
+            effectSlots[(size_t) slot].setTooltip (
+                "Runs in its own process (a crash can't take the DAW down). Adds one "
+                "audio block of latency (" + juce::String (ms, 1) + " ms at the current "
+                "buffer size).");
+        }
+        else
+        {
+            effectSlots[(size_t) slot].setTooltip (
+                "Effect slot: click to load, edit, bypass or remove");
+        }
     }
 
     sendRows.clear();
@@ -471,6 +489,14 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
             menu.addItem (5, "Restart crashed plugin");
         menu.addItem (1, "Show editor");
         menu.addItem (2, "Bypass", true, (bool) slotTree[ids::bypass]);
+        const bool isBuiltin = fx::findBuiltin (slotTree[ids::pluginId].toString()) != nullptr;
+        if (! isBuiltin)
+        {
+            const bool sandboxNow = slotTree.hasProperty (ids::sandboxed)
+                                        ? (bool) slotTree[ids::sandboxed]
+                                        : services.effects.isSandboxEnabled();
+            menu.addItem (6, "Run sandboxed (reloads the plugin)", true, sandboxNow);
+        }
         menu.addItem (3, "Remove");
         menu.addSeparator();
     }
@@ -523,6 +549,20 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
                 const auto slot = getSlotTree (selectedInsert, slotIndex, false);
                 services.effects.restartSandboxed (selectedInsert, slotIndex,
                     slot.isValid() ? slot[ids::pluginState].toString() : juce::String());
+                rebuildDetail();
+            }
+            else if (result == 6)
+            {
+                // Flip the per-slot override and reload through the pool so
+                // the plugin moves between processes with its state.
+                auto slot = getSlotTree (selectedInsert, slotIndex, true);
+                const bool now = slot.hasProperty (ids::sandboxed)
+                                     ? (bool) slot[ids::sandboxed]
+                                     : services.effects.isSandboxEnabled();
+                const undoGesture::Scoped step (services.project, "Sandbox effect");
+                slot.setProperty (ids::sandboxed, ! now, &undo);
+                clearSlot (slotIndex);
+                slot.setProperty (ids::pluginId, slot[ids::pluginId].toString(), &undo);
                 rebuildDetail();
             }
             else if (result == 4)

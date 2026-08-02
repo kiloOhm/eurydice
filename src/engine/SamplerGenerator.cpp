@@ -1,4 +1,5 @@
 #include "SamplerGenerator.h"
+#include "NotePan.h"
 #include "Drive.h"
 
 SamplerGenerator::SamplerGenerator() = default;
@@ -212,6 +213,8 @@ void SamplerGenerator::startVoice (int key, float velocity)
     slot->pos      = slot->reverse ? hi - 1.0 : lo;
     slot->key      = key;
     slot->velocity = velocity * p.gain.load();
+    notepan::gains (pendingPan, slot->panL, slot->panR);
+    pendingPan = 0.0f;   // consumed: the next un-CC'd note plays centred
     slot->sample   = std::move (sample);
 
     slot->pitchEnvDepth = p.pitchEnvDepth.load();
@@ -257,6 +260,8 @@ void SamplerGenerator::render (juce::AudioBuffer<float>& out, const juce::MidiBu
             startVoice (msg.getNoteNumber(), msg.getFloatVelocity());
         else if (msg.isNoteOff())
             stopVoice (msg.getNoteNumber());
+        else if (msg.isController() && msg.getControllerNumber() == notepan::controller)
+            pendingPan = notepan::fromController (msg.getControllerValue());
     }
     renderSegment (out, segmentStart, numSamples);
 }
@@ -305,8 +310,8 @@ void SamplerGenerator::renderSegment (juce::AudioBuffer<float>& out, int from, i
             const float sr = (srcR[idx] + frac * (srcR[idx + 1] - srcR[idx]));
             const float gain = drive::shapeEnvelope (envValue, shape) * v.velocity;
 
-            l[i] += v.filter.processSample (0, sl) * gain;
-            r[i] += v.filter.processSample (1, sr) * gain;
+            l[i] += v.filter.processSample (0, sl) * gain * v.panL;
+            r[i] += v.filter.processSample (1, sr) * gain * v.panR;
 
             double step = v.rate;
             if (v.pitchEnvDepth != 0.0f)

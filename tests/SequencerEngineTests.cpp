@@ -452,3 +452,32 @@ TEST (SequencerEngine, ProjectSwingAutomationShiftsOddSteps)
         << "swing automation was ignored";
     EXPECT_GT (rmsOf (out, swungOnset, 2048), 0.01f);
 }
+
+TEST (SequencerEngine, PerNotePanReachesTheVoice)
+{
+    // notePan was stored but never played back. Two notes, hard left and hard
+    // right: each must be silent on its far channel.
+    EngineFixture fx;
+    auto pattern = fx.model.getPattern (0);
+    for (int i = pattern.getNumChildren(); --i >= 0;)
+        if (pattern.getChild (i).hasType (ids::LANE))
+            pattern.removeChild (i, nullptr);
+
+    auto lane = fx.model.getOrCreateLane (pattern, fx.model.getChannel (0)[ids::id]);
+    auto left = fx.model.addNote (lane, 60, 0, ids::ticksPerStep);
+    left.setProperty (ids::notePan, -1.0, nullptr);
+    auto right = fx.model.addNote (lane, 60, 8 * ids::ticksPerStep, ids::ticksPerStep);
+    right.setProperty (ids::notePan, 1.0, nullptr);
+    fx.sync.rebuildNow();
+
+    const double tps = fx.ticksPerSample();
+    const int rightOnset = (int) (8 * ids::ticksPerStep / tps);
+    auto out = fx.renderFromStart (rightOnset + 8192);
+
+    // First note: left channel only.
+    EXPECT_GT (out.getRMSLevel (0, 0, 2048), 0.01f);
+    EXPECT_LT (out.getRMSLevel (1, 0, 2048), 1.0e-5f);
+    // Second note: right channel only.
+    EXPECT_GT (out.getRMSLevel (1, rightOnset, 2048), 0.01f);
+    EXPECT_LT (out.getRMSLevel (0, rightOnset, 2048), 1.0e-5f);
+}
