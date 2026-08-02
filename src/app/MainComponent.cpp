@@ -13,6 +13,7 @@
 #include "ui/rack/ChannelRackPanel.h"
 #include "ui/automation/AutomationEditor.h"
 #include "ui/common/DockZones.h"
+#include "KeyboardLayoutDetect.h"
 
 namespace
 {
@@ -212,7 +213,8 @@ MainComponent::MainComponent()
     midiInput = std::make_unique<MidiInputManager> (services);
     typingPiano = std::make_unique<TypingPiano> (
         [this] (int note, float velocity) { midiInput->noteOn (note, velocity); },
-        [this] (int note) { midiInput->noteOff (note); });
+        [this] (int note) { midiInput->noteOff (note); },
+        keyboardlayout::detect());
     channelEditors.typingKeys = typingPiano.get();
     services.pluginWindows.typingKeys = typingPiano.get();
     recorder = std::make_unique<AudioRecorder> (services);
@@ -1022,6 +1024,7 @@ bool MainComponent::okToCloseProject (const juce::String& action)
 
 void MainComponent::offerCrashRecovery()
 {
+    AutoSaver::garbageCollect (autoSave.getDirectory());
     const auto pending = AutoSaver::findPending (autoSave.getDirectory());
     if (pending.isEmpty())
         return;

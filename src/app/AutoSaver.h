@@ -154,6 +154,27 @@ public:
     }
 
     // Newest first.
+    // Recovery files are one-shot offers; anything old enough was declined,
+    // superseded or forgotten. Called once at startup so the directory can't
+    // grow without bound.
+    static int garbageCollect (const juce::File& directory = defaultDirectory(),
+                               int maxAgeDays = 14, int keepNewest = 10)
+    {
+        auto files = directory.findChildFiles (juce::File::findFiles, false, "*.eury-recovery");
+        std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
+        {
+            return a.getLastModificationTime() > b.getLastModificationTime();
+        });
+
+        const auto cutoff = juce::Time::getCurrentTime() - juce::RelativeTime::days (maxAgeDays);
+        int removed = 0;
+        for (int i = 0; i < files.size(); ++i)
+            if (i >= keepNewest || files.getReference (i).getLastModificationTime() < cutoff)
+                if (files.getReference (i).deleteFile())
+                    ++removed;
+        return removed;
+    }
+
     static juce::Array<juce::File> findPending (const juce::File& directory = defaultDirectory())
     {
         juce::Array<juce::File> found;

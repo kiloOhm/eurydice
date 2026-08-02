@@ -78,3 +78,18 @@ TEST (TypingPiano, IgnoresShortcutsAndUnmappedKeys)
     EXPECT_FALSE (s.press ('a'));
     EXPECT_TRUE (s.ons.empty());
 }
+
+TEST (TypingPiano, QwertzLayoutFollowsPhysicalKeys)
+{
+    using L = TypingPiano::Layout;
+    // Physical bottom-left key types 'y' on QWERTZ: it must be C4 there and
+    // dead on QWERTY's low row (where it is a high-row key instead).
+    EXPECT_EQ (TypingPiano::keyToNote ('y', L::qwertz), 60);
+    EXPECT_EQ (TypingPiano::keyToNote ('z', L::qwertz), 81);   // physical top-row Y position
+    EXPECT_EQ (TypingPiano::keyToNote ('y', L::qwerty), 81);
+    EXPECT_EQ (TypingPiano::keyToNote ('z', L::qwerty), 60);
+    // Keys whose characters don't move stay put on both layouts.
+    EXPECT_EQ (TypingPiano::keyToNote ('s', L::qwertz), 61);
+    EXPECT_EQ (TypingPiano::keyToNote ('m', L::qwertz), 71);
+    EXPECT_EQ (TypingPiano::keyToNote ('q', L::qwertz), 72);
+}

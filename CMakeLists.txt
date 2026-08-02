@@ -47,6 +47,7 @@ juce_generate_juce_header(Eurydice)
 
 file(GLOB_RECURSE EURYDICE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
 )
 # The helper has its own JUCE application entry point.
@@ -92,6 +93,7 @@ set(EURYDICE_JUCE_MODULES
 )
 
 target_link_libraries(Eurydice PRIVATE
+    "-framework Carbon"
     ${EURYDICE_JUCE_MODULES}
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
@@ -174,6 +176,7 @@ if(EURYDICE_BUILD_TESTS)
         JUCE_DISPLAY_SPLASH_SCREEN=0
     )
     target_link_libraries(EurydiceTests PRIVATE
+        "-framework Carbon"
         ${EURYDICE_JUCE_MODULES}
         juce::juce_recommended_config_flags
         gtest

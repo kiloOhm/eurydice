@@ -54,7 +54,7 @@ for brightness and media by default — either use `Fn`+the key, or turn on
 `Space` play/stop · `Home` rewind · `⌘L` song mode · `⌘E` arm recording ·
 `⌘N`/`⌘O`/`⌘S`/`⇧⌘S` project · `⌘R` export · `⌘Z`/`⇧⌘Z` undo/redo ·
 `⇧⌘L` loop · `⇧⌘M` metronome · `⌘,` audio settings ·
-`Z`–`M` and `Q`–`P` rows play notes · `,`/`.` shift octave.
+`Z`–`M` and `Q`–`P` rows play notes (QWERTZ layouts detected and mapped by physical key) · `,`/`.` shift octave.
 
 Drag a panel near an edge to dock it to that half of the desktop, or into a
 corner for a quarter — a preview shows the target region before you release,

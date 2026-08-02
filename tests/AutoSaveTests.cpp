@@ -164,3 +164,34 @@ TEST (AutoSaver, ReadRejectsGarbage)
     EXPECT_FALSE (AutoSaver::isWorthOffering (junk));
     EXPECT_TRUE (AutoSaver::findPending (f.dir).isEmpty());
 }
+
+TEST (AutoSave, GarbageCollectorKeepsRecentDropsOld)
+{
+    const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                         .getNonexistentChildFile ("eurytest-gc", "");
+    dir.createDirectory();
+
+    // 12 files; make the 3 oldest ancient by back-dating their mtimes.
+    juce::Array<juce::File> files;
+    for (int i = 0; i < 12; ++i)
+    {
+        auto file = dir.getChildFile ("r" + juce::String (i) + ".eury-recovery");
+        file.replaceWithText ("x");
+        files.add (file);
+    }
+    const auto ancient = juce::Time::getCurrentTime() - juce::RelativeTime::days (30);
+    for (int i = 0; i < 3; ++i)
+        files.getReference (i).setLastModificationTime (ancient);
+
+    // keepNewest=10: the 3 ancient ones die (age), plus enough of the rest to
+    // fit the cap. 12 files, 3 old -> those 3 go; 9 remain <= 10 cap.
+    const int removed = AutoSaver::garbageCollect (dir, 14, 10);
+    EXPECT_EQ (removed, 3);
+    EXPECT_EQ (dir.findChildFiles (juce::File::findFiles, false, "*.eury-recovery").size(), 9);
+
+    // Tighten the cap: newest 5 survive regardless of age.
+    EXPECT_EQ (AutoSaver::garbageCollect (dir, 14, 5), 4);
+    EXPECT_EQ (dir.findChildFiles (juce::File::findFiles, false, "*.eury-recovery").size(), 5);
+
+    dir.deleteRecursively();
+}
