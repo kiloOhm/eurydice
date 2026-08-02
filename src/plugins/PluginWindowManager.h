@@ -2,6 +2,7 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "HostedPlugin.h"
+#include "PluginEditorShell.h"
 #include "app/Theme.h"
 
 // Opens/coalesces native plugin editor windows. Call closeFor() before
@@ -52,22 +53,14 @@ private:
         {
             setUsingNativeTitleBar (true);
 
-            auto* instance = plugin->getInstance();
-            juce::Component* editor = instance->hasEditor()
-                                          ? instance->createEditorIfNeeded()
-                                          : new juce::GenericAudioProcessorEditor (*instance);
-            setContentNonOwned (editor, true);
-            ownedEditor.reset (editor);
+            // The editor sits inside a JUCE shell (header strip + native
+            // view), so we have somewhere to put custom UI around plugins.
+            auto shell = std::make_unique<PluginEditorShell> (*plugin->getInstance(), title);
+            const auto w = shell->getWidth(), h = shell->getHeight();
+            setContentOwned (shell.release(), true);
             setResizable (true, false);
-            centreWithSize (juce::jmax (300, editor->getWidth()),
-                            juce::jmax (150, editor->getHeight()));
+            centreWithSize (w, h);
             setVisible (true);
-        }
-
-        ~Window() override
-        {
-            clearContentComponent();
-            ownedEditor = nullptr;   // AudioProcessorEditor unregisters itself
         }
 
         void closeButtonPressed() override
@@ -79,7 +72,6 @@ private:
 
         PluginWindowManager& owner;
         std::shared_ptr<HostedPlugin> plugin;   // keeps the instance alive while open
-        std::unique_ptr<juce::Component> ownedEditor;
     };
 
     std::vector<std::unique_ptr<Window>> windows;

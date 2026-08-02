@@ -457,3 +457,23 @@ TEST (LaneClassification, EmptyLaneIsNotPianoRoll)
 {
     EXPECT_FALSE (laneUsesPianoRoll (juce::ValueTree (ids::LANE), 60));
 }
+
+TEST (ProjectModel, ChannelsRoutedToInsert)
+{
+    ProjectModel model;
+    // Fresh project: every channel routes to the master insert.
+    EXPECT_EQ (model.channelsRoutedTo (0).size(), 4);
+    EXPECT_TRUE (model.channelsRoutedTo (1).isEmpty());
+
+    // Route exactly one channel to insert 1: the "name after channel"
+    // menu item keys off a single routed channel.
+    model.getChannel (0).setProperty (ids::insertIndex, 1, nullptr);
+    const auto routed = model.channelsRoutedTo (1);
+    ASSERT_EQ (routed.size(), 1);
+    EXPECT_EQ (routed[0], model.getChannel (0)[ids::name].toString());
+    EXPECT_EQ (model.channelsRoutedTo (0).size(), 3);
+
+    // Two channels on one insert: no unambiguous name.
+    model.getChannel (1).setProperty (ids::insertIndex, 1, nullptr);
+    EXPECT_EQ (model.channelsRoutedTo (1).size(), 2);
+}

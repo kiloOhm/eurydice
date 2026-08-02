@@ -503,7 +503,8 @@ void ChannelEditorManager::show (AppServices& services, juce::ValueTree channel)
         if (auto gen = std::dynamic_pointer_cast<PluginGenerator> (services.generators.getOrCreate (channel)))
         {
             if (auto hosted = gen->getPlugin())
-                services.pluginWindows.showEditorFor (hosted, name);
+                services.pluginWindows.showEditorFor (hosted,
+                    name + " / " + hosted->getDescription().name);
             else
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
                     name, "The plugin is still loading (or failed to load). Try again in a moment.");

@@ -348,12 +348,36 @@ MainComponent::MainComponent()
     if (showList.contains ("mixer"))     mixerPanel->bringToFrontAndShow();
     if (showList.contains ("export"))    juce::Timer::callAfterDelay (300, [this] { showExportDialog(); });
 
-    // EURYDICE_EDITOR=<channel index>|synth|kick opens that channel's editor.
+    // EURYDICE_EDITOR=<channel index>|synth|kick|plugin opens that channel's
+    // editor. "plugin" adds a channel hosting the first instrument in the
+    // database and retries until the async load lands.
     const auto editorIndex = juce::SystemStats::getEnvironmentVariable ("EURYDICE_EDITOR", "");
     if (editorIndex.isNotEmpty())
     {
         juce::Timer::callAfterDelay (400, [this, editorIndex]
         {
+            if (editorIndex == "plugin")
+            {
+                const auto instruments = services.plugins.getInstruments();
+                if (instruments.isEmpty())
+                    return;
+
+                auto channel = services.project.addChannel ("plugin", "Bass");
+                channel.setProperty (ids::pluginId,
+                                     instruments.getReference (0).createIdentifierString(), nullptr);
+                // The instance arrives asynchronously; retry at a few offsets
+                // and only call show() once it is actually there.
+                for (const int delayMs : { 1500, 3000, 6000, 10000 })
+                    juce::Timer::callAfterDelay (delayMs, [this, channel]
+                    {
+                        auto gen = std::dynamic_pointer_cast<PluginGenerator> (
+                            services.generators.getOrCreate (channel));
+                        const bool open = juce::TopLevelWindow::getNumTopLevelWindows() > 1;
+                        if (gen != nullptr && gen->getPlugin() != nullptr && ! open)
+                            channelEditors.show (services, channel);
+                    });
+                return;
+            }
             auto channel = editorIndex == "synth" ? services.project.addChannel ("synth", "Lead")
                          : editorIndex == "kick"  ? services.project.addChannel ("kick", "Kick Synth")
                                                   : services.project.getChannel (editorIndex.getIntValue());
@@ -398,6 +422,9 @@ MainComponent::MainComponent()
                                    .getIntValue();
         juce::Timer::callAfterDelay (shotDelay, [this, shotPath]
         {
+            for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+                if (auto* w = juce::TopLevelWindow::getTopLevelWindow (i); w->isVisible())
+                    std::cout << "WINDOW " << w->getName() << "\n" << std::flush;
             if (writeSnapshot (juce::File (shotPath)))
                 std::cout << "SCREENSHOT_SAVED " << shotPath << "\n" << std::flush;
         });

@@ -65,6 +65,17 @@ public:
     int numChannels() const                   { return channels().getNumChildren(); }
     juce::ValueTree getChannel (int index) const { return channels().getChild (index); }
 
+    // Names of the channels routed to an insert. The mixer uses this for
+    // "name insert after channel", which only makes sense for exactly one.
+    juce::StringArray channelsRoutedTo (int insertIndex) const
+    {
+        juce::StringArray names;
+        for (const auto ch : channels())
+            if ((int) ch[ids::insertIndex] == insertIndex)
+                names.add (ch[ids::name].toString());
+        return names;
+    }
+
     // --- Patterns ---
     juce::ValueTree addPattern (const juce::String& name);
     // Deep copy of the pattern, inserted right after the original.

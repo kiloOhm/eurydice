@@ -310,15 +310,58 @@ void MixerPanel::showStripMenu (int insertIndex)
         }
     }
 
+    const auto routedChannels = services.project.channelsRoutedTo (insertIndex);
+
     juce::PopupMenu menu;
+    menu.addSectionHeader (insertTree (insertIndex)[ids::name].toString());
+    menu.addItem (3, "Rename...");
+    menu.addItem (4,
+                  routedChannels.size() == 1
+                      ? "Name after channel \"" + routedChannels[0] + "\""
+                      : juce::String ("Name after channel"),
+                  routedChannels.size() == 1);
+    menu.addSeparator();
     menu.addSubMenu ("Create automation clip", automationMenu);
 
-    menu.showMenuAsync ({}, [this, insertIndex] (int result)
+    menu.showMenuAsync ({}, [this, insertIndex, routedChannels] (int result)
     {
         if (result == 0)
             return;
         const auto insertName = insertTree (insertIndex)[ids::name].toString();
-        const auto ins = insertTree (insertIndex);
+        auto ins = insertTree (insertIndex);
+
+        if (result == 3)
+        {
+            auto* window = new juce::AlertWindow ("Rename insert", {},
+                                                  juce::MessageBoxIconType::NoIcon);
+            window->addTextEditor ("name", insertName);
+            window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+            window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+            auto& model = services.project;
+            window->enterModalState (true, juce::ModalCallbackFunction::create (
+                [window, ins, &model] (int r) mutable
+                {
+                    const auto typed = window->getTextEditorContents ("name").trim();
+                    if (r == 1 && typed.isNotEmpty())
+                    {
+                        const undoGesture::Scoped step (model, "Rename insert");
+                        ins.setProperty (ids::name, typed, &model.getUndoManager());
+                    }
+                    delete window;
+                }));
+            return;
+        }
+        if (result == 4)
+        {
+            if (routedChannels.size() == 1)
+            {
+                const undoGesture::Scoped step (services.project, "Rename insert");
+                ins.setProperty (ids::name, routedChannels[0],
+                                 &services.project.getUndoManager());
+            }
+            return;
+        }
+
         const undoGesture::Scoped step (services.project, "Create automation");
 
         if (result == 1)
