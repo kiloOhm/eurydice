@@ -150,6 +150,20 @@ void PlaylistPanel::paint (juce::Graphics& g)
 
     paintClips (g);
 
+    // ghost outline where a hovering sample drop would land
+    if (dropHoverActive)
+    {
+        const int x0 = ticksToX (dropTarget.startTicks);
+        const int x1 = ticksToX (dropTarget.startTicks + dropLengthTicks);
+        juce::Rectangle<float> ghost ((float) x0, (float) trackTop (dropTarget.track) + 2.0f,
+                                      (float) juce::jmax (6, x1 - x0) - 1.0f,
+                                      (float) trackHeight - 4.0f);
+        g.setColour (theme::accent.withAlpha (0.12f));
+        g.fillRoundedRectangle (ghost, 3.0f);
+        g.setColour (theme::accent.withAlpha (0.85f));
+        g.drawRoundedRectangle (ghost.reduced (0.5f), 3.0f, 1.2f);
+    }
+
     // playhead
     if (playheadTicks >= 0.0)
     {
@@ -736,42 +750,106 @@ juce::AudioThumbnail* PlaylistPanel::getThumbnail (const juce::String& path)
     return raw;
 }
 
+// ---------- sample drops (browser drag + Finder) ----------
+
+void PlaylistPanel::updateDropHover (const juce::StringArray& audioFiles, juce::Point<int> pos)
+{
+    if (audioFiles.isEmpty() || ! gridArea().contains (pos))
+    {
+        clearDropHover();
+        return;
+    }
+
+    dropTarget = sampledrop::playlistTargetFor (xToTicks (pos.x), yToTrack (pos.y),
+                                                services.project.numPlaylistTracks(), snap());
+    const double seconds = services.audioClips.getNaturalSeconds (audioFiles[0]);
+    dropLengthTicks = seconds > 0.0
+        ? sampledrop::audioClipLengthTicks (seconds, services.project.getTempo())
+        : ids::ticksPerBar;
+    dropHoverActive = true;
+    repaint();
+}
+
+void PlaylistPanel::clearDropHover()
+{
+    if (dropHoverActive)
+    {
+        dropHoverActive = false;
+        repaint();
+    }
+}
+
+void PlaylistPanel::dropFiles (const juce::StringArray& files, juce::Point<int> pos)
+{
+    clearDropHover();
+    if (! gridArea().contains (pos))
+        return;
+
+    const auto audio = sampledrop::audioFilesIn (files);
+    if (audio.isEmpty())
+        return;
+
+    const undoGesture::Scoped step (services.project, "Drop sample");
+    auto target = sampledrop::playlistTargetFor (xToTicks (pos.x), yToTrack (pos.y),
+                                                 services.project.numPlaylistTracks(), snap());
+    for (const auto& path : audio)
+    {
+        if (sampledrop::dropOntoPlaylist (services.project, services.audioClips,
+                                          juce::File (path), target).isValid())
+            target.track = juce::jmin (target.track + 1,
+                                       services.project.numPlaylistTracks() - 1);
+    }
+    repaint();
+}
+
 bool PlaylistPanel::isInterestedInFileDrag (const juce::StringArray& files)
 {
-    for (const auto& f : files)
-        if (juce::File (f).hasFileExtension ("wav;aif;aiff;mp3;flac;ogg;m4a"))
-            return true;
-    return false;
+    return ! sampledrop::audioFilesIn (files).isEmpty();
+}
+
+void PlaylistPanel::fileDragEnter (const juce::StringArray& files, int x, int y)
+{
+    updateDropHover (sampledrop::audioFilesIn (files), { x, y });
+}
+
+void PlaylistPanel::fileDragMove (const juce::StringArray& files, int x, int y)
+{
+    updateDropHover (sampledrop::audioFilesIn (files), { x, y });
+}
+
+void PlaylistPanel::fileDragExit (const juce::StringArray&)
+{
+    clearDropHover();
 }
 
 void PlaylistPanel::filesDropped (const juce::StringArray& files, int x, int y)
 {
-    const juce::Point<int> pos (x, y);
-    if (! gridArea().contains (pos))
-        return;
+    dropFiles (files, { x, y });
+}
 
-    int trackIndex = juce::jlimit (0, services.project.numPlaylistTracks() - 1, yToTrack (pos.y));
-    int startTicks = (int) snapDown (xToTicks (pos.x));
+bool PlaylistPanel::isInterestedInDragSource (const SourceDetails& details)
+{
+    return ! sampledrop::filesFromDragSource (details).isEmpty();
+}
 
-    for (const auto& path : files)
-    {
-        if (! juce::File (path).hasFileExtension ("wav;aif;aiff;mp3;flac;ogg;m4a"))
-            continue;
-        const double seconds = services.audioClips.getNaturalSeconds (path);
-        if (seconds <= 0.0)
-            continue;
+void PlaylistPanel::itemDragEnter (const SourceDetails& details)
+{
+    updateDropHover (sampledrop::filesFromDragSource (details), details.localPosition);
+}
 
-        const double tps = (services.project.getTempo() / 60.0) * ids::ticksPerQuarter;
-        const int lengthTicks = juce::jmax (ids::ticksPerStep, (int) (seconds * tps));
+void PlaylistPanel::itemDragMove (const SourceDetails& details)
+{
+    updateDropHover (sampledrop::filesFromDragSource (details), details.localPosition);
+}
 
-        auto clip = services.project.addPlaylistClip ("audio", trackIndex, startTicks, lengthTicks);
-        clip.setProperty (ids::audioPath, path, nullptr);
-        clip.setProperty (ids::stretchRatio, 1.0, nullptr);
-        clip.setProperty (ids::audioOffsetTicks, 0, nullptr);
+void PlaylistPanel::itemDragExit (const SourceDetails&)
+{
+    clearDropHover();
+}
 
-        trackIndex = juce::jmin (trackIndex + 1, services.project.numPlaylistTracks() - 1);
-    }
-    repaint();
+void PlaylistPanel::itemDropped (const SourceDetails& details)
+{
+    dropFiles (sampledrop::filesFromDragSource (details), details.localPosition);
 }
 
 void PlaylistPanel::resized()

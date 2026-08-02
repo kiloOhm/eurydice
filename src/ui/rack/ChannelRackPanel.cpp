@@ -208,7 +208,7 @@ void ChannelRackPanel::rebuildRows()
     }
 
     rowContainer.setSize (rowContainerWidth(),
-                          (int) rows.size() * (ChannelRow::rowHeight + 2));
+                          (int) rows.size() * (ChannelRow::rowHeight + rowGap));
     rowContainer.resized();
 }
 
@@ -578,6 +578,124 @@ void ChannelRackPanel::timerCallback()
     }
     for (auto& row : rows)
         row->setPlayStep (step);
+}
+
+// ---------- sample drops (browser drag + Finder) ----------
+
+sampledrop::RackTarget ChannelRackPanel::dropTargetAt (juce::Point<int> pos) const
+{
+    const auto local = rowContainer.getLocalPoint (this, pos);
+    return sampledrop::rackTargetForY (local.y, (int) rows.size(),
+                                       ChannelRow::rowHeight, rowGap);
+}
+
+void ChannelRackPanel::updateDropHover (juce::Point<int> pos)
+{
+    dropTarget = dropTargetAt (pos);
+
+    // Only sampler rows can take a replacement sample.
+    if (dropTarget.replaceRow >= 0)
+    {
+        const auto channel = services.project.getChannel (dropTarget.replaceRow);
+        if (! channel.isValid() || channel[ids::type].toString() != "sampler")
+            dropTarget.replaceRow = -1;
+    }
+    dropHoverActive = true;
+    repaint();
+}
+
+void ChannelRackPanel::clearDropHover()
+{
+    if (dropHoverActive)
+    {
+        dropHoverActive = false;
+        repaint();
+    }
+}
+
+void ChannelRackPanel::performDrop (const juce::StringArray& files, juce::Point<int> pos)
+{
+    updateDropHover (pos);
+    auto target = dropTarget;
+    clearDropHover();
+
+    const auto audio = sampledrop::audioFilesIn (files);
+    if (audio.isEmpty())
+        return;
+
+    const undoGesture::Scoped step (services.project, "Drop sample");
+    for (const auto& path : audio)
+    {
+        const bool inserting = target.replaceRow < 0;
+        sampledrop::dropOntoRack (services.project, juce::File (path), target);
+        target.replaceRow = -1;   // extra files always land below the first
+        if (inserting)
+            ++target.insertIndex;
+    }
+}
+
+bool ChannelRackPanel::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    return ! sampledrop::audioFilesIn (files).isEmpty();
+}
+
+void ChannelRackPanel::fileDragEnter (const juce::StringArray&, int x, int y)  { updateDropHover ({ x, y }); }
+void ChannelRackPanel::fileDragMove (const juce::StringArray&, int x, int y)   { updateDropHover ({ x, y }); }
+void ChannelRackPanel::fileDragExit (const juce::StringArray&)                 { clearDropHover(); }
+
+void ChannelRackPanel::filesDropped (const juce::StringArray& files, int x, int y)
+{
+    performDrop (files, { x, y });
+}
+
+bool ChannelRackPanel::isInterestedInDragSource (const SourceDetails& details)
+{
+    return ! sampledrop::filesFromDragSource (details).isEmpty();
+}
+
+void ChannelRackPanel::itemDragEnter (const SourceDetails& details)  { updateDropHover (details.localPosition); }
+void ChannelRackPanel::itemDragMove (const SourceDetails& details)   { updateDropHover (details.localPosition); }
+void ChannelRackPanel::itemDragExit (const SourceDetails&)           { clearDropHover(); }
+
+void ChannelRackPanel::itemDropped (const SourceDetails& details)
+{
+    performDrop (sampledrop::filesFromDragSource (details), details.localPosition);
+}
+
+void ChannelRackPanel::paintOverChildren (juce::Graphics& g)
+{
+    if (! dropHoverActive)
+        return;
+
+    const int pitch = ChannelRow::rowHeight + rowGap;
+    const auto visible = viewport.getBounds();
+
+    if (dropTarget.replaceRow >= 0)
+    {
+        const int top = getLocalPoint (&rowContainer,
+                                       juce::Point<int> (0, dropTarget.replaceRow * pitch)).y;
+        const auto r = juce::Rectangle<int> (visible.getX(), top,
+                                             visible.getWidth(), ChannelRow::rowHeight)
+                           .getIntersection (visible);
+        if (! r.isEmpty())
+        {
+            g.setColour (theme::accent.withAlpha (0.18f));
+            g.fillRect (r);
+            g.setColour (theme::accent);
+            g.drawRect (r, 2);
+        }
+    }
+    else
+    {
+        const int y = getLocalPoint (&rowContainer,
+                                     juce::Point<int> (0, dropTarget.insertIndex * pitch)).y
+                      - rowGap / 2;
+        if (y >= visible.getY() - 2 && y <= visible.getBottom() + 2)
+        {
+            g.setColour (theme::accent);
+            g.fillRect (visible.getX(), y - 1, visible.getWidth(), 2);
+        }
+    }
 }
 
 void ChannelRackPanel::paint (juce::Graphics& g)

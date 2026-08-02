@@ -15,7 +15,9 @@
 
 // The whole app surface: menu bar, transport bar with panel toggles, browser
 // docked left, and FL-style floating panels on the desktop area.
+// DragAndDropContainer hosts the browser-to-rack/playlist sample drags.
 class MainComponent : public juce::Component,
+                      public juce::DragAndDropContainer,
                       public juce::ApplicationCommandTarget,
                       public juce::MenuBarModel,
                       private juce::ChangeListener

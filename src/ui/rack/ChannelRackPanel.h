@@ -4,10 +4,15 @@
 #include "app/AppServices.h"
 #include "ChannelRow.h"
 #include "StepGraphLane.h"
+#include "ui/common/SampleDrop.h"
 
 // The FL-style channel rack: pattern selector + swing in the header,
 // one ChannelRow per channel, add-channel button at the bottom.
+// Sample files (browser drag or Finder) drop onto it: a sampler row swallows
+// the sample, anywhere else inserts a new sampler channel.
 class ChannelRackPanel : public juce::Component,
+                         public juce::FileDragAndDropTarget,
+                         public juce::DragAndDropTarget,
                          private juce::ValueTree::Listener,
                          private juce::Timer
 {
@@ -23,9 +28,26 @@ public:
     std::function<void (juce::ValueTree)> onOpenChannelEditor;
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray&, int x, int y) override;
+    void fileDragMove (const juce::StringArray&, int x, int y) override;
+    void fileDragExit (const juce::StringArray&) override;
+    void filesDropped (const juce::StringArray& files, int x, int y) override;
+
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragEnter (const SourceDetails&) override;
+    void itemDragMove (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
+
 private:
+    sampledrop::RackTarget dropTargetAt (juce::Point<int> posInPanel) const;
+    void updateDropHover (juce::Point<int> posInPanel);
+    void clearDropHover();
+    void performDrop (const juce::StringArray& files, juce::Point<int> posInPanel);
     void rebuildRows();
     void refreshHeader();
     int rowContainerWidth() const;
@@ -55,6 +77,8 @@ private:
     juce::Label swingLabel { {}, "SWING" };
     juce::TextButton graphButton { "GRAPH" };
 
+    static constexpr int rowGap = 2;
+
     struct RowContainer : juce::Component
     {
         void resized() override
@@ -63,7 +87,7 @@ private:
             for (auto* c : getChildren())
             {
                 c->setBounds (0, y, getWidth(), ChannelRow::rowHeight);
-                y += ChannelRow::rowHeight + 2;
+                y += ChannelRow::rowHeight + rowGap;
             }
         }
     };
@@ -84,6 +108,10 @@ private:
     std::vector<std::unique_ptr<ChannelRow>> rows;
     StepGraphLane graphLane;
     juce::TextButton addChannelButton { "+ Channel" };
+
+    // sample-drop hover indicator
+    bool dropHoverActive = false;
+    sampledrop::RackTarget dropTarget;
 
     static constexpr int headerHeight = 34;
 

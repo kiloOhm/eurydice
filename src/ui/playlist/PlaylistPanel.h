@@ -3,12 +3,15 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "app/AppServices.h"
+#include "ui/common/SampleDrop.h"
 
 // Modern-FL playlist: free tracks, paint the active pattern as clips,
 // move/resize/delete clips, ruler with seek, song-mode playhead.
-// Audio and automation clips join once their engines land.
+// Sample files (browser drag or Finder) drop in as audio clips at the
+// hovered track and snapped tick.
 class PlaylistPanel : public juce::Component,
                       public juce::FileDragAndDropTarget,
+                      public juce::DragAndDropTarget,
                       private juce::ValueTree::Listener,
                       private juce::Timer
 {
@@ -33,7 +36,16 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray&, int x, int y) override;
+    void fileDragMove (const juce::StringArray&, int x, int y) override;
+    void fileDragExit (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray& files, int x, int y) override;
+
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragEnter (const SourceDetails&) override;
+    void itemDragMove (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
 
 private:
     juce::Rectangle<int> headerArea() const;   // top controls
@@ -50,6 +62,9 @@ private:
 
     juce::ValueTree clipAt (juce::Point<int>, bool& overRightEdge);
     void addClipAt (juce::Point<int>);
+    void updateDropHover (const juce::StringArray& audioFiles, juce::Point<int>);
+    void clearDropHover();
+    void dropFiles (const juce::StringArray& files, juce::Point<int>);
     void showAutomationClipMenu (juce::ValueTree clip);
     bool loopRangeBounds (int& x0, int& x1) const;
     void paintTrackHeaders (juce::Graphics&);
@@ -82,6 +97,11 @@ private:
 
     juce::ValueTree revealedClip;
     int revealFramesLeft = 0;   // counts down at timer rate
+
+    // sample-drop ghost outline
+    bool dropHoverActive = false;
+    sampledrop::PlaylistTarget dropTarget;
+    int dropLengthTicks = 0;
 
     juce::AudioFormatManager thumbFormats;
     juce::AudioThumbnailCache thumbCache { 64 };
