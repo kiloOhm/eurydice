@@ -198,7 +198,13 @@ void ChannelRow::paint (juce::Graphics& g)
 {
     const auto area = stepsArea();
     const int steps = numSteps();
-    const bool pianoRoll = usesPianoRoll();
+
+    if (usesPianoRoll())
+    {
+        paintPianoRollStrip (g, area, steps);
+        paintNoteGraph (g, area.withWidth (steps * stepWidth));
+        return;
+    }
 
     for (int s = 0; s < steps; ++s)
     {
@@ -206,7 +212,7 @@ void ChannelRow::paint (juce::Graphics& g)
                                           stepWidth, getHeight()).reduced (2, 4);
 
         const bool evenGroup = ((s / 4) % 2) == 0;
-        const bool on = ! pianoRoll && isStepOn (s);
+        const bool on = isStepOn (s);
 
         juce::Colour c = on ? (evenGroup ? theme::stepOn : theme::stepOnDim)
                             : (evenGroup ? theme::stepEvenBg : theme::stepOddBg);
@@ -222,9 +228,41 @@ void ChannelRow::paint (juce::Graphics& g)
             g.drawRoundedRectangle (cell.toFloat(), 3.0f, 1.0f);
         }
     }
+}
 
-    if (pianoRoll)
-        paintNoteGraph (g, area.withWidth (steps * stepWidth));
+// Piano-roll lanes get a continuous sunken strip — visibly not a row of step
+// cells — with beat ticks for time reference and a soft playhead band.
+void ChannelRow::paintPianoRollStrip (juce::Graphics& g, juce::Rectangle<int> area, int steps) const
+{
+    const auto strip = juce::Rectangle<int> (area.getX(), area.getY(),
+                                             steps * stepWidth, getHeight()).reduced (2, 4);
+    const auto stripF = strip.toFloat();
+
+    g.setColour (theme::sunken);
+    g.fillRoundedRectangle (stripF, 3.0f);
+
+    // Faint key-lane stripes so the strip reads as a miniature roll.
+    g.setColour (juce::Colours::white.withAlpha (0.025f));
+    for (int y = strip.getY() + 3; y < strip.getBottom() - 2; y += 6)
+        g.fillRect (strip.getX() + 1, y, strip.getWidth() - 2, 3);
+
+    // Beat lines (every 4 steps), bar lines a touch stronger.
+    for (int s = 4; s < steps; s += 4)
+    {
+        const int x = area.getX() + s * stepWidth;
+        g.setColour (theme::outlineLight.withAlpha (s % 16 == 0 ? 0.5f : 0.25f));
+        g.drawVerticalLine (x, stripF.getY() + 1, stripF.getBottom() - 1);
+    }
+
+    if (playStep >= 0)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.06f));
+        g.fillRect (juce::Rectangle<int> (area.getX() + playStep * stepWidth, strip.getY(),
+                                          stepWidth, strip.getHeight()));
+    }
+
+    g.setColour (theme::outline);
+    g.drawRoundedRectangle (stripF, 3.0f, 1.0f);
 }
 
 void ChannelRow::resized()

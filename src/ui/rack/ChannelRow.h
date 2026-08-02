@@ -50,6 +50,7 @@ private:
     bool isStepOn (int step) const;
     void setStep (int step, bool on);
     void paintNoteGraph (juce::Graphics&, juce::Rectangle<int> area) const;
+    void paintPianoRollStrip (juce::Graphics&, juce::Rectangle<int> area, int steps) const;
 
     ProjectModel& model;
     juce::ValueTree channel;
