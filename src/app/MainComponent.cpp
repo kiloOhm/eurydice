@@ -258,7 +258,15 @@ MainComponent::MainComponent()
     transportBar.setMetronomeLevelDisplay (services.engine.getMetronomeLevel());
 
     // --- panels ---
-    browser = std::make_unique<BrowserPanel> (services);
+    {
+        auto browserPanel = std::make_unique<BrowserPanel> (services);
+        browserPanel->onOpenProject = [this] (const juce::File& file)
+        {
+            if (okToCloseProject ("opening another project"))
+                loadProjectFile (file);
+        };
+        browser = std::move (browserPanel);
+    }
     addAndMakeVisible (*browser);
 
     browserWidth = settings->getIntValue ("browserWidth", 240);

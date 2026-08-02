@@ -186,3 +186,32 @@ TEST (PluginHosting, EditorShellPianoToggle)
     shell.setPianoVisible (false);
     EXPECT_EQ (shell.getHeight(), closedHeight);
 }
+
+TEST (PluginHosting, DedupeFormatsPrefersVst3OverAu)
+{
+    juce::Array<juce::PluginDescription> list;
+    const auto make = [] (const char* name, const char* maker, const char* format)
+    {
+        juce::PluginDescription d;
+        d.name = name;
+        d.manufacturerName = maker;
+        d.pluginFormatName = format;
+        d.isInstrument = true;
+        return d;
+    };
+    list.add (make ("OTT", "Xfer Records", "AudioUnit"));
+    list.add (make ("OTT", "Xfer Records", "VST3"));
+    list.add (make ("Supermassive", "Valhalla DSP", "VST3"));
+    list.add (make ("Supermassive", "Valhalla DSP", "AudioUnit"));
+    list.add (make ("AUDelay", "Apple", "AudioUnit"));       // AU-only survives
+    list.add (make ("OTT", "Someone Else", "AudioUnit"));    // same name, other maker: kept
+
+    const auto deduped = PluginManager::dedupeFormats (list);
+    ASSERT_EQ (deduped.size(), 4);
+    EXPECT_EQ (deduped[0].name, "OTT");
+    EXPECT_EQ (deduped[0].pluginFormatName, "VST3");     // upgraded in place
+    EXPECT_EQ (deduped[1].pluginFormatName, "VST3");     // first-seen VST3 kept
+    EXPECT_EQ (deduped[2].name, "AUDelay");
+    EXPECT_EQ (deduped[2].pluginFormatName, "AudioUnit");
+    EXPECT_EQ (deduped[3].manufacturerName, "Someone Else");
+}

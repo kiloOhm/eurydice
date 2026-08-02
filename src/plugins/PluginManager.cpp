@@ -95,6 +95,35 @@ juce::Array<juce::PluginDescription> PluginManager::getEffects() const
     return out;
 }
 
+juce::Array<juce::PluginDescription> PluginManager::dedupeFormats (
+    const juce::Array<juce::PluginDescription>& plugins)
+{
+    // Key on name + manufacturer: the same plugin usually registers both
+    // formats under identical strings. Prefer VST3; an AU only stays when no
+    // VST3 twin exists.
+    std::map<juce::String, juce::PluginDescription> byKey;
+    juce::StringArray order;
+    for (const auto& d : plugins)
+    {
+        const auto key = (d.name + "\n" + d.manufacturerName).toLowerCase();
+        auto it = byKey.find (key);
+        if (it == byKey.end())
+        {
+            byKey[key] = d;
+            order.add (key);
+        }
+        else if (it->second.pluginFormatName != "VST3" && d.pluginFormatName == "VST3")
+        {
+            it->second = d;
+        }
+    }
+
+    juce::Array<juce::PluginDescription> out;
+    for (const auto& key : order)
+        out.add (byKey[key]);
+    return out;
+}
+
 std::optional<juce::PluginDescription> PluginManager::findByIdentifier (const juce::String& identifier) const
 {
     for (const auto& d : knownPlugins.getTypes())

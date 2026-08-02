@@ -227,7 +227,7 @@ void ChannelRackPanel::showAddChannelMenu()
     menu.addItem (2, "Synth channel (built-in)");
     menu.addItem (4, "Kick synth channel");
 
-    const auto instruments = services.plugins.getInstruments();
+    const auto instruments = services.plugins.getInstrumentsForDisplay();
     juce::PopupMenu instrumentMenu;
     for (int i = 0; i < instruments.size(); ++i)
         instrumentMenu.addItem (1000 + i, instruments[i].name + "  (" + instruments[i].pluginFormatName + ")");

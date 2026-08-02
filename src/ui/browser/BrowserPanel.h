@@ -5,14 +5,19 @@
 #include "app/AppServices.h"
 
 // FL-style left browser: Samples tab (folder tree, click to preview,
-// double-click to add as sampler channel) and Plugins tab (search + list,
-// double-click instrument to add it to the rack).
+// double-click to add as sampler channel), Plugins tab (search + list,
+// double-click instrument to add it to the rack) and Projects tab (recent
+// projects, double-click to open).
 class BrowserPanel : public juce::Component,
                      private juce::FileBrowserListener
 {
 public:
     explicit BrowserPanel (AppServices&);
     ~BrowserPanel() override;
+
+    // Set by the host window: open a project file (with the usual dirty-check
+    // and recent-list bookkeeping, which live there).
+    std::function<void (const juce::File&)> onOpenProject;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -38,9 +43,21 @@ private:
     };
     void refreshPluginFilter();
 
+    // --- projects tab ---
+    struct RecentListModel : juce::ListBoxModel
+    {
+        BrowserPanel& owner;
+        explicit RecentListModel (BrowserPanel& o) : owner (o) {}
+        int getNumRows() override { return owner.recentProjects.size(); }
+        void paintListBoxItem (int row, juce::Graphics&, int w, int h, bool selected) override;
+        void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override;
+    };
+    void refreshRecentProjects();
+
     AppServices& services;
 
-    juce::TextButton samplesTab { "Samples" }, pluginsTab { "Plugins" };
+    juce::TextButton samplesTab { "Samples" }, pluginsTab { "Plugins" },
+                     projectsTab { "Projects" };
 
     // samples
     juce::TimeSliceThread scanThread { "BrowserScan" };
@@ -64,7 +81,13 @@ private:
     PluginListModel pluginModel { *this };
     juce::Array<juce::PluginDescription> filteredPlugins;
 
-    bool showingSamples = true;
+    // projects
+    juce::ListBox recentList;
+    RecentListModel recentModel { *this };
+    juce::Array<juce::File> recentProjects;
+
+    enum class Tab { samples, plugins, projects };
+    Tab activeTab = Tab::samples;
     std::unique_ptr<juce::PropertiesFile> settings;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BrowserPanel)

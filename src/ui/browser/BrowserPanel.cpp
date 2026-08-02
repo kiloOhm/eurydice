@@ -13,7 +13,7 @@ BrowserPanel::BrowserPanel (AppServices& s)
     settings = std::make_unique<juce::PropertiesFile> (opts);
 
     // tabs
-    for (auto* tab : { &samplesTab, &pluginsTab })
+    for (auto* tab : { &samplesTab, &pluginsTab, &projectsTab })
     {
         tab->setClickingTogglesState (true);
         tab->setRadioGroupId (200);
@@ -21,8 +21,15 @@ BrowserPanel::BrowserPanel (AppServices& s)
         addAndMakeVisible (tab);
     }
     samplesTab.setToggleState (true, juce::dontSendNotification);
-    samplesTab.onClick = [this] { showingSamples = true;  resized(); repaint(); };
-    pluginsTab.onClick = [this] { showingSamples = false; refreshPluginFilter(); resized(); repaint(); };
+    samplesTab.onClick  = [this] { activeTab = Tab::samples;  resized(); repaint(); };
+    pluginsTab.onClick  = [this] { activeTab = Tab::plugins;  refreshPluginFilter(); resized(); repaint(); };
+    projectsTab.onClick = [this] { activeTab = Tab::projects; refreshRecentProjects(); resized(); repaint(); };
+
+    // --- projects ---
+    recentList.setModel (&recentModel);
+    recentList.setRowHeight (34);
+    recentList.setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
+    addChildComponent (recentList);
 
     // --- samples ---
     scanThread.startThread();
@@ -162,7 +169,7 @@ void BrowserPanel::refreshPluginFilter()
 {
     filteredPlugins.clear();
     const auto needle = searchBox.getText().trim();
-    for (const auto& d : services.plugins.getKnownPlugins().getTypes())
+    for (const auto& d : PluginManager::dedupeFormats (services.plugins.getKnownPlugins().getTypes()))
         if (needle.isEmpty() || d.name.containsIgnoreCase (needle)
             || d.manufacturerName.containsIgnoreCase (needle))
             filteredPlugins.add (d);
@@ -215,17 +222,21 @@ void BrowserPanel::resized()
 {
     auto r = getLocalBounds().reduced (4);
     auto tabs = r.removeFromTop (24);
-    samplesTab.setBounds (tabs.removeFromLeft (tabs.getWidth() / 2));
-    pluginsTab.setBounds (tabs);
+    samplesTab.setBounds (tabs.removeFromLeft (tabs.getWidth() / 3));
+    pluginsTab.setBounds (tabs.removeFromLeft (tabs.getWidth() / 2));
+    projectsTab.setBounds (tabs);
     r.removeFromTop (4);
 
-    const bool samples = showingSamples;
+    const bool samples  = activeTab == Tab::samples;
+    const bool plugins  = activeTab == Tab::plugins;
+    const bool projects = activeTab == Tab::projects;
     fileTree->setVisible (samples);
     folderBox.setVisible (samples);
     addFolderButton.setVisible (samples);
-    searchBox.setVisible (! samples);
-    scanButton.setVisible (! samples);
-    pluginList.setVisible (! samples);
+    searchBox.setVisible (plugins);
+    scanButton.setVisible (plugins);
+    pluginList.setVisible (plugins);
+    recentList.setVisible (projects);
 
     if (samples)
     {
@@ -235,11 +246,61 @@ void BrowserPanel::resized()
         r.removeFromTop (4);
         fileTree->setBounds (r);
     }
-    else
+    else if (plugins)
     {
         searchBox.setBounds (r.removeFromTop (24));
         r.removeFromTop (4);
         scanButton.setBounds (r.removeFromBottom (26));
         pluginList.setBounds (r);
     }
+    else
+    {
+        recentList.setBounds (r);
+    }
+}
+
+// ---------------- projects tab ----------------
+
+void BrowserPanel::refreshRecentProjects()
+{
+    // Same settings key MainComponent maintains; reread on every visit so the
+    // list follows loads and saves without extra plumbing.
+    settings->reload();
+    juce::RecentlyOpenedFilesList recent;
+    recent.restoreFromString (settings->getValue ("recentFiles"));
+    recent.removeNonExistentFiles();
+
+    recentProjects.clear();
+    for (int i = 0; i < recent.getNumFiles(); ++i)
+        recentProjects.add (recent.getFile (i));
+    recentList.updateContent();
+    recentList.repaint();
+}
+
+void BrowserPanel::RecentListModel::paintListBoxItem (int row, juce::Graphics& g,
+                                                      int w, int h, bool selected)
+{
+    if (row < 0 || row >= owner.recentProjects.size())
+        return;
+    const auto& file = owner.recentProjects.getReference (row);
+
+    if (selected)
+    {
+        g.setColour (theme::raised);
+        g.fillRect (0, 0, w, h);
+    }
+    g.setColour (theme::textPrimary);
+    g.setFont (theme::uiFont (12.5f));
+    g.drawText (file.getFileNameWithoutExtension(), 8, 2, w - 12, 16,
+                juce::Justification::centredLeft);
+    g.setColour (theme::textFaint);
+    g.setFont (theme::uiFont (10.0f));
+    g.drawText (file.getParentDirectory().getFullPathName(), 8, 17, w - 12, 14,
+                juce::Justification::centredLeft);
+}
+
+void BrowserPanel::RecentListModel::listBoxItemDoubleClicked (int row, const juce::MouseEvent&)
+{
+    if (row >= 0 && row < owner.recentProjects.size() && owner.onOpenProject)
+        owner.onOpenProject (owner.recentProjects.getReference (row));
 }

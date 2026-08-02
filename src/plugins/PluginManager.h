@@ -20,6 +20,13 @@ public:
 
     juce::Array<juce::PluginDescription> getInstruments() const;
     juce::Array<juce::PluginDescription> getEffects() const;
+
+    // UI lists show one entry per plugin even when both a VST3 and an AU are
+    // installed: VST3 wins, the AU stays reachable through the full lists
+    // (and keeps loading in projects that reference it).
+    static juce::Array<juce::PluginDescription> dedupeFormats (const juce::Array<juce::PluginDescription>&);
+    juce::Array<juce::PluginDescription> getInstrumentsForDisplay() const { return dedupeFormats (getInstruments()); }
+    juce::Array<juce::PluginDescription> getEffectsForDisplay() const     { return dedupeFormats (getEffects()); }
     std::optional<juce::PluginDescription> findByIdentifier (const juce::String& identifierString) const;
 
     // Asynchronous instantiation (AU requires it). Callback runs on the

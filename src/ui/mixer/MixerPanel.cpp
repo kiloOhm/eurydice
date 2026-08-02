@@ -469,7 +469,7 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
         builtinList.addItem (2000 + i, builtins[(size_t) i].name);
     menu.addSubMenu ("Built-in", builtinList);
 
-    const auto plugins = services.plugins.getEffects();
+    const auto plugins = services.plugins.getEffectsForDisplay();
     juce::PopupMenu pluginList;
     for (int i = 0; i < plugins.size(); ++i)
         pluginList.addItem (1000 + i, plugins[i].name + "  (" + plugins[i].pluginFormatName + ")");
