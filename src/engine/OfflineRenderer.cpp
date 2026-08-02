@@ -373,7 +373,7 @@ struct StatAccumulator
 
     void flushFft()
     {
-        std::array<float, fftSize * 2> data {};
+        std::array<float, (size_t) fftSize * 2> data {};
         for (int i = 0; i < fillCount; ++i)
             data[(size_t) i] = fill[(size_t) i] * window[(size_t) i];
         fillCount = 0;
@@ -395,7 +395,7 @@ struct StatAccumulator
         OfflineRenderer::TargetStats stats;
         stats.peakDb = juce::Decibels::gainToDecibels (peak, -120.0f);
         stats.rmsDb = juce::Decibels::gainToDecibels (
-            (float) std::sqrt (sumSquares / juce::jmax<juce::int64> (1, samples)), -120.0f);
+            (float) std::sqrt (sumSquares / (double) juce::jmax<juce::int64> (1, samples)), -120.0f);
 
         double total = 0.0;
         std::array<double, 5> bands {};
