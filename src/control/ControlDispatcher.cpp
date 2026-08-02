@@ -459,6 +459,21 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         slotTree.setProperty (ids::pluginId, pluginId, &undo);
         if (builtin != nullptr)
             BuiltinEffect::writeDefaults (slotTree, builtin->specs, &undo);
+
+        // Optional per-parameter overrides, e.g. {"fxThreshold": -30}. Only
+        // ids the effect declares are accepted, so typos fail loudly.
+        if (builtin != nullptr && has (params, "params"))
+        {
+            if (auto* overrides = getOr (params, "params", {}).getDynamicObject())
+                for (const auto& prop : overrides->getProperties())
+                {
+                    const bool known = std::any_of (builtin->specs.begin(), builtin->specs.end(),
+                        [&prop] (const fx::ParamSpec& spec) { return spec.id == prop.name; });
+                    if (! known)
+                        throw ControlError { "unknown effect param: " + prop.name.toString() };
+                    slotTree.setProperty (prop.name, prop.value, &undo);
+                }
+        }
         return true;
     }
     if (method == "mixer.removeEffect")

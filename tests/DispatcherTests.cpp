@@ -443,3 +443,20 @@ TEST_F (DispatcherFixture, EachCallIsItsOwnUndoStep)
     EXPECT_DOUBLE_EQ ((double) channel[ids::volume], 0.5);
     EXPECT_DOUBLE_EQ ((double) channel[ids::pan], 0.0);
 }
+
+TEST_F (DispatcherFixture, SetEffectAppliesParamOverridesAndRejectsUnknown)
+{
+    auto result = call ("mixer.setEffect",
+                        R"({"insert": 1, "slot": 0, "pluginId": "builtin:compressor",
+                            "params": {"fxThreshold": -30.0, "fxRatio": 8.0}})");
+    EXPECT_TRUE ((bool) result);
+
+    auto slot = services.project.getInsert (1).getChildWithName (ids::SLOT);
+    ASSERT_TRUE (slot.isValid());
+    EXPECT_DOUBLE_EQ ((double) slot[ids::fxThreshold], -30.0);
+    EXPECT_DOUBLE_EQ ((double) slot[ids::fxRatio], 8.0);
+
+    EXPECT_CONTROL_ERROR (call ("mixer.setEffect",
+                                R"({"insert": 1, "slot": 0, "pluginId": "builtin:compressor",
+                                    "params": {"fxTypoedParam": 1.0}})"));
+}

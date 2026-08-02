@@ -197,8 +197,9 @@ tool("daw_mixer_set_insert", "Set insert volume/pan/mute/name. Insert 0 is the m
 tool("daw_mixer_add_send", "Route one insert into another (bus/sidechain routing). level 0..1.25.",
   { from: z.number(), to: z.number(), level: z.number().optional() }, "mixer.addSend");
 
-tool("daw_mixer_set_effect", "Load an effect plugin (pluginId from daw_plugins_list) into an insert slot (0-9).",
-  { insert: z.number(), slot: z.number(), pluginId: z.string() }, "mixer.setEffect");
+tool("daw_mixer_set_effect", "Load an effect plugin (pluginId from daw_plugins_list) into an insert slot (0-9). For built-ins, params overrides individual fx* parameters (e.g. {\"fxThreshold\": -30, \"fxSidechain\": 1}) — unknown ids are rejected.",
+  { insert: z.number(), slot: z.number(), pluginId: z.string(),
+    params: z.record(z.string(), z.union([z.number(), z.boolean()])).optional() }, "mixer.setEffect");
 
 tool("daw_mixer_remove_effect", "Remove the effect in an insert slot.",
   { insert: z.number(), slot: z.number() }, "mixer.removeEffect");
