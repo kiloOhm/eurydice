@@ -5,6 +5,7 @@
 #include "GeneratorPool.h"
 #include "model/ProjectModel.h"
 #include "plugins/EffectPool.h"
+#include "effects/BuiltinEffectPool.h"
 #include "AudioClipCache.h"
 
 // Watches the project ValueTree and rebuilds + publishes an EngineSnapshot
@@ -13,7 +14,8 @@ class EngineSync : private juce::ValueTree::Listener,
                    private juce::AsyncUpdater
 {
 public:
-    EngineSync (ProjectModel&, GeneratorPool&, EffectPool&, AudioClipCache&, AudioEngine&);
+    EngineSync (ProjectModel&, GeneratorPool&, EffectPool&, BuiltinEffectPool&,
+                AudioClipCache&, AudioEngine&);
     ~EngineSync() override;
 
     void rebuildNow();   // synchronous rebuild+publish (used at startup / after load)
@@ -33,6 +35,7 @@ private:
     ProjectModel& model;
     GeneratorPool& generators;
     EffectPool& effects;
+    BuiltinEffectPool& builtins;
     AudioClipCache& audioClips;
     AudioEngine& engine;
     juce::ValueTree observedRoot;

@@ -92,8 +92,9 @@ public:
 
     // --- Automation ---
     // targetType: "channel" | "insert" | "plugin-channel" | "plugin-insert"
+    //           | "builtin-insert"
     // paramId: "volume"/"pan" for internal targets; "<slot>:<paramIndex>" or
-    // "<paramIndex>" for plugin targets.
+    // "<paramIndex>" for plugin targets; "<slot>:<propertyName>" for built-ins.
     juce::ValueTree addAutomation (const juce::String& targetType, int targetId,
                                    const juce::String& paramId, const juce::String& name,
                                    double initialValue);

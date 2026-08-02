@@ -33,6 +33,19 @@ hardcore / frenchcore.
   linear-to-exponential gain envelope shape. There is also a dedicated `kick`
   channel type — swept sine/triangle body, click and noise layers, drive — in
   the rack's add-channel menu and over the control API.
+- ~~Built-in effects~~ — clipper (4 curves, up to 8x oversampling), filter
+  (LP/HP/BP with envelope follower and tempo-synced LFO), 4-band parametric EQ
+  with HP/LP sweeps, compressor with an external sidechain, tempo-synced
+  ping-pong delay and an algorithmic reverb. Under "Built-in" in the mixer's
+  slot menu; parameters live on the SLOT tree, so they save, undo and automate
+  like everything else.
+- **Sidechain ducking presets.** The compressor takes any insert as its
+  sidechain source, but there is still no one-click "duck this bus from the
+  kick" — you pick the source from a combo in the compressor editor.
+- **Kick design tooling.** For hardcore/frenchcore the kick *is* the track.
+  The sampler needs sample-start offset, a pitch envelope (for the classic
+  downward kick tail), reverse, and a distortion stage. A dedicated kick
+  synth channel would be better still.
 - **Time-stretch modes.** Rubber Band is wired for offline stretching only;
   no per-clip formant/transient options, and no realtime stretch.
 

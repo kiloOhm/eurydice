@@ -45,6 +45,8 @@ private:
     void rebuildDetail();
     void showSendMenu();
     void showEffectSlotMenu (int slotIndex);
+    void showEditorForSlot (int slotIndex);
+    void clearSlot (int slotIndex);
     void showStripMenu (int insertIndex);
     void showKnobMenu (int insertIndex, const juce::Identifier& prop);
     void knobMoved (int insertIndex, const juce::Identifier& prop);

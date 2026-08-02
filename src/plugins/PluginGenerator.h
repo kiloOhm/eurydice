@@ -34,7 +34,7 @@ public:
     void reset() override
     {
         if (auto p = getPlugin())
-            p->resetPlayback();
+            p->reset();
     }
 
     // Message thread.

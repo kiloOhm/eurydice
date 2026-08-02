@@ -4,8 +4,8 @@
 #include <map>
 
 EngineSync::EngineSync (ProjectModel& m, GeneratorPool& g, EffectPool& fx,
-                        AudioClipCache& ac, AudioEngine& e)
-    : model (m), generators (g), effects (fx), audioClips (ac), engine (e)
+                        BuiltinEffectPool& builtinFx, AudioClipCache& ac, AudioEngine& e)
+    : model (m), generators (g), effects (fx), builtins (builtinFx), audioClips (ac), engine (e)
 {
     attachToProject();
 }
@@ -144,9 +144,16 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
             const auto pluginId = slot[ids::pluginId].toString();
             if (pluginId.isEmpty())
                 continue;
-            if (auto effect = effects.getReady (i, slot[ids::slotIndex], pluginId,
-                                                slot[ids::pluginState].toString()))
+            if (fx::isBuiltinId (pluginId))
+            {
+                if (auto effect = builtins.getReady (i, slot[ids::slotIndex], pluginId, slot))
+                    is.effects.push_back (std::move (effect));
+            }
+            else if (auto effect = effects.getReady (i, slot[ids::slotIndex], pluginId,
+                                                     slot[ids::pluginState].toString()))
+            {
                 is.effects.push_back (std::move (effect));
+            }
         }
 
         snap->inserts.push_back (std::move (is));
@@ -246,6 +253,22 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
                             as.keepAlive = hosted;
                             valid = true;
                         }
+                    }
+        }
+        else if (targetType == "builtin-insert")
+        {
+            const int slot = paramId.upToFirstOccurrenceOf (":", false, false).getIntValue();
+            const auto name = paramId.fromFirstOccurrenceOf (":", false, false);
+            if (auto effect = builtins.peek (targetId, slot))
+                for (const auto& spec : effect->getParamSpecs())
+                    if (spec.id.toString() == name)
+                    {
+                        as.kind = AutomationSnapshot::Kind::builtinParam;
+                        as.builtinEffect = effect.get();
+                        as.builtinSpec = &spec;
+                        as.keepAlive = effect;
+                        valid = true;
+                        break;
                     }
         }
         else if (targetType == "plugin-insert")

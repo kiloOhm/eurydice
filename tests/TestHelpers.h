@@ -8,6 +8,7 @@
 #include "engine/AudioClipCache.h"
 #include "plugins/PluginManager.h"
 #include "plugins/EffectPool.h"
+#include "effects/BuiltinEffectPool.h"
 
 namespace test
 {
@@ -22,9 +23,10 @@ struct EngineFixture
     PluginManager plugins;
     GeneratorPool generators;
     EffectPool effects { plugins };
+    BuiltinEffectPool builtinEffects;
     AudioClipCache audioClips;
     AudioEngine engine;
-    EngineSync sync { model, generators, effects, audioClips, engine };
+    EngineSync sync { model, generators, effects, builtinEffects, audioClips, engine };
 
     EngineFixture()
     {
@@ -32,6 +34,7 @@ struct EngineFixture
         effects.onInstanceReady = [this] { sync.rebuildNow(); };
         generators.setAudioSpec (kSampleRate, kBlockSize);
         effects.setAudioSpec (kSampleRate, kBlockSize);
+        builtinEffects.setAudioSpec (kSampleRate, kBlockSize);
         audioClips.setEngineSampleRate (kSampleRate);
         engine.prepareOffline (kSampleRate, kBlockSize);
         sync.rebuildNow();

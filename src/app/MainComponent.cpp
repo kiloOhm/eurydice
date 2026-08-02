@@ -313,6 +313,36 @@ MainComponent::MainComponent()
         });
     }
 
+    // EURYDICE_FX_EDITOR=<insert>:<slot>:<builtin id> fills that slot and opens
+    // its editor window.
+    const auto fxEditor = juce::SystemStats::getEnvironmentVariable ("EURYDICE_FX_EDITOR", "");
+    if (fxEditor.isNotEmpty())
+    {
+        juce::Timer::callAfterDelay (400, [this, fxEditor]
+        {
+            juce::StringArray parts;
+            parts.addTokens (fxEditor, ":", "");
+            if (parts.size() < 4)
+                return;
+            const int insertIndex = parts[0].getIntValue();
+            const int slotIndex = parts[1].getIntValue();
+            const auto* entry = fx::findBuiltin (parts[2] + ":" + parts[3]);
+            auto insert = services.project.getInsert (insertIndex);
+            if (entry == nullptr || ! insert.isValid())
+                return;
+
+            juce::ValueTree slot (ids::SLOT);
+            slot.setProperty (ids::slotIndex, slotIndex, nullptr);
+            slot.setProperty (ids::bypass, false, nullptr);
+            slot.setProperty (ids::pluginId, entry->id, nullptr);
+            BuiltinEffect::writeDefaults (slot, entry->specs, nullptr);
+            insert.appendChild (slot, nullptr);
+
+            services.builtinEditors.show (services.project, slot, *entry, insertIndex, slotIndex,
+                                          insert[ids::name].toString() + " / " + entry->name);
+        });
+    }
+
     const auto shotPath = juce::SystemStats::getEnvironmentVariable ("EURYDICE_SCREENSHOT", "");
     if (shotPath.isNotEmpty())
     {

@@ -202,10 +202,14 @@ void MixerPanel::rebuildDetail()
     {
         auto slotTree = getSlotTree (selectedInsert, slot, false);
         juce::String label = "---";
-        if (slotTree.isValid() && slotTree[ids::pluginId].toString().isNotEmpty())
+        const auto pluginId = slotTree.isValid() ? slotTree[ids::pluginId].toString() : juce::String();
+        if (pluginId.isNotEmpty())
         {
-            if (auto desc = services.plugins.findByIdentifier (slotTree[ids::pluginId].toString()))
-                label = ((bool) slotTree[ids::bypass] ? "[off] " : "") + desc->name;
+            const juce::String prefix = (bool) slotTree[ids::bypass] ? "[off] " : "";
+            if (const auto* builtin = fx::findBuiltin (pluginId))
+                label = prefix + builtin->name;
+            else if (auto desc = services.plugins.findByIdentifier (pluginId))
+                label = prefix + desc->name;
             else
                 label = "(missing)";
         }
@@ -283,10 +287,20 @@ void MixerPanel::showStripMenu (int insertIndex)
     automationMenu.addItem (1, "Volume");
     automationMenu.addItem (2, "Pan");
 
-    // Plugin params for each filled slot.
+    // Effect params for each filled slot: built-ins first, then hosted plugins.
     for (int slot = 0; slot < 10; ++slot)
     {
-        if (auto hosted = services.effects.peek (insertIndex, slot))
+        if (auto builtin = services.builtinEffects.peek (insertIndex, slot))
+        {
+            juce::PopupMenu paramMenu;
+            const auto& params = builtin->getParamSpecs();
+            for (int i = 0; i < (int) params.size(); ++i)
+                if (params[(size_t) i].choices.isEmpty() && ! params[(size_t) i].insertChooser)
+                    paramMenu.addItem (5000 + slot * 100 + i, params[(size_t) i].name);
+            const auto* entry = fx::findBuiltin (getSlotTree (insertIndex, slot, false)[ids::pluginId].toString());
+            automationMenu.addSubMenu (entry != nullptr ? entry->name : juce::String ("Built-in"), paramMenu);
+        }
+        else if (auto hosted = services.effects.peek (insertIndex, slot))
         {
             juce::PopupMenu paramMenu;
             const auto& params = hosted->getInstance()->getParameters();
@@ -313,6 +327,25 @@ void MixerPanel::showStripMenu (int insertIndex)
         else if (result == 2)
             services.createAutomationWithClip ("insert", insertIndex, "pan",
                 insertName + " pan", ((double) ins[ids::pan] + 1.0) * 0.5);
+        else if (result >= 5000)
+        {
+            const int slot = (result - 5000) / 100;
+            const int paramIndex = (result - 5000) % 100;
+            auto builtin = services.builtinEffects.peek (insertIndex, slot);
+            if (builtin == nullptr)
+                return;
+            const auto& params = builtin->getParamSpecs();
+            if (paramIndex < 0 || paramIndex >= (int) params.size())
+                return;
+
+            const auto& spec = params[(size_t) paramIndex];
+            const juce::NormalisableRange<double> range (spec.minValue, spec.maxValue, 0.0, spec.skew);
+            const double current = (double) getSlotTree (insertIndex, slot, false)
+                                       .getProperty (spec.id, spec.defaultValue);
+            services.createAutomationWithClip ("builtin-insert", insertIndex,
+                juce::String (slot) + ":" + spec.id.toString(),
+                insertName + " " + spec.name, range.convertTo0to1 (current));
+        }
         else if (result >= 1000)
         {
             const int slot = (result - 1000) / 100;
@@ -363,17 +396,23 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
         menu.addSeparator();
     }
 
-    const auto fx = services.plugins.getEffects();
+    const auto& builtins = fx::builtinEffects();
+    juce::PopupMenu builtinList;
+    for (int i = 0; i < (int) builtins.size(); ++i)
+        builtinList.addItem (2000 + i, builtins[(size_t) i].name);
+    menu.addSubMenu ("Built-in", builtinList);
+
+    const auto plugins = services.plugins.getEffects();
     juce::PopupMenu pluginList;
-    for (int i = 0; i < fx.size(); ++i)
-        pluginList.addItem (1000 + i, fx[i].name + "  (" + fx[i].pluginFormatName + ")");
-    menu.addSubMenu (filled ? "Replace with" : "Select effect", pluginList, fx.size() > 0);
+    for (int i = 0; i < plugins.size(); ++i)
+        pluginList.addItem (1000 + i, plugins[i].name + "  (" + plugins[i].pluginFormatName + ")");
+    menu.addSubMenu (filled ? "Replace with plugin" : "Plugins", pluginList, plugins.size() > 0);
     menu.addSeparator();
     menu.addItem (4, services.plugins.isScanning() ? "Scanning..." : "Scan for plugins...",
                   ! services.plugins.isScanning());
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (effectSlots[(size_t) slotIndex]),
-        [this, slotIndex, fx] (int result)
+        [this, slotIndex, plugins] (int result)
         {
             if (result == 0)
                 return;
@@ -381,10 +420,7 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
 
             if (result == 1)
             {
-                if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
-                    services.pluginWindows.showEditorFor (plugin,
-                        insertTree (selectedInsert)[ids::name].toString()
-                        + " / " + plugin->getDescription().name);
+                showEditorForSlot (slotIndex);
             }
             else if (result == 2)
             {
@@ -396,9 +432,7 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
             else if (result == 3)
             {
                 const undoGesture::Scoped step (services.project, "Remove effect");
-                if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
-                    services.pluginWindows.closeFor (plugin.get());
-                services.effects.remove (selectedInsert, slotIndex);
+                clearSlot (slotIndex);
                 auto slot = getSlotTree (selectedInsert, slotIndex, false);
                 if (slot.isValid())
                     slot.getParent().removeChild (slot, &undo);
@@ -408,19 +442,58 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
             {
                 services.plugins.startScan ([this] { rebuildDetail(); });
             }
+            else if (result >= 2000)
+            {
+                const auto& builtin = fx::builtinEffects()[(size_t) (result - 2000)];
+                clearSlot (slotIndex);
+                auto slot = getSlotTree (selectedInsert, slotIndex, true);
+                slot.setProperty (ids::pluginId, builtin.id, &undo);
+                slot.setProperty (ids::pluginState, juce::String(), nullptr);
+                BuiltinEffect::writeDefaults (slot, builtin.specs, &undo);
+                rebuildDetail();
+            }
             else if (result >= 1000)
             {
-                const auto desc = fx[result - 1000];
+                const auto desc = plugins[result - 1000];
                 const undoGesture::Scoped step (services.project, "Add effect");
-                if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
-                    services.pluginWindows.closeFor (plugin.get());
-                services.effects.remove (selectedInsert, slotIndex);
+                clearSlot (slotIndex);
                 auto slot = getSlotTree (selectedInsert, slotIndex, true);
                 slot.setProperty (ids::pluginId, desc.createIdentifierString(), &undo);
                 slot.setProperty (ids::pluginState, juce::String(), nullptr);
                 rebuildDetail();
             }
         });
+}
+
+// Drops whatever the slot currently holds — instance, editor window and all.
+void MixerPanel::clearSlot (int slotIndex)
+{
+    if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
+        services.pluginWindows.closeFor (plugin.get());
+    services.builtinEditors.closeFor (selectedInsert, slotIndex);
+    services.effects.remove (selectedInsert, slotIndex);
+    services.builtinEffects.remove (selectedInsert, slotIndex);
+}
+
+void MixerPanel::showEditorForSlot (int slotIndex)
+{
+    auto slot = getSlotTree (selectedInsert, slotIndex, false);
+    if (! slot.isValid())
+        return;
+
+    const auto insertName = insertTree (selectedInsert)[ids::name].toString();
+    const auto pluginId = slot[ids::pluginId].toString();
+
+    if (const auto* builtin = fx::findBuiltin (pluginId))
+    {
+        services.builtinEditors.show (services.project, slot, *builtin, selectedInsert, slotIndex,
+                                      insertName + " / " + builtin->name);
+        return;
+    }
+
+    if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
+        services.pluginWindows.showEditorFor (plugin, insertName + " / "
+                                                          + plugin->getDescription().name);
 }
 
 void MixerPanel::showSendMenu()
@@ -454,12 +527,20 @@ void MixerPanel::showSendMenu()
         });
 }
 
-void MixerPanel::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier&)
+void MixerPanel::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property)
 {
     if (tree.hasType (ids::INSERT))
+    {
         for (auto& strip : strips)
             if (insertTree (strip->insertIndex) == tree)
                 strip->refresh();
+    }
+    // Only the two properties the slot buttons show — parameter tweaks land on
+    // the same tree and must not drag a full rebuild along with them.
+    else if (tree.hasType (ids::SLOT) && (property == ids::pluginId || property == ids::bypass))
+    {
+        rebuildDetail();
+    }
 }
 
 void MixerPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& child)
