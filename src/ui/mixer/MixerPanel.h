@@ -61,9 +61,12 @@ private:
     AppServices& services;
     juce::ValueTree observedRoot;
 
+    void rebuildStrips();
+
     juce::Viewport stripViewport;
     juce::Component stripContainer;
     std::vector<std::unique_ptr<Strip>> strips;
+    juce::TextButton addInsertButton { "+" };
 
     // detail column
     int selectedInsert = 0;

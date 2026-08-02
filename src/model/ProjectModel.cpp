@@ -38,9 +38,11 @@ void ProjectModel::createDefaultProject()
     }
     root.appendChild (playlistTree, nullptr);
 
+    // Master + a handful of inserts; the mixer's "+" grows the row on demand
+    // (the engine preallocates buffers up to a generous cap, see addInsert).
     juce::ValueTree mixerTree (ids::MIXER);
     mixerTree.appendChild (makeInsert (0, "Master"), nullptr);
-    for (int i = 1; i <= 32; ++i)
+    for (int i = 1; i <= 8; ++i)
         mixerTree.appendChild (makeInsert (i, "Insert " + juce::String (i)), nullptr);
     root.appendChild (mixerTree, nullptr);
 

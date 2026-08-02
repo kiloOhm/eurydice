@@ -7,6 +7,10 @@
 
 namespace
 {
+// Menu id for "New insert" in both routing menus. Far above the per-insert
+// ids (1..128 and 1000..1128), so handle it before the range checks.
+constexpr int newInsertMenuId = 10000;
+
 // Channel volume is already 0..1; pan is -1..1 folded onto the same range the
 // engine unfolds again when it applies the curve.
 double channelKnobNormalised (const juce::ValueTree& channel, const juce::Identifier& prop)
@@ -352,10 +356,21 @@ void ChannelRackPanel::showInsertMenu (juce::ValueTree channel)
         const auto insert = services.project.getInsert (i);
         menu.addItem (i + 1, insert[ids::name].toString(), true, i == current);
     }
+    menu.addSeparator();
+    menu.addItem (newInsertMenuId, "New insert",
+                  services.project.numInserts() < ProjectModel::maxInserts);
 
     menu.showMenuAsync (juce::PopupMenu::Options().withMinimumWidth (160),
         [this, channel] (int result) mutable
         {
+            if (result == newInsertMenuId)
+            {
+                const undoGesture::Scoped step (services.project, "Route channel");
+                if (auto insert = services.project.addInsert(); insert.isValid())
+                    channel.setProperty (ids::insertIndex, services.project.numInserts() - 1,
+                                         &services.project.getUndoManager());
+                return;
+            }
             if (result > 0)
             {
                 const undoGesture::Scoped step (services.project, "Route channel");
@@ -373,6 +388,9 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
                             services.project.getInsert (i)[ids::name].toString(),
                             true,
                             (int) channel[ids::insertIndex] == i);
+    insertMenu.addSeparator();
+    insertMenu.addItem (newInsertMenuId, "New insert",
+                        services.project.numInserts() < ProjectModel::maxInserts);
 
     const auto& generatorParams = channelparams::forChannelType (channel[ids::type].toString());
 
@@ -475,6 +493,13 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
             services.createAutomationWithClip ("plugin-channel", channel[ids::id],
                 juce::String (paramIndex),
                 channel[ids::name].toString() + " " + paramName, current);
+        }
+        else if (result == newInsertMenuId)
+        {
+            const undoGesture::Scoped step (project, "Route channel");
+            if (auto insert = project.addInsert(); insert.isValid())
+                channel.setProperty (ids::insertIndex, project.numInserts() - 1,
+                                     &project.getUndoManager());
         }
         else if (result >= 1000)
         {

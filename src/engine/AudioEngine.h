@@ -105,7 +105,7 @@ public:
     int getBlockSize() const noexcept     { return blockSize; }
 
     static constexpr int maxChannels = 128;
-    static constexpr int maxInserts  = 33;   // master + 32
+    static constexpr int maxInserts  = 128;  // master + 127; ProjectModel::maxInserts must match
     static constexpr int maxActiveNotes = 512;
 
 private:

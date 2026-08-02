@@ -72,6 +72,10 @@ public:
     // way to catch "the engine is fine but nothing moves on screen" bugs.
     std::function<bool (const juce::File&)> onSnapshotRequested;
 
+    // Set by the host window: bring a named panel forward
+    // (playlist|rack|pianoroll|mixer|browser). Returns false for unknown names.
+    std::function<bool (const juce::String&)> onShowPanelRequested;
+
     // Captures live plugin state into the tree, then writes the file.
     bool saveProject (const juce::File& file)
     {

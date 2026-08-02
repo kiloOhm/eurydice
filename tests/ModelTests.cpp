@@ -7,7 +7,7 @@ TEST (ProjectModel, DefaultProjectShape)
     ProjectModel model;
     EXPECT_EQ (model.numChannels(), 4);
     EXPECT_EQ (model.numPatterns(), 1);
-    EXPECT_EQ (model.numInserts(), 33);
+    EXPECT_EQ (model.numInserts(), 9);
     EXPECT_EQ (model.numPlaylistTracks(), 24);
     EXPECT_DOUBLE_EQ (model.getTempo(), 140.0);
     EXPECT_FALSE (model.isSongMode());
@@ -476,4 +476,25 @@ TEST (ProjectModel, ChannelsRoutedToInsert)
     // Two channels on one insert: no unambiguous name.
     model.getChannel (1).setProperty (ids::insertIndex, 1, nullptr);
     EXPECT_EQ (model.channelsRoutedTo (1).size(), 2);
+}
+
+TEST (ProjectModel, AddInsertGrowsMixerUpToCap)
+{
+    ProjectModel model;
+    const int before = model.numInserts();
+
+    auto insert = model.addInsert();
+    ASSERT_TRUE (insert.isValid());
+    EXPECT_EQ (model.numInserts(), before + 1);
+    EXPECT_EQ ((int) insert[ids::id], before);
+    EXPECT_EQ (insert[ids::name].toString(), "Insert " + juce::String (before));
+    EXPECT_TRUE (insert.getChildWithName (ids::SENDS).isValid());
+
+    // Adding is one undoable step.
+    model.getUndoManager().undo();
+    EXPECT_EQ (model.numInserts(), before);
+
+    while (model.numInserts() < ProjectModel::maxInserts)
+        ASSERT_TRUE (model.addInsert().isValid());
+    EXPECT_FALSE (model.addInsert().isValid()) << "cap must hold";
 }

@@ -115,6 +115,20 @@ public:
     juce::ValueTree getInsert (int index) const { return mixer().getChild (index); }
     int numInserts() const                    { return mixer().getNumChildren(); }
 
+    // The engine preallocates buses up to this cap; the "+" buttons stop here.
+    static constexpr int maxInserts = 128;
+
+    // Appends a new insert (undoable). Returns an invalid tree at the cap.
+    juce::ValueTree addInsert()
+    {
+        const int index = numInserts();
+        if (index >= maxInserts)
+            return {};
+        auto insert = makeInsert (index, "Insert " + juce::String (index));
+        mixer().appendChild (insert, &undo);
+        return insert;
+    }
+
     // --- Persistence ---
     bool saveToFile (const juce::File&) const;
     bool loadFromFile (const juce::File&);

@@ -388,6 +388,15 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         }
         return inserts;
     }
+    if (method == "mixer.addInsert")
+    {
+        auto insert = project.addInsert();
+        if (! insert.isValid())
+            throw ControlError { "insert cap reached (" + juce::String (ProjectModel::maxInserts) + ")" };
+        if (has (params, "name"))
+            insert.setProperty (ids::name, getOr (params, "name", "").toString(), nullptr);
+        return makeObj ({ { "index", project.numInserts() - 1 } });
+    }
     if (method == "mixer.setInsert")
     {
         auto ins = project.getInsert ((int) getOr (params, "insert", -1));
@@ -477,6 +486,15 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     }
 
     // ---------- ui ----------
+    if (method == "ui.showPanel")
+    {
+        const auto panel = getOr (params, "panel", "").toString();
+        if (! services.onShowPanelRequested)
+            throw ControlError { "no window" };
+        if (! services.onShowPanelRequested (panel))
+            throw ControlError { "unknown panel: " + panel + " (playlist|rack|pianoroll|mixer|browser)" };
+        return true;
+    }
     if (method == "ui.snapshot")
     {
         const auto path = getOr (params, "path", "").toString();

@@ -408,7 +408,7 @@ TEST_F (DispatcherFixture, PatternSwingViaDispatch)
 TEST_F (DispatcherFixture, MetersAndPluginsList)
 {
     const auto meters = call ("meters.get");
-    EXPECT_EQ (meters["inserts"].getArray()->size(), 33);
+    EXPECT_EQ (meters["inserts"].getArray()->size(), 9);
     EXPECT_TRUE (call ("plugins.list").isArray());
 }
 

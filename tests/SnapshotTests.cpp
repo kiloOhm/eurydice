@@ -9,7 +9,7 @@ TEST (Snapshot, BasicShapeMatchesModel)
     ASSERT_NE (snap, nullptr);
     EXPECT_EQ ((int) snap->channels.size(), 4);
     EXPECT_EQ ((int) snap->patterns.size(), 1);
-    EXPECT_EQ ((int) snap->inserts.size(), 33);
+    EXPECT_EQ ((int) snap->inserts.size(), 9);
     EXPECT_DOUBLE_EQ (snap->tempo, 140.0);
     EXPECT_EQ (snap->activePatternIndex, 0);
 
@@ -75,7 +75,7 @@ TEST (Snapshot, SendTopologyOrdersSourcesFirst)
     };
     EXPECT_LT (posOf (1), posOf (2));
     EXPECT_EQ (order.back(), 0);   // master last
-    EXPECT_EQ ((int) order.size(), 33);
+    EXPECT_EQ ((int) order.size(), 9);
 }
 
 TEST (Snapshot, SendCycleFallsBackToIndexOrder)
@@ -93,7 +93,7 @@ TEST (Snapshot, SendCycleFallsBackToIndexOrder)
     fx.sync.rebuildNow();
 
     auto snap = fx.engine.getPendingSnapshot();
-    EXPECT_EQ ((int) snap->insertOrder.size(), 33);   // everything still processed
+    EXPECT_EQ ((int) snap->insertOrder.size(), 9);    // everything still processed
     EXPECT_EQ (snap->insertOrder.back(), 0);
 }
 

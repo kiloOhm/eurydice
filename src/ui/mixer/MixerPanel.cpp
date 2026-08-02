@@ -150,12 +150,17 @@ MixerPanel::MixerPanel (AppServices& s)
     observedRoot = services.project.getRoot();
     observedRoot.addListener (this);
 
-    for (int i = 0; i < services.project.numInserts(); ++i)
+    addInsertButton.setTooltip ("Add a mixer insert");
+    addInsertButton.setWantsKeyboardFocus (false);
+    addInsertButton.onClick = [this]
     {
-        auto strip = std::make_unique<Strip> (*this, i);
-        stripContainer.addAndMakeVisible (*strip);
-        strips.push_back (std::move (strip));
-    }
+        const undoGesture::Scoped step (services.project, "Add insert");
+        if (auto insert = services.project.addInsert(); insert.isValid())
+            selectInsert (services.project.numInserts() - 1);
+    };
+    stripContainer.addAndMakeVisible (addInsertButton);
+
+    rebuildStrips();
     stripViewport.setViewedComponent (&stripContainer, false);
     stripViewport.setScrollBarsShown (false, true);
     addAndMakeVisible (stripViewport);
@@ -593,12 +598,33 @@ void MixerPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree& 
 {
     if (parent.hasType (ids::SENDS) || child.hasType (ids::SLOT))
         rebuildDetail();
+    else if (child.hasType (ids::INSERT))
+        rebuildStrips();
 }
 
 void MixerPanel::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child, int)
 {
     if (parent.hasType (ids::SENDS) || child.hasType (ids::SLOT))
         rebuildDetail();
+    else if (child.hasType (ids::INSERT))
+        rebuildStrips();
+}
+
+// (Re)creates one strip per insert; also runs at construction. Rebuilding on
+// every count change keeps undo of "add insert" trivially correct.
+void MixerPanel::rebuildStrips()
+{
+    strips.clear();
+    for (int i = 0; i < services.project.numInserts(); ++i)
+    {
+        auto strip = std::make_unique<Strip> (*this, i);
+        stripContainer.addAndMakeVisible (*strip);
+        strips.push_back (std::move (strip));
+    }
+    selectedInsert = juce::jmin (selectedInsert, services.project.numInserts() - 1);
+    addInsertButton.setEnabled (services.project.numInserts() < ProjectModel::maxInserts);
+    resized();
+    rebuildDetail();
 }
 
 void MixerPanel::timerCallback()
@@ -646,11 +672,12 @@ void MixerPanel::resized()
     addSendButton.setBounds (detail.removeFromTop (22).removeFromLeft (80));
 
     stripViewport.setBounds (r);
-    stripContainer.setSize ((int) strips.size() * stripW, stripViewport.getHeight());
+    stripContainer.setSize ((int) strips.size() * stripW + 30, stripViewport.getHeight());
     int x = 0;
     for (auto& strip : strips)
     {
         strip->setBounds (x, 0, stripW, stripContainer.getHeight());
         x += stripW;
     }
+    addInsertButton.setBounds (x + 4, 20, 22, 22);
 }

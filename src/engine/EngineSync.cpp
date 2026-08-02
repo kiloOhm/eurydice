@@ -1,5 +1,8 @@
 #include "EngineSync.h"
 #include "model/ChannelParams.h"
+
+static_assert (ProjectModel::maxInserts == AudioEngine::maxInserts,
+               "the model's insert cap must match the engine's preallocated buses");
 #include "plugins/PluginGenerator.h"
 #include <map>
 
