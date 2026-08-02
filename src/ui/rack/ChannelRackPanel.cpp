@@ -203,6 +203,31 @@ void ChannelRackPanel::rebuildRows()
                                   [channel, prop, isPan, &undo = services.project.getUndoManager()]
                                   () mutable { channel.setProperty (prop, isPan ? 0.0 : 0.78, &undo); });
         };
+        row->onReorderDrag = [this] (ChannelRow& source, const juce::MouseEvent& e)
+        {
+            rowContainer.setDropIndicator (rowIndexOf (source), reorderDropIndex (e));
+            const auto inViewport = e.getEventRelativeTo (&viewport).getPosition();
+            viewport.autoScroll (inViewport.x, inViewport.y, 24, 8);
+        };
+        row->onReorderEnd = [this] (ChannelRow& source, const juce::MouseEvent& e)
+        {
+            const int from = rowIndexOf (source);
+            const int to = reorderDropIndex (e);
+            rowContainer.setDropIndicator (-1, -1);
+            if (from < 0 || from == to)
+                return;
+
+            // Deferred: the model change rebuilds the rows, which would
+            // destroy the row whose mouseUp is still on the stack.
+            juce::MessageManager::callAsync (
+                [safe = juce::Component::SafePointer<ChannelRackPanel> (this), from, to]
+                {
+                    if (safe == nullptr)
+                        return;
+                    const undoGesture::Scoped step (safe->services.project, "Reorder channel");
+                    safe->services.project.moveChannel (from, to);
+                });
+        };
         rowContainer.addAndMakeVisible (*row);
         rows.push_back (std::move (row));
     }
@@ -210,6 +235,20 @@ void ChannelRackPanel::rebuildRows()
     rowContainer.setSize (rowContainerWidth(),
                           (int) rows.size() * (ChannelRow::rowHeight + 2));
     rowContainer.resized();
+}
+
+int ChannelRackPanel::rowIndexOf (const ChannelRow& row) const
+{
+    for (size_t i = 0; i < rows.size(); ++i)
+        if (rows[i].get() == &row)
+            return (int) i;
+    return -1;
+}
+
+int ChannelRackPanel::reorderDropIndex (const juce::MouseEvent& e)
+{
+    return rackreorder::dropIndexForY (e.getEventRelativeTo (&rowContainer).getPosition().y,
+                                       (int) rows.size(), RowContainer::rowPitch);
 }
 
 int ChannelRackPanel::rowContainerWidth() const
@@ -412,12 +451,29 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
             }
     }
 
+    // Colour swatch ids 20 (none) and 21.. sit below every other id range in
+    // this menu (100.. plugin params, 200.. generator params, 1000.. inserts).
+    juce::PopupMenu colourMenu;
+    const auto currentColour = channel[ids::colour].toString();
+    for (int i = 0; i < (int) theme::channelPalette.size(); ++i)
+    {
+        const auto& swatch = theme::channelPalette[(size_t) i];
+        juce::PopupMenu::Item item (swatch.name);
+        item.itemID = 21 + i;
+        item.colour = swatch.colour;
+        item.setTicked (currentColour == swatch.colour.toString());
+        colourMenu.addItem (std::move (item));
+    }
+    colourMenu.addSeparator();
+    colourMenu.addItem (20, "None", true, currentColour.isEmpty());
+
     juce::PopupMenu menu;
     menu.addItem (5, "Piano roll");
     menu.addItem (6, "Channel settings");
     menu.addSeparator();
     menu.addItem (1, "Rename...");
     menu.addItem (2, "Delete channel");
+    menu.addSubMenu ("Colour", colourMenu);
     menu.addSeparator();
     menu.addSubMenu ("Route to mixer insert", insertMenu);
     menu.addSubMenu ("Create automation clip", automationMenu);
@@ -447,6 +503,16 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
         {
             const undoGesture::Scoped step (project, "Delete channel");
             project.removeChannel (channel);
+        }
+        else if (result >= 20 && result <= 20 + (int) theme::channelPalette.size())
+        {
+            const undoGesture::Scoped step (project, "Colour channel");
+            if (result == 20)
+                channel.removeProperty (ids::colour, &project.getUndoManager());
+            else
+                channel.setProperty (ids::colour,
+                                     theme::channelPalette[(size_t) (result - 21)].colour.toString(),
+                                     &project.getUndoManager());
         }
         else if (result == 5)
         {
@@ -562,6 +628,12 @@ void ChannelRackPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::Value
 void ChannelRackPanel::valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree& child, int)
 {
     valueTreeChildAdded (parent, child);
+}
+
+void ChannelRackPanel::valueTreeChildOrderChanged (juce::ValueTree& parent, int, int)
+{
+    if (parent.hasType (ids::CHANNELS))
+        rebuildRows();
 }
 
 void ChannelRackPanel::timerCallback()

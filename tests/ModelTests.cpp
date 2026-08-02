@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
+#include "app/Theme.h"
 #include "model/LaneUtils.h"
 #include "model/ProjectModel.h"
+#include "model/UndoGesture.h"
 
 TEST (ProjectModel, DefaultProjectShape)
 {
@@ -344,6 +346,60 @@ TEST (ProjectModel, MovePatternReorders)
     EXPECT_FALSE (model.movePattern (-1, 0));
     EXPECT_FALSE (model.movePattern (0, 9));
     EXPECT_EQ ((int) model.getPattern (0)[ids::id], secondId);
+}
+
+TEST (ProjectModel, MoveChannelReorders)
+{
+    ProjectModel model;   // default channels: Kick, Clap, Hat, Snare
+    const int kickId = model.getChannel (0)[ids::id];
+    const int hatId  = model.getChannel (2)[ids::id];
+
+    ASSERT_TRUE (model.moveChannel (2, 0));
+    EXPECT_EQ ((int) model.getChannel (0)[ids::id], hatId);
+    EXPECT_EQ ((int) model.getChannel (1)[ids::id], kickId);
+
+    EXPECT_FALSE (model.moveChannel (0, 0));
+    EXPECT_FALSE (model.moveChannel (-1, 0));
+    EXPECT_FALSE (model.moveChannel (0, 4));
+    EXPECT_EQ ((int) model.getChannel (0)[ids::id], hatId);
+}
+
+TEST (ProjectModel, MoveChannelUndoesAsOneStep)
+{
+    ProjectModel model;
+    const int kickId = model.getChannel (0)[ids::id];
+
+    {
+        const undoGesture::Scoped step (model, "Reorder channel");
+        ASSERT_TRUE (model.moveChannel (0, 3));
+    }
+    EXPECT_EQ ((int) model.getChannel (3)[ids::id], kickId);
+
+    ASSERT_TRUE (model.getUndoManager().undo());
+    EXPECT_EQ ((int) model.getChannel (0)[ids::id], kickId);
+
+    ASSERT_TRUE (model.getUndoManager().redo());
+    EXPECT_EQ ((int) model.getChannel (3)[ids::id], kickId);
+}
+
+TEST (ProjectModel, ChannelColourRoundTripsThroughSaveLoad)
+{
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getNonexistentChildFile ("eurytest-colour", ".eury");
+    const auto red = theme::channelPalette[0].colour;
+    {
+        ProjectModel model;
+        model.getChannel (1).setProperty (ids::colour, red.toString(), nullptr);
+        ASSERT_TRUE (model.saveToFile (file));
+    }
+    {
+        ProjectModel model;
+        ASSERT_TRUE (model.loadFromFile (file));
+        EXPECT_EQ (model.getChannel (1)[ids::colour].toString(), red.toString());
+        EXPECT_EQ (juce::Colour::fromString (model.getChannel (1)[ids::colour].toString()), red);
+        EXPECT_FALSE (model.getChannel (0).hasProperty (ids::colour));
+    }
+    file.deleteFile();
 }
 
 TEST (LaneUtils, PlainStepLaneIsNotPianoRoll)

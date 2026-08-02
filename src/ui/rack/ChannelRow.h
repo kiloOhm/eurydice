@@ -34,6 +34,11 @@ public:
     std::function<void (juce::ValueTree channel, juce::Identifier)> onKnobMoved;
     std::function<void (juce::ValueTree channel, juce::Identifier)> onKnobContextMenu;
 
+    // A vertical drag on the name area moves the row within the rack. The row
+    // only reports the gesture; the panel maps it to an index and the model.
+    std::function<void (ChannelRow&, const juce::MouseEvent&)> onReorderDrag;
+    std::function<void (ChannelRow&, const juce::MouseEvent&)> onReorderEnd;
+
     static constexpr int rowHeight   = 30;
     static constexpr int stepWidth   = 26;
     static constexpr int fixedLeftWidth = 18 + 4 + 118 + 4 + 26 + 26 + 4 + 40 + 8;
@@ -63,6 +68,9 @@ private:
 
     int playStep = -1;
     int dragPaintMode = -1;   // 1 = painting on, 0 = erasing, -1 = idle
+    bool reorderArmed = false;   // pressed in the grab area, not yet dragging
+    bool reordering   = false;   // stays set until the next press so the name
+                                 // button can tell a finished drag from a click
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChannelRow)
 };

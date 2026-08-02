@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <juce_graphics/juce_graphics.h>
 
 // Eurydice's own dark identity: graphite surfaces, amber primary accent,
@@ -37,6 +38,20 @@ inline const juce::Colour pianoWhiteKey { 0xff3a3f48 };
 inline const juce::Colour noteFill      { 0xff5ad2c4 };
 inline const juce::Colour noteOutline   { 0xff9ceee4 };
 inline const juce::Colour ghostNote     { 0x40aab2bd };
+
+// Channel colour palette (right-click a channel row → Colour). Bright enough
+// to scan by against the graphite surfaces.
+struct NamedColour { const char* name; juce::Colour colour; };
+inline const std::array<NamedColour, 8> channelPalette { {
+    { "Red",    juce::Colour (0xffe5534b) },
+    { "Amber",  juce::Colour (0xffffa726) },
+    { "Yellow", juce::Colour (0xffe0c341) },
+    { "Green",  juce::Colour (0xff7dd069) },
+    { "Teal",   juce::Colour (0xff41c7b9) },
+    { "Blue",   juce::Colour (0xff5b9bd5) },
+    { "Purple", juce::Colour (0xffa07ce8) },
+    { "Pink",   juce::Colour (0xffe06fb2) },
+} };
 
 inline juce::Font uiFont (float height, bool bold = false)
 {

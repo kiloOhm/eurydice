@@ -56,6 +56,35 @@ TEST (Snapshot, MuteWithoutSolo)
     EXPECT_FALSE (snap->channels[2].audible);
 }
 
+// Reordering channels must not desync anything keyed by channel: the snapshot
+// resolves automation targets and lane notes by channel *id* on every rebuild.
+TEST (Snapshot, AutomationAndNotesFollowChannelAfterReorder)
+{
+    EngineFixture fx;   // default channels: Kick, Clap, Hat, Snare
+    const int hatId = fx.model.getChannel (2)[ids::id];
+    fx.model.addAutomation ("channel", hatId, "volume", "Hat volume", 0.5);
+    fx.sync.rebuildNow();
+
+    {
+        auto snap = fx.engine.getPendingSnapshot();
+        ASSERT_EQ ((int) snap->automations.size(), 1);
+        EXPECT_EQ (snap->automations[0].channelIndex, 2);
+    }
+
+    ASSERT_TRUE (fx.model.moveChannel (2, 0));   // Hat to the top
+    fx.sync.rebuildNow();
+
+    auto snap = fx.engine.getPendingSnapshot();
+    ASSERT_EQ (snap->channels[0].id, hatId);
+    ASSERT_EQ ((int) snap->automations.size(), 1);
+    EXPECT_EQ (snap->automations[0].channelIndex, 0);
+
+    // Starter beat: kick notes on the beat (now channel 1), hat offbeats (now 0).
+    ASSERT_FALSE (snap->patterns[0].notes.empty());
+    for (const auto& note : snap->patterns[0].notes)
+        EXPECT_EQ (note.channelIndex, note.startTicks % (4 * ids::ticksPerStep) == 0 ? 1 : 0);
+}
+
 TEST (Snapshot, SendTopologyOrdersSourcesFirst)
 {
     EngineFixture fx;

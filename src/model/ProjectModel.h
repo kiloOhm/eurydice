@@ -61,6 +61,7 @@ public:
     // --- Channels ---
     juce::ValueTree addChannel (const juce::String& type, const juce::String& name);
     void removeChannel (const juce::ValueTree& channel);
+    bool moveChannel (int fromIndex, int toIndex);
     juce::ValueTree getChannelById (int channelId) const;
     int numChannels() const                   { return channels().getNumChildren(); }
     juce::ValueTree getChannel (int index) const { return channels().getChild (index); }
