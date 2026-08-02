@@ -4,20 +4,21 @@ All 19 build tasks are done. This is the honest gap list, ordered by what
 actually blocks finishing a track in techno / schranz / tekk / DnB / uptempo /
 hardcore / frenchcore.
 
-## P0 — you hit these within the first hour of producing
+## P0 — shipped
 
-- **Loop range + selection playback.** There is no way to loop 8 bars while you
-  work on them. Currently playback is either the whole pattern or the whole
-  song from the top. This is the single most missed thing.
-- **Per-step graph editor** (velocity / pan / pitch per step in the rack).
-  Hi-hat grooves and rolls are unusable without per-step velocity. Partly
-  reachable via the piano roll velocity lane, but not at rack speed.
-- **Pattern management.** You can add patterns and rename them, but not clone,
-  delete, or reorder. Cloning is how you build variations.
-- **Undo coalescing.** One knob drag currently pushes dozens of undo steps, so
-  ⌘Z is close to useless after tweaking.
-- **Note repeat / roll tool** in the piano roll — rolls and ratchets are the
-  backbone of tekk and frenchcore.
+- ~~Loop range + selection playback~~ — drag the playlist ruler, `LOOP` in the
+  transport bar, ⇧⌘L, with sample-accurate wrapping.
+- ~~Per-step graph editor~~ — `GRAPH` toggle in the rack header; velocity, pan
+  and pitch per step.
+- ~~Pattern management~~ — clone, rename, delete and reorder.
+- ~~Note repeat / roll tool~~ — plus chop, glue and strum, with velocity ramps
+  for ratchets.
+
+## P0 — still open
+
+- **Undo coalescing.** One knob drag still pushes dozens of undo steps, so ⌘Z
+  is close to useless after tweaking. The piano-roll batch tools wrap
+  themselves in single transactions; knobs, faders and the graph lane do not.
 
 ## P1 — needed for these genres specifically
 
