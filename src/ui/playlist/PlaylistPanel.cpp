@@ -449,6 +449,14 @@ void PlaylistPanel::mouseDown (const juce::MouseEvent& e)
             return;
         }
 
+        // Audio clips too: comping loop-record takes means unmuting an earlier
+        // pass, so mute has to be one right-click away — not instant erase.
+        if (clip.isValid() && clip[ids::clipType].toString() == "audio")
+        {
+            showAudioClipMenu (clip);
+            return;
+        }
+
         drag = Drag::erase;
         undoGesture::begin (services.project, "Delete clips");
         if (clip.isValid())
@@ -697,6 +705,31 @@ void PlaylistPanel::showAutomationClipMenu (juce::ValueTree clip)
             clip.setProperty (ids::muted, ! (bool) clip[ids::muted], &undo);
         else if (result == 3)
             clip.getParent().removeChild (clip, &undo);
+        repaint();
+    });
+}
+
+void PlaylistPanel::showAudioClipMenu (juce::ValueTree clip)
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader (juce::File (clip[ids::audioPath].toString()).getFileName());
+    menu.addItem (1, (bool) clip[ids::muted] ? "Unmute clip" : "Mute clip");
+    menu.addSeparator();
+    menu.addItem (2, "Delete clip");
+
+    menu.showMenuAsync ({}, [this, clip] (int result) mutable
+    {
+        auto& project = services.project;
+        if (result == 1)
+        {
+            const undoGesture::Scoped step (project, "Mute clip");
+            clip.setProperty (ids::muted, ! (bool) clip[ids::muted], &project.getUndoManager());
+        }
+        else if (result == 2)
+        {
+            const undoGesture::Scoped step (project, "Delete clip");
+            clip.getParent().removeChild (clip, &project.getUndoManager());
+        }
         repaint();
     });
 }
