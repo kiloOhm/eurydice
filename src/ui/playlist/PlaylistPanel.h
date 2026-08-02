@@ -51,6 +51,7 @@ private:
     juce::ValueTree clipAt (juce::Point<int>, bool& overRightEdge);
     void addClipAt (juce::Point<int>);
     void showAutomationClipMenu (juce::ValueTree clip);
+    void showAudioClipMenu (juce::ValueTree clip);
     bool loopRangeBounds (int& x0, int& x1) const;
     void paintTrackHeaders (juce::Graphics&);
     void paintRuler (juce::Graphics&);

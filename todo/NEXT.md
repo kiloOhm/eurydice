@@ -30,7 +30,11 @@ the active work.
 6. Channel drag-reorder, colours, grouping — the rack gets unwieldy past ~10
    channels.
 7. Browser drag-and-drop onto rack and playlist (double-click works today).
-8. Loop-record takes and comping.
+8. ~~Loop-record takes and comping~~ — shipped: recording with the loop armed
+   splits the file into one take per pass (pure tick math after the fact, see
+   src/app/TakeSplitter.h); the latest pass lands unmuted, earlier passes
+   muted on the tracks below, and audio clips grew a right-click Mute/Unmute
+   menu. A partial last pass >= 0.05 s is kept as a shorter clip.
 9. Realtime time-stretch (Rubber Band is offline-only today).
 
 ## Big rocks (schedule deliberately)
