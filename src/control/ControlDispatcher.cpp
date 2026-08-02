@@ -284,6 +284,36 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         clip.setProperty (ids::audioOffsetTicks, (int) getOr (params, "offsetTicks", 0), nullptr);
         return makeObj ({ { "lengthTicks", lengthTicks }, { "stretchRatio", ratio } });
     }
+    if (method == "playlist.setClip")
+    {
+        const int trackIndex = (int) getOr (params, "track", -1);
+        auto track = project.playlist().getChild (trackIndex);
+        if (! track.isValid())
+            throw ControlError { "track out of range" };
+
+        // Index counts CLIP children only, matching the order playlist.get reports.
+        const int wanted = (int) getOr (params, "index", -1);
+        juce::ValueTree clip;
+        int seen = 0;
+        for (auto child : track)
+            if (child.hasType (ids::CLIP) && seen++ == wanted)
+            {
+                clip = child;
+                break;
+            }
+        if (! clip.isValid())
+            throw ControlError { "clip index out of range" };
+
+        if (has (params, "start"))
+            clip.setProperty (ids::startTicks,
+                              juce::jmax (0, (int) getOr (params, "start", 0)), &undo);
+        if (has (params, "length"))
+            clip.setProperty (ids::lengthTicks,
+                              juce::jmax (1, (int) getOr (params, "length", 1)), &undo);
+        if (has (params, "muted"))
+            clip.setProperty (ids::muted, (bool) getOr (params, "muted", false), &undo);
+        return true;
+    }
     if (method == "playlist.clear")
     {
         if (has (params, "track"))

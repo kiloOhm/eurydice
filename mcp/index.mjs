@@ -151,6 +151,14 @@ tool("daw_playlist_add_clip",
     start: z.number(), length: z.number().optional(),
   }, "playlist.addClip");
 
+tool("daw_playlist_set_clip",
+  "Move, resize or mute an existing playlist clip. index counts clips within the track in the order daw_playlist_get reports them. " + TIME_HELP,
+  {
+    track: z.number(), index: z.number(),
+    start: z.number().optional(), length: z.number().optional(),
+    muted: z.boolean().optional(),
+  }, "playlist.setClip");
+
 tool("daw_playlist_clear", "Clear all clips (or one track's).", { track: z.number().optional() }, "playlist.clear");
 
 tool("daw_mixer_get", "List mixer inserts with volume/pan/mute, sends, effect slots, and live peak levels.", {}, "mixer.get");

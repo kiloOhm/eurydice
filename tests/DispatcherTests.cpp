@@ -179,6 +179,29 @@ TEST_F (DispatcherFixture, PlaylistAddAndClear)
         R"({"track": 999, "patternId": )" + juce::String (patId) + "}"));
 }
 
+TEST_F (DispatcherFixture, PlaylistSetClip)
+{
+    const int patId = services.project.getRoot()[ids::activePattern];
+    call ("playlist.addClip", R"({"track": 0, "patternId": )" + juce::String (patId)
+                                  + R"(, "start": 0, "length": 3840})");
+
+    call ("playlist.setClip", R"({"track": 0, "index": 0, "start": 7680,)"
+                              R"( "length": 15360, "muted": true})");
+    const auto clip = call ("playlist.get")[0]["clips"][0];
+    EXPECT_EQ ((int) clip["start"], 7680);
+    EXPECT_EQ ((int) clip["length"], 15360);
+    EXPECT_TRUE ((bool) clip["muted"]);
+
+    // Partial updates leave the other fields alone.
+    call ("playlist.setClip", R"({"track": 0, "index": 0, "length": 3840})");
+    const auto after = call ("playlist.get")[0]["clips"][0];
+    EXPECT_EQ ((int) after["start"], 7680);
+    EXPECT_EQ ((int) after["length"], 3840);
+
+    EXPECT_CONTROL_ERROR (call ("playlist.setClip", R"({"track": 99, "index": 0})"));
+    EXPECT_CONTROL_ERROR (call ("playlist.setClip", R"({"track": 0, "index": 7})"));
+}
+
 TEST_F (DispatcherFixture, MixerRoutingAndValidation)
 {
     call ("mixer.setInsert", R"({"insert": 1, "volume": 0.4, "name": "Drums"})");
