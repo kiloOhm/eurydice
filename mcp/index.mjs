@@ -182,6 +182,9 @@ tool("daw_playlist_clear", "Clear all clips (or one track's).", { track: z.numbe
 
 tool("daw_mixer_get", "List mixer inserts with volume/pan/mute, sends, effect slots, and live peak levels.", {}, "mixer.get");
 
+tool("daw_mixer_add_insert", "Append a new mixer insert; returns its index.",
+  { name: z.string().optional().describe("insert name; defaults to 'Insert N'") }, "mixer.addInsert");
+
 tool("daw_mixer_set_insert", "Set insert volume/pan/mute/name. Insert 0 is the master.",
   {
     insert: z.number(), volume: z.number().optional(), pan: z.number().optional(),
@@ -230,6 +233,14 @@ tool("daw_automation_set_points",
 
 tool("daw_automation_remove", "Delete an automation source and every playlist clip that references it.",
   { automationId: z.number() }, "automation.remove");
+tool("daw_ui_show_panel",
+  "Bring a DAW panel forward so it is visible in a snapshot and to the user.",
+  { panel: z.enum(["playlist", "rack", "pianoroll", "mixer", "browser"]) }, "ui.showPanel");
+
+tool("daw_ui_snapshot",
+  "Save a PNG screenshot of the Eurydice UI (the frontmost editor window if one is open, otherwise the main window). Use it to see what the user sees.",
+  { path: z.string().describe("destination .png path") }, "ui.snapshot");
+
 tool("daw_render_export",
   "Render the project to a WAV (plus optional MP3 and stems). Renders the whole arrangement in song mode, or the active pattern otherwise; an armed loop is ignored unless loopRangeOnly is set.",
   {

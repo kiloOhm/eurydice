@@ -4,6 +4,11 @@ Verified free, macOS, VST3/AU, Apple Silicon native, organised by the FL Studio
 stock plugin each one substitutes for. Everything here was checked against the
 developer's own site or repo. Anything unverified is flagged.
 
+Eurydice now ships six built-in effects (clipper, filter, EQ, compressor with
+sidechain, delay, reverb), so nothing here is required to get sound — these
+plugins go further than the built-ins, and the synths/samplers have no
+built-in equivalent beyond the subtractive synth and kick channel.
+
 ## Start here — ten plugins, all native, none needing an account
 
 **Surge XT** (synth) · **ChowKick** (kick body) · **BYOD** (distortion chains) ·

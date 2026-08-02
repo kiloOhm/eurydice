@@ -29,7 +29,8 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 | Channel rack | Step sequencer with 4-step group tinting, per-pattern swing, per-channel pan/volume, insert routing |
 | Piano roll | Draw/paint/move/resize, right-click delete, marquee select, velocity lane, ghost notes from other channels, chord stamp, scale highlighting |
 | Playlist | Free tracks; pattern, audio and automation clips; drag/resize/cross-track move; alt-resize time-stretches audio |
-| Mixer | 32 inserts + master, 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters |
+| Mixer | Master + as many inserts as you add (`+` in the mixer or the routing menus), 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters, per-insert renaming |
+| Effects | Six built-ins: oversampled clipper, filter with envelope follower + synced LFO, 4-band EQ, compressor with external sidechain, tempo-synced delay, reverb |
 | Generators | Sampler channel (drop a WAV in, ADSR + lowpass, one-shot or sustained, start/end trim, reverse, pitch envelope, drive), a built-in 2-osc subtractive synth, and a synthesised kick channel (swept body, click, noise, drive) — all with editor windows |
 | Plugins | VST3 + AU hosting: background scan, instrument channels, effect slots, native editor windows, state saved in the project |
 | Automation | Right-click any knob or fader → automation clip with a tension-curve editor; arm `AUTO` (playlist header) to record moves live |
@@ -74,7 +75,7 @@ the playlist to edit that pattern.
 ## AI control (MCP)
 
 The app hosts a JSON-RPC 2.0 server on `127.0.0.1:44890` (override with
-`EURYDICE_CONTROL_PORT`). `mcp/index.mjs` bridges it to any MCP client as 24
+`EURYDICE_CONTROL_PORT`). `mcp/index.mjs` bridges it to any MCP client as 37
 typed tools — transport, channels, notes, patterns, playlist, mixer, plugins,
 automation, meters, render, project I/O.
 
@@ -95,11 +96,13 @@ cmake --build build --target EurydiceTests
 ./build/EurydiceTests_artefacts/RelWithDebInfo/EurydiceTests
 ```
 
-81 unit tests over the model, snapshot builder, sequencer timing (sample-accurate
-onsets, swing, song mode), automation curves, generators, renderer, control
-dispatcher, socket framing, channel parameters, project dirty-tracking, and
-live AU hosting. They never open an audio device, so they run anywhere in under
-a second.
+348 unit tests over the model, snapshot builder, sequencer timing
+(sample-accurate onsets, swing, song mode), automation curves and recording,
+generators, built-in effects, renderer, export, undo gestures, autosave,
+control dispatcher, socket framing, channel parameters, docking/snapping,
+typing piano, project dirty-tracking, and live AU hosting (including the
+plugin editor shell). They never open an audio device, so they run anywhere
+in about half a second.
 
 ```bash
 scripts/coverage.sh 80     # llvm-cov with an enforced line-coverage gate
@@ -107,7 +110,7 @@ scripts/e2e_mcp.py         # full workflow through the real MCP bridge
 scripts/static-analysis.sh # clang-tidy + cppcheck
 ```
 
-Coverage of the non-UI core currently sits at **~85%** lines (gate: 80%).
+Coverage of the non-UI core currently sits at **~86%** lines (gate: 80%).
 The e2e script launches the app, drives it through MCP, and asserts on the
 rendered audio.
 
@@ -143,10 +146,13 @@ project-level setting and these genres sit 60 BPM apart.
 
 ## Plugins
 
-Eurydice ships no stock effects yet, so start with free VSTs:
+Six stock effects ship built in (see the table above), so projects open on any
+machine. For synths and heavier processing, start with free VSTs:
 [docs/free-plugins.md](docs/free-plugins.md) lists verified free, Apple-Silicon
 native VST3/AU plugins organised by the FL Studio stock plugin they replace,
-aimed at techno and adjacent hard genres.
+aimed at techno and adjacent hard genres. Instrument plugins open inside a
+JUCE shell — title strip with a toggleable piano for plugins without their
+own keyboard.
 
 ## Licence
 
