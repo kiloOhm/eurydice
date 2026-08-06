@@ -54,6 +54,7 @@ private:
     void resetPanelPosition (FloatingPanel*);
     void showPanelContextMenu (juce::CommandID);
     void showAudioSettings();
+    void showKeyboardShortcuts();
     void showExportDialog();
     void chooseExportFile (const OfflineRenderer::Options&);
     void saveProject (bool forceChooser);

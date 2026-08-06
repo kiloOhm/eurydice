@@ -34,5 +34,7 @@ enum
     optionsAudioSettings,
     optionsScanPlugins,
     optionsSandboxEffects,
+
+    helpKeyboardShortcuts,
 };
 }

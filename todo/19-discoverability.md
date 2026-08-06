@@ -16,3 +16,5 @@ Found during review: the engine features worked but were unreachable by mouse.
 - [x] Window title with project name + dirty marker; save prompt on quit/new/open
 - [x] Custom LookAndFeel applied app-wide (editor windows and dialogs too)
 - [x] Fixed: editor windows leaked at shutdown (static map outlived the leak detector)
+- [x] Help menu with a Keyboard Shortcuts dialog (Cmd+/), generated from the
+      command manager so it can't drift, plus the typing-piano and mouse gestures

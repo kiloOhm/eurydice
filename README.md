@@ -43,8 +43,10 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 
 ### Getting around
 
-Everything is reachable three ways: the **menu bar** (File / Edit / View / Options),
+Everything is reachable three ways: the **menu bar** (File / Edit / View / Options / Help),
 the **panel buttons** in the transport bar, and keyboard shortcuts.
+*Help → Keyboard Shortcuts* (`⌘/`) lists all of them — including the mouse
+gestures below — in-app.
 
 `⌘1` playlist · `⌘2` channel rack · `⌘3` piano roll · `⌘4` mixer · `⌘B` browser.
 The FL-style `F5`/`F6`/`F7`/`F9` bindings also work, but macOS claims those keys

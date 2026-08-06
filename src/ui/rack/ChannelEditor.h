@@ -77,8 +77,36 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SamplerEditor)
 };
 
-class SynthEditor : public juce::Component,
-                    private juce::Timer
+// One Serum-style module box: a title strip, an optional display (wave,
+// response curve, envelope, scope) and a row of knobs underneath.
+class SynthModule : public juce::Component
+{
+public:
+    SynthModule (juce::String titleText, std::unique_ptr<juce::Component> displayComponent);
+
+    void addKnob (std::unique_ptr<LabelledKnob>);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+    int preferredWidth() const;
+
+    static constexpr int titleHeight = 16;
+    static constexpr int displayHeight = 56;
+    static constexpr int padding = 6;
+    static int preferredHeight()
+    {
+        return titleHeight + displayHeight + padding * 3 + LabelledKnob::preferredHeight;
+    }
+
+private:
+    juce::String title;
+    std::unique_ptr<juce::Component> display;
+    std::vector<std::unique_ptr<LabelledKnob>> knobs;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthModule)
+};
+
+class SynthEditor : public juce::Component
 {
 public:
     SynthEditor (AppServices&, juce::ValueTree channel);
@@ -87,17 +115,17 @@ public:
     void resized() override;
 
 private:
-    // Repaints the wave preview when the morph/warp knobs move.
-    void timerCallback() override;
-    juce::Rectangle<int> waveArea() const;
+    // Builds one module from parameter ids out of the synth descriptor table.
+    SynthModule& addModule (const juce::String& title,
+                            std::unique_ptr<juce::Component> display,
+                            std::initializer_list<juce::Identifier> params);
 
     AppServices& services;
     juce::ValueTree channel;
     juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
-    KnobGrid grid;
+    std::vector<std::unique_ptr<SynthModule>> modules;
     std::unique_ptr<juce::MidiKeyboardState::Listener> bridge;
-    float shownMorph = 0.0f, shownWarp = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthEditor)
 };

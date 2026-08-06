@@ -13,6 +13,7 @@
 #include "ui/rack/ChannelRackPanel.h"
 #include "ui/automation/AutomationEditor.h"
 #include "ui/common/DockZones.h"
+#include "ui/common/ShortcutsPanel.h"
 #include "KeyboardLayoutDetect.h"
 #include "MicPermission.h"
 
@@ -616,7 +617,7 @@ MainComponent::~MainComponent()
 
 juce::StringArray MainComponent::getMenuBarNames()
 {
-    return { "File", "Edit", "View", "Automation", "Options" };
+    return { "File", "Edit", "View", "Automation", "Options", "Help" };
 }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
@@ -690,6 +691,10 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         menu.addSeparator();
         menu.addCommandItem (&commandManager, CommandIDs::optionsSandboxEffects);
     }
+    else if (index == 5)
+    {
+        menu.addCommandItem (&commandManager, CommandIDs::helpKeyboardShortcuts);
+    }
 
     return menu;
 }
@@ -750,7 +755,8 @@ void MainComponent::getAllCommands (juce::Array<juce::CommandID>& commands)
         CommandIDs::transportToggleLoop, CommandIDs::transportToggleMetronome,
         CommandIDs::transportCountIn,
         CommandIDs::optionsAudioSettings, CommandIDs::optionsScanPlugins,
-        CommandIDs::optionsSandboxEffects });
+        CommandIDs::optionsSandboxEffects,
+        CommandIDs::helpKeyboardShortcuts });
 }
 
 void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& info)
@@ -887,6 +893,15 @@ void MainComponent::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
                           "Options", 0);
             info.setTicked (services.effects.isSandboxEnabled());
             break;
+
+        case CommandIDs::helpKeyboardShortcuts:
+            info.setInfo ("Keyboard Shortcuts...",
+                          "Show every keyboard shortcut and mouse gesture", "Help", 0);
+            // Cmd+/ needs Shift on some layouts (QWERTZ) and won't match there,
+            // so the classic help key rides along, F-key caveats and all.
+            info.addDefaultKeypress ('/', cmd);
+            info.addDefaultKeypress (juce::KeyPress::F1Key, juce::ModifierKeys::noModifiers);
+            break;
         default:
             break;
     }
@@ -995,6 +1010,7 @@ bool MainComponent::perform (const juce::ApplicationCommandTarget::InvocationInf
         }
 
         case CommandIDs::optionsAudioSettings: showAudioSettings(); return true;
+        case CommandIDs::helpKeyboardShortcuts: showKeyboardShortcuts(); return true;
         case CommandIDs::optionsScanPlugins:
             services.plugins.startScan ([this] { commandManager.commandStatusChanged(); });
             commandManager.commandStatusChanged();
@@ -1214,6 +1230,20 @@ void MainComponent::showAudioSettings()
     juce::DialogWindow::LaunchOptions options;
     options.content.setOwned (selector.release());
     options.dialogTitle = "Audio & MIDI Settings";
+    options.dialogBackgroundColour = theme::panelBg;
+    options.escapeKeyTriggersCloseButton = true;
+    options.resizable = false;
+    options.launchAsync();
+}
+
+void MainComponent::showKeyboardShortcuts()
+{
+    auto panel = std::make_unique<ShortcutsPanel> (commandManager);
+    panel->setSize (ShortcutsPanel::preferredWidth, ShortcutsPanel::preferredHeight);
+
+    juce::DialogWindow::LaunchOptions options;
+    options.content.setOwned (panel.release());
+    options.dialogTitle = "Keyboard Shortcuts";
     options.dialogBackgroundColour = theme::panelBg;
     options.escapeKeyTriggersCloseButton = true;
     options.resizable = false;

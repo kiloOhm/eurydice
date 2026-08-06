@@ -1,6 +1,7 @@
 #include "ChannelEditor.h"
 #include "engine/SamplerGenerator.h"
 #include "engine/SynthOsc.h"
+#include "SynthDisplays.h"
 #include "model/UndoGesture.h"
 #include "plugins/PluginGenerator.h"
 #include "sandbox/SandboxedGenerator.h"
@@ -12,40 +13,44 @@ namespace
 // Builds a generator's knob row from the shared parameter table and wires each
 // knob into the automation layer: moving one records while the write arm is
 // on, right-clicking one offers to create or edit its clip.
+std::unique_ptr<LabelledKnob> makeParamKnob (AppServices& services, juce::ValueTree channel,
+                                             const channelparams::Descriptor& descriptor)
+{
+    auto knob = std::make_unique<LabelledKnob> (descriptor.caption, services.project, channel,
+                                                descriptor.id, descriptor.range,
+                                                descriptor.defaultValue, descriptor.suffix,
+                                                descriptor.decimals);
+    if (descriptor.automatable)
+    {
+        // The table is a function-local static, so &descriptor outlives
+        // every editor window that captures it.
+        const AutomationWriter::Target target { "channel-param", (int) channel[ids::id],
+                                                descriptor.id.toString(),
+                                                channel[ids::name].toString() + " " + descriptor.caption };
+        auto* knobPtr = knob.get();
+
+        knob->onLiveEdit = [&services, target, &descriptor] (double value)
+        {
+            services.automationWriter.touch (target, descriptor.toNormalised (value));
+        };
+        knob->onContextMenu = [&services, target, &descriptor, knobPtr] (double value)
+        {
+            automationmenu::show (services, target, descriptor.toNormalised (value),
+                                  [knobPtr] { knobPtr->resetToDefault(); });
+        };
+    }
+    return knob;
+}
+
 void buildKnobs (KnobGrid& grid, juce::Component& owner,
                  AppServices& services, juce::ValueTree channel)
 {
-    const int channelId = channel[ids::id];
-    const auto channelName = channel[ids::name].toString();
-
     for (const auto& descriptor : channelparams::forChannelType (channel[ids::type].toString()))
     {
         if (descriptor.section.isNotEmpty())
             grid.beginSection (descriptor.section);
 
-        auto knob = std::make_unique<LabelledKnob> (descriptor.caption, services.project, channel,
-                                                    descriptor.id, descriptor.range,
-                                                    descriptor.defaultValue, descriptor.suffix,
-                                                    descriptor.decimals);
-        if (descriptor.automatable)
-        {
-            // The table is a function-local static, so &descriptor outlives
-            // every editor window that captures it.
-            const AutomationWriter::Target target { "channel-param", channelId,
-                                                    descriptor.id.toString(),
-                                                    channelName + " " + descriptor.caption };
-            auto* knobPtr = knob.get();
-
-            knob->onLiveEdit = [&services, target, &descriptor] (double value)
-            {
-                services.automationWriter.touch (target, descriptor.toNormalised (value));
-            };
-            knob->onContextMenu = [&services, target, &descriptor, knobPtr] (double value)
-            {
-                automationmenu::show (services, target, descriptor.toNormalised (value),
-                                      [knobPtr] { knobPtr->resetToDefault(); });
-            };
-        }
+        auto knob = makeParamKnob (services, channel, descriptor);
         owner.addAndMakeVisible (*knob);
         grid.adopt (std::move (knob));
     }
@@ -350,12 +355,93 @@ void SamplerEditor::resized()
     grid.layout (r);
 }
 
+// ================= SynthModule =================
+
+SynthModule::SynthModule (juce::String titleText, std::unique_ptr<juce::Component> displayComponent)
+    : title (std::move (titleText)), display (std::move (displayComponent))
+{
+    if (display != nullptr)
+        addAndMakeVisible (*display);
+}
+
+void SynthModule::addKnob (std::unique_ptr<LabelledKnob> knob)
+{
+    addAndMakeVisible (*knob);
+    knobs.push_back (std::move (knob));
+}
+
+int SynthModule::preferredWidth() const
+{
+    return juce::jmax (2, (int) knobs.size()) * (LabelledKnob::preferredWidth + 2)
+           + padding * 2;
+}
+
+void SynthModule::paint (juce::Graphics& g)
+{
+    const auto r = getLocalBounds();
+    g.setColour (theme::raised.withAlpha (0.35f));
+    g.fillRoundedRectangle (r.toFloat(), 4.0f);
+
+    auto header = r.withHeight (titleHeight);
+    g.setColour (theme::panelHeader);
+    g.fillRoundedRectangle (header.toFloat(), 4.0f);
+    g.fillRect (header.withTop (header.getBottom() - 4));
+
+    g.setColour (theme::textDim);
+    g.setFont (theme::uiFont (9.5f, true));
+    g.drawText (title, header.reduced (8, 0), juce::Justification::centredLeft);
+
+    g.setColour (theme::outline);
+    g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 4.0f, 1.0f);
+}
+
+void SynthModule::resized()
+{
+    auto r = getLocalBounds().reduced (padding);
+    r.removeFromTop (titleHeight);
+
+    auto knobRow = r.removeFromBottom (LabelledKnob::preferredHeight);
+    if (display != nullptr)
+        display->setBounds (r.reduced (0, padding / 2));
+
+    int x = knobRow.getX();
+    for (auto& knob : knobs)
+    {
+        knob->setBounds (x, knobRow.getY(), LabelledKnob::preferredWidth,
+                         LabelledKnob::preferredHeight);
+        x += LabelledKnob::preferredWidth + 2;
+    }
+}
+
 // ================= SynthEditor =================
 
 SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
     : services (s), channel (ch)
 {
-    buildKnobs (grid, *this, services, channel);
+    using namespace synthdisplays;
+
+    // Row 1: sound sources.
+    addModule ("OSC   -2 SIN  -1 TRI  0 SAW  1 SQR", std::make_unique<OscDisplay> (channel),
+               { ids::oscShape, ids::oscWarp, ids::osc2Semi, ids::osc2Detune, ids::osc2Mix });
+    addModule ("UNISON", nullptr, { ids::unisonVoices, ids::unisonDetune, ids::unisonWidth });
+    addModule ("LAYERS", nullptr, { ids::subLevel, ids::noiseLevel });
+
+    // Row 2: filter and modulation.
+    addModule ("FILTER   0 LP  1 BP  2 HP", std::make_unique<FilterResponseDisplay> (channel),
+               { ids::filterType, ids::cutoff, ids::resonance, ids::filterKey, ids::filterEnvAmt });
+    addModule ("LFO", std::make_unique<LfoDisplay> (channel),
+               { ids::lfoRate, ids::lfoAmount, ids::lfoTarget });
+    addModule ("VOICE", nullptr, { ids::glide });
+
+    // Row 3: envelopes.
+    addModule ("FILTER ENV", std::make_unique<EnvelopeDisplay> (channel,
+                   ids::fenvAttack, ids::fenvDecay, ids::fenvSustain, ids::fenvRelease,
+                   theme::secondary, 0.2),
+               { ids::fenvAttack, ids::fenvDecay, ids::fenvSustain, ids::fenvRelease });
+    addModule ("AMP ENV", std::make_unique<EnvelopeDisplay> (channel,
+                   ids::attack, ids::decay, ids::sustain, ids::release,
+                   theme::accent, 0.7),
+               { ids::attack, ids::decay, ids::sustain, ids::release });
 
     keyboard.setAvailableRange (36, 96);
     keyboard.setWantsKeyboardFocus (false);
@@ -364,67 +450,31 @@ SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
     bridge = std::make_unique<KeyboardBridge> (services, channel);
     keyboardState.addListener (bridge.get());
 
-    startTimerHz (15);
-    setSize (760, 505);
+    setSize (700, 3 * (SynthModule::preferredHeight() + 8) + 56 + 28);
 }
 
-juce::Rectangle<int> SynthEditor::waveArea() const
+SynthModule& SynthEditor::addModule (const juce::String& title,
+                                     std::unique_ptr<juce::Component> display,
+                                     std::initializer_list<juce::Identifier> params)
 {
-    return getLocalBounds().reduced (10).removeFromTop (56);
-}
+    auto module = std::make_unique<SynthModule> (title, std::move (display));
+    for (const auto& id : params)
+        if (const auto* descriptor = channelparams::find ("synth", id.toString()))
+            module->addKnob (makeParamKnob (services, channel, *descriptor));
 
-void SynthEditor::timerCallback()
-{
-    const float morph = (float) (double) channel.getProperty (ids::oscShape, 0.0);
-    const float warp  = (float) (double) channel.getProperty (ids::oscWarp, 0.0);
-    if (! juce::approximatelyEqual (morph, shownMorph)
-        || ! juce::approximatelyEqual (warp, shownWarp))
-    {
-        shownMorph = morph;
-        shownWarp = warp;
-        repaint (waveArea());
-    }
+    addAndMakeVisible (*module);
+    modules.push_back (std::move (module));
+    return *modules.back();
 }
 
 void SynthEditor::paint (juce::Graphics& g)
 {
     g.fillAll (theme::panelBg);
-
-    // One cycle of oscillator 1, rendered through the same function the audio
-    // thread uses, so the preview is the sound.
-    const auto wave = waveArea();
-    g.setColour (theme::sunken);
-    g.fillRoundedRectangle (wave.toFloat(), 3.0f);
-
-    constexpr int points = 256;
-    juce::Path path;
-    const float midY = (float) wave.getCentreY();
-    const float halfH = (float) wave.getHeight() * 0.42f;
-    for (int i = 0; i < points; ++i)
-    {
-        const float value = synthosc::sample (shownMorph, shownWarp,
-                                              (double) i / points, 1.0 / points);
-        const float x = (float) wave.getX() + 2.0f
-                        + (float) i / (points - 1) * ((float) wave.getWidth() - 4.0f);
-        const float y = midY - value * halfH;
-        if (i == 0)
-            path.startNewSubPath (x, y);
-        else
-            path.lineTo (x, y);
-    }
-    g.setColour (theme::accent);
-    g.strokePath (path, juce::PathStrokeType (1.6f));
-
-    g.setColour (theme::outline);
-    g.drawRoundedRectangle (wave.toFloat(), 3.0f, 1.0f);
-
-    grid.paintCaptions (g);
 }
 
 void SynthEditor::resized()
 {
     auto r = getLocalBounds().reduced (10);
-    r.removeFromTop (56 + 10);   // wave preview (painted) + gap
 
     auto keyboardArea = r.removeFromBottom (56);
     // Size the keys so the range exactly fills the width (36..96 spans 36 white keys).
@@ -432,7 +482,33 @@ void SynthEditor::resized()
     keyboard.setBounds (keyboardArea);
     r.removeFromBottom (8);
 
-    grid.layout (r);
+    // Three rows of modules; the first module of each row absorbs the slack.
+    const size_t rows[3][3] = { { 0, 1, 2 }, { 3, 4, 5 }, { 6, 7, SIZE_MAX } };
+    for (const auto& row : rows)
+    {
+        auto line = r.removeFromTop (SynthModule::preferredHeight());
+        r.removeFromTop (8);
+
+        int fixed = 0, count = 0;
+        for (size_t index : row)
+            if (index != SIZE_MAX && index < modules.size())
+            {
+                fixed += modules[index]->preferredWidth();
+                ++count;
+            }
+        const int slack = juce::jmax (0, line.getWidth() - fixed - (count - 1) * 8);
+
+        bool first = true;
+        for (size_t index : row)
+        {
+            if (index == SIZE_MAX || index >= modules.size())
+                continue;
+            const int w = modules[index]->preferredWidth() + (first ? slack : 0);
+            modules[index]->setBounds (line.removeFromLeft (w));
+            line.removeFromLeft (8);
+            first = false;
+        }
+    }
 }
 
 // ================= KickEditor =================

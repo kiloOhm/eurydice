@@ -62,6 +62,13 @@ inline float square (double ph, double dt, float warp)
     return s;
 }
 
+// The synth's resonance-knob-to-Q mapping, shared with the filter response
+// display so the plotted curve is the filter that runs.
+inline float resonanceToQ (float resonance)
+{
+    return juce::jmap (resonance, 0.707f, 8.0f);
+}
+
 // One oscillator sample. dt is cycles per sample (for the polyBLEP edges);
 // previews pass 1/points.
 inline float sample (float morph, float warp, double phase, double dt)

@@ -139,7 +139,7 @@ void SynthGenerator::renderSegment (juce::AudioBuffer<float>& out, int from, int
         const float uniNorm = 1.0f / std::sqrt ((float) v.unison);
 
         v.filter.setType (filterMode);
-        v.filter.setResonance (juce::jmap (reso, 0.707f, 8.0f));
+        v.filter.setResonance (synthosc::resonanceToQ (reso));
 
         for (int chunkStart = from; chunkStart < to && v.active; chunkStart += glideChunk)
         {
