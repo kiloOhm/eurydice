@@ -14,6 +14,7 @@
 #include "ui/automation/AutomationEditor.h"
 #include "ui/common/DockZones.h"
 #include "KeyboardLayoutDetect.h"
+#include "MicPermission.h"
 
 namespace
 {
@@ -309,6 +310,12 @@ MainComponent::MainComponent()
 
     services.onSnapshotRequested = [this] (const juce::File& file) { return writeSnapshot (file); };
     services.onCloseChannelEditors = [this] { channelEditors.closeAll(); };
+    services.onRecordArmRequested = [this] (bool armed)
+    {
+        if (midiInput->recordArmed.load() != armed)
+            toggleRecordArm();
+        return midiInput->recordArmed.load();
+    };
     services.onShowPanelRequested = [this] (const juce::String& name)
     {
         FloatingPanel* panel = name == "playlist"  ? playlistPanel.get()
@@ -1237,19 +1244,38 @@ void MainComponent::toggleRecordArm()
 {
     const bool arming = ! midiInput->recordArmed.load();
 
+    // Arm first: MIDI recording and playback must not wait on the mic.
+    midiInput->recordArmed.store (arming);
+    transportBar.setRecordArmed (arming);
+
+    if (! arming)
+        return;
+
     // The device runs output-only until recording needs the input (opening the
     // mic at startup meant a combined device and a crashy CoreAudio race).
-    if (arming)
+    // Permission has to be settled BEFORE the reopen: the CoreAudio HAL raises
+    // the TCC prompt from inside the blocking device open, which froze all
+    // audio — playback and preview included — until the dialog was answered.
+    micpermission::request ([safeThis = juce::Component::SafePointer (this)] (bool granted)
     {
-        const auto err = services.engine.setInputEnabled (true);
+        if (safeThis == nullptr || ! safeThis->midiInput->recordArmed.load())
+            return;   // disarmed while the prompt was up
+
+        if (! granted)
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                "Record", "Microphone access is off for Eurydice.\n"
+                          "MIDI recording still works; for audio recording allow the microphone in "
+                          "System Settings > Privacy & Security > Microphone.");
+            return;
+        }
+
+        const auto err = safeThis->services.engine.setInputEnabled (true);
         if (err.isNotEmpty())
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                 "Record", "Could not open the audio input: " + err
                           + "\nMIDI recording still works; audio recording needs an input device.");
-    }
-
-    midiInput->recordArmed.store (arming);
-    transportBar.setRecordArmed (arming);
+    });
 }
 
 void MainComponent::transportStop()

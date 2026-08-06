@@ -105,6 +105,15 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     if (method == "transport.play")  { engine.play();  return true; }
     if (method == "transport.stop")  { engine.stop();  return true; }
     if (method == "transport.seek")  { engine.setPositionTicks (getOr (params, "ticks", 0.0)); return true; }
+    if (method == "transport.record")
+    {
+        // Same path as the transport button, lazy audio-input open included.
+        if (! services.onRecordArmRequested)
+            throw ControlError { "no window" };
+        const bool armed = services.onRecordArmRequested (getOr (params, "armed", true));
+        return makeObj ({ { "armed", armed },
+                          { "inputOpen", engine.isInputEnabled() } });
+    }
     if (method == "transport.set")
     {
         if (has (params, "tempo"))    project.setTempo (getOr (params, "tempo", 140.0));

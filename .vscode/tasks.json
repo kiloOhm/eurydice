@@ -1,5 +1,12 @@
 {
     "version": "2.0.0",
+    // Tasks run in a non-interactive shell, which never sources .zshrc — the
+    // only place Homebrew is added to the PATH on this machine. Without this,
+    // cmake/ninja/python3 are all "command not found" when VS Code was
+    // launched from the Finder or the Dock instead of a terminal.
+    "options": {
+        "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" }
+    },
     "tasks": [
         {
             // Default build: RelWithDebInfo (optimised, but with symbols).

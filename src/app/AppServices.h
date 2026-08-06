@@ -83,6 +83,11 @@ public:
     // (playlist|rack|pianoroll|mixer|browser). Returns false for unknown names.
     std::function<bool (const juce::String&)> onShowPanelRequested;
 
+    // Set by the host window: arm/disarm recording exactly as the transport
+    // button does (including the lazy audio-input open). Returns the armed
+    // state after the change.
+    std::function<bool (bool)> onRecordArmRequested;
+
     // Captures live plugin state into the tree, then writes the file.
     bool saveProject (const juce::File& file)
     {

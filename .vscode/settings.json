@@ -1,4 +1,10 @@
 {
+    // Homebrew tools live on the PATH only in *interactive* shells (.zshrc),
+    // so a Finder/Dock-launched VS Code can't see cmake at all — CMake Tools
+    // then reports 'Bad CMake executable: ""' and the build preLaunchTasks
+    // fail before the debugger starts. Point straight at the binary.
+    "cmake.cmakePath": "/opt/homebrew/bin/cmake",
+
     // Don't surface CMake FetchContent clones (JUCE, googletest, rubberband)
     // in the Source Control panel.
     "git.repositoryScanIgnoredFolders": ["build", "build-cov", "build-*"],

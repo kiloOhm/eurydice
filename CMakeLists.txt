@@ -94,6 +94,7 @@ set(EURYDICE_JUCE_MODULES
 
 target_link_libraries(Eurydice PRIVATE
     "-framework Carbon"
+    "-framework AVFoundation"
     ${EURYDICE_JUCE_MODULES}
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
@@ -177,6 +178,7 @@ if(EURYDICE_BUILD_TESTS)
     )
     target_link_libraries(EurydiceTests PRIVATE
         "-framework Carbon"
+        "-framework AVFoundation"
         ${EURYDICE_JUCE_MODULES}
         juce::juce_recommended_config_flags
         gtest
