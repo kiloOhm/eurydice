@@ -14,6 +14,11 @@ public:
     void setPlayStep (int step);                 // -1 = not playing
     void refreshFromModel();
 
+    // While the rack's swing knob is being dragged, the off-beat cells shift
+    // by the amount the engine will delay them, so the groove is visible as
+    // it is dialled in. amount is 0..1; negative ends the preview.
+    void setSwingPreview (float amount);
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -67,6 +72,7 @@ private:
     juce::TextButton insertButton;   // target mixer insert, click to reassign
 
     int playStep = -1;
+    float swingPreview = -1.0f;   // < 0 = no preview
     int dragPaintMode = -1;   // 1 = painting on, 0 = erasing, -1 = idle
     bool reorderArmed = false;   // pressed in the grab area, not yet dragging
     bool reordering   = false;   // stays set until the next press so the name

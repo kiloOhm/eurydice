@@ -217,27 +217,56 @@ void ChannelRow::paint (juce::Graphics& g)
         return;
     }
 
-    for (int s = 0; s < steps; ++s)
-    {
-        auto cell = juce::Rectangle<int> (area.getX() + s * stepWidth, area.getY(),
-                                          stepWidth, getHeight()).reduced (2, 4);
+    // Swing delays every odd 16th by swing * half a step, so the preview
+    // slides those cells by the same fraction of their width. Two passes:
+    // a shifted cell reaches into its right neighbour's rect, so the swung
+    // cells have to land on top of the unswung ones.
+    const int swingShift = swingPreview > 0.0f
+                               ? juce::roundToInt (swingPreview * (float) stepWidth * 0.5f) : 0;
 
-        const bool evenGroup = ((s / 4) % 2) == 0;
-        const bool on = isStepOn (s);
-
-        juce::Colour c = on ? (evenGroup ? theme::stepOn : theme::stepOnDim)
-                            : (evenGroup ? theme::stepEvenBg : theme::stepOddBg);
-        if (s == playStep)
-            c = c.brighter (on ? 0.35f : 0.12f);
-
-        g.setColour (c);
-        g.fillRoundedRectangle (cell.toFloat(), 3.0f);
-
-        if (on)
+    for (int pass = 0; pass < 2; ++pass)
+        for (int s = 0; s < steps; ++s)
         {
-            g.setColour (juce::Colours::black.withAlpha (0.25f));
-            g.drawRoundedRectangle (cell.toFloat(), 3.0f, 1.0f);
+            const bool swung = swingShift > 0 && (s % 2) == 1;
+            if ((pass == 1) != swung)
+                continue;
+
+            auto cell = juce::Rectangle<int> (area.getX() + s * stepWidth + (swung ? swingShift : 0),
+                                              area.getY(), stepWidth, getHeight()).reduced (2, 4);
+
+            const bool evenGroup = ((s / 4) % 2) == 0;
+            const bool on = isStepOn (s);
+
+            // Ghost where the shifted cell would sit unswung, so the
+            // displacement reads as motion instead of a broken grid.
+            if (swung && on)
+            {
+                g.setColour (theme::stepOn.withAlpha (0.18f));
+                g.drawRoundedRectangle (cell.translated (-swingShift, 0).toFloat(), 3.0f, 1.0f);
+            }
+
+            juce::Colour c = on ? (evenGroup ? theme::stepOn : theme::stepOnDim)
+                                : (evenGroup ? theme::stepEvenBg : theme::stepOddBg);
+            if (s == playStep)
+                c = c.brighter (on ? 0.35f : 0.12f);
+
+            g.setColour (c);
+            g.fillRoundedRectangle (cell.toFloat(), 3.0f);
+
+            if (on)
+            {
+                g.setColour (juce::Colours::black.withAlpha (0.25f));
+                g.drawRoundedRectangle (cell.toFloat(), 3.0f, 1.0f);
+            }
         }
+}
+
+void ChannelRow::setSwingPreview (float amount)
+{
+    if (! juce::approximatelyEqual (swingPreview, amount))
+    {
+        swingPreview = amount;
+        repaint (stepsArea());
     }
 }
 

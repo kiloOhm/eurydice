@@ -53,6 +53,9 @@ private:
     void performDrop (const juce::StringArray& files, juce::Point<int> posInPanel);
     void rebuildRows();
     void refreshHeader();
+    // amount 0..1 shifts the rows' off-beat cells live; negative ends the
+    // preview and puts the SWING caption back.
+    void setSwingPreview (float amount);
     int rowContainerWidth() const;
     juce::ValueTree activePattern() const;
     juce::ValueTree selectedChannel() const;
@@ -82,6 +85,7 @@ private:
     juce::ComboBox lengthBox;
     AutomatableSlider swingKnob;
     juce::Label swingLabel { {}, "SWING" };
+    bool swingPreviewActive = false;
     juce::TextButton graphButton { "GRAPH" };
 
     static constexpr int rowGap = 2;

@@ -93,6 +93,8 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
             services.project.setPatternSwing (pat, swingKnob.getValue());
         services.automationWriter.touch ({ "project", 0, "swing", "Swing" },
                                          swingKnob.getValue());
+        if (swingPreviewActive)
+            setSwingPreview ((float) swingKnob.getValue());
     };
     swingKnob.onContextMenu = [this]
     {
@@ -101,6 +103,20 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
                               [this] { swingKnob.setValue (0.0, juce::sendNotification); });
     };
     undoGesture::attach (swingKnob, services.project, "Swing");
+    // Compose the live preview on top of the undo-gesture bracketing, which
+    // owns onDragStart/onDragEnd.
+    swingKnob.onDragStart = [this, gesture = swingKnob.onDragStart]
+    {
+        if (gesture) gesture();
+        swingPreviewActive = true;
+        setSwingPreview ((float) swingKnob.getValue());
+    };
+    swingKnob.onDragEnd = [this, gesture = swingKnob.onDragEnd]
+    {
+        if (gesture) gesture();
+        swingPreviewActive = false;
+        setSwingPreview (-1.0f);
+    };
     addAndMakeVisible (swingKnob);
 
     swingLabel.setFont (theme::uiFont (9.0f, true));
@@ -172,12 +188,29 @@ void ChannelRackPanel::refreshHeader()
         lengthBox.setSelectedId ((int) pat[ids::lengthTicks] / ids::ticksPerStep,
                                  juce::dontSendNotification);
     swingKnob.setValue (project.getSwingForPattern (pat), juce::dontSendNotification);
-    // The star marks a pattern that no longer follows the project swing.
-    swingLabel.setText (project.patternOverridesSwing (pat) ? "SWING*" : "SWING",
-                        juce::dontSendNotification);
+    // The star marks a pattern that no longer follows the project swing. While
+    // the knob is being dragged the label shows the live percentage instead,
+    // and setSwingPreview restores the caption when the drag ends.
+    if (! swingPreviewActive)
+        swingLabel.setText (project.patternOverridesSwing (pat) ? "SWING*" : "SWING",
+                            juce::dontSendNotification);
 
     graphLane.setPattern (pat);
     graphLane.setChannel (selectedChannel());
+}
+
+void ChannelRackPanel::setSwingPreview (float amount)
+{
+    for (auto& row : rows)
+        row->setSwingPreview (amount);
+
+    if (amount >= 0.0f)
+        swingLabel.setText (juce::String (juce::roundToInt (amount * 100.0f)) + "%",
+                            juce::dontSendNotification);
+    else
+        swingLabel.setText (services.project.patternOverridesSwing (activePattern())
+                                ? "SWING*" : "SWING",
+                            juce::dontSendNotification);
 }
 
 void ChannelRackPanel::rebuildRows()
