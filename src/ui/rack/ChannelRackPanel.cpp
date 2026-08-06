@@ -661,9 +661,13 @@ void ChannelRackPanel::valueTreeChildAdded (juce::ValueTree& parent, juce::Value
     {
         refreshHeader();
         // A project load replaces the pattern set wholesale; rows built before
-        // that would keep drawing the pattern object they were handed.
+        // that would keep drawing the pattern object they were handed — and
+        // the row container would keep the width computed while no pattern
+        // was valid (the 16-step fallback), clipping longer patterns until
+        // some other event resized it.
         for (auto& row : rows)
             row->setPattern (activePattern());
+        rowContainer.setSize (rowContainerWidth(), rowContainer.getHeight());
     }
     else if (child.hasType (ids::NOTE) || child.hasType (ids::LANE))
     {
