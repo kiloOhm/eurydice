@@ -622,6 +622,14 @@ void PianoRollPanel::paintNotes (juce::Graphics& g)
     g.restoreState();
 }
 
+void PianoRollPanel::setLiveKey (int key, bool on)
+{
+    if (key < 0 || key > 127 || liveKeys[(size_t) key] == on)
+        return;
+    liveKeys[(size_t) key] = on;
+    repaint (keyboardArea());
+}
+
 void PianoRollPanel::paintKeyboard (juce::Graphics& g)
 {
     const auto area = keyboardArea();
@@ -639,6 +647,12 @@ void PianoRollPanel::paintKeyboard (juce::Graphics& g)
 
         g.setColour (isBlack[key % 12] ? theme::pianoBlackKey : theme::pianoWhiteKey);
         g.fillRect (area.getX(), y + 1, area.getWidth() - 2, keyHeight - 1);
+
+        if (liveKeys[(size_t) key])
+        {
+            g.setColour (theme::accent.withAlpha (0.55f));
+            g.fillRect (area.getX(), y + 1, area.getWidth() - 2, keyHeight - 1);
+        }
 
         if (key % 12 == 0)
         {

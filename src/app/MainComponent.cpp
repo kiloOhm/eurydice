@@ -346,8 +346,15 @@ MainComponent::MainComponent()
         playlistView->revealClip (clip);
     };
 
-    pianoRollPanel = std::make_unique<FloatingPanel> ("Piano Roll",
-                                                      std::make_unique<PianoRollPanel> (services));
+    {
+        auto pianoRoll = std::make_unique<PianoRollPanel> (services);
+        // Live input lights the roll's keyboard column while a key is held.
+        midiInput->onLiveNote = [view = pianoRoll.get()] (int key, bool on)
+        {
+            view->setLiveKey (key, on);
+        };
+        pianoRollPanel = std::make_unique<FloatingPanel> ("Piano Roll", std::move (pianoRoll));
+    }
     mixerPanel = std::make_unique<FloatingPanel> ("Mixer",
                                                   std::make_unique<MixerPanel> (services));
 
@@ -596,6 +603,8 @@ MainComponent::~MainComponent()
     services.onSnapshotRequested = nullptr;
     services.onCloseChannelEditors = nullptr;
     services.onShowPanelRequested = nullptr;
+    services.onRecordArmRequested = nullptr;
+    midiInput->onLiveNote = nullptr;
     fileState.removeChangeListener (this);
     removeKeyListener (commandManager.getKeyMappings());
     commandManager.setFirstCommandTarget (nullptr);

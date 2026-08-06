@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <array>
 #include <vector>
 #include "app/AppServices.h"
 #include "NoteTools.h"
@@ -28,6 +29,10 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
+
+    // Live-input feedback: lights the key on the keyboard column while a
+    // MIDI/typing-piano note is held. Message thread.
+    void setLiveKey (int key, bool on);
 
 private:
     // --- geometry ---
@@ -114,6 +119,7 @@ private:
     int lastPreviewKey = -1;
 
     double playheadTicks = -1.0;
+    std::array<bool, 128> liveKeys {};   // held via MIDI/typing piano
 
     static constexpr int headerH = 62;   // two rows: view settings + tools
     static constexpr int headerRowH = 23;

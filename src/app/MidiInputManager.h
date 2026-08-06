@@ -26,6 +26,9 @@ public:
 
     std::atomic<bool> recordArmed { false };
 
+    // UI feedback for live input (piano-roll key highlight). Message thread.
+    std::function<void (int key, bool on)> onLiveNote;
+
     // Typing keyboard + MIDI hardware funnel through these.
     void noteOn (int key, float velocity)
     {
@@ -33,6 +36,8 @@ public:
         if (chId < 0)
             return;
         services.engine.previewNote (chId, key, velocity, 0);
+        if (onLiveNote)
+            onLiveNote (key, true);
 
         if (recordArmed.load() && services.engine.isPlaying())
         {
@@ -51,6 +56,8 @@ public:
         if (chId < 0)
             return;
         services.engine.previewNoteOff (chId, key);
+        if (onLiveNote)
+            onLiveNote (key, false);
 
         if (auto it = heldNotes.find (key); it != heldNotes.end())
         {
