@@ -540,6 +540,27 @@ TEST (SequencerEngine, SeekSendsRealNoteOffsToTheGenerator)
     fx.engine.stop();
 }
 
+TEST (SequencerEngine, InsertRoutesThroughAnotherInsertToMaster)
+{
+    // Feed insert 2 into insert 1 only (no direct master route): sound must
+    // still arrive at the master through the chain, and vanish when the one
+    // send is removed.
+    EngineFixture fx;
+    soloNoteAt (fx, 0);
+    fx.model.getChannel (0).setProperty (ids::insertIndex, 2, nullptr);
+    fx.model.setSendEnabled (2, 0, false);
+    fx.model.setSendEnabled (2, 1, true);
+    fx.sync.rebuildNow();
+
+    auto out = fx.renderFromStart (8192);
+    EXPECT_GT (rmsOf (out, 0, 2048), 0.01f) << "insert 2 -> insert 1 -> master is silent";
+
+    fx.model.setSendEnabled (2, 1, false);
+    fx.sync.rebuildNow();
+    out = fx.renderFromStart (8192);
+    EXPECT_LT (rmsOf (out, 0, 8192), 1.0e-5f) << "unrouted insert still reaches the master";
+}
+
 TEST (SequencerEngine, PerNotePanReachesTheVoice)
 {
     // notePan was stored but never played back. Two notes, hard left and hard

@@ -84,6 +84,65 @@ void ProjectModel::clearLoop()
     root.setProperty (ids::loopEnd, 0, nullptr);
 }
 
+void ProjectModel::setSendEnabled (int fromInsert, int toInsert, bool enabled)
+{
+    auto ins = getInsert (fromInsert);
+    if (! ins.isValid() || toInsert < 0 || toInsert >= numInserts() || toInsert == fromInsert)
+        return;
+
+    auto sends = ins.getChildWithName (ids::SENDS);
+    if (! sends.isValid())
+    {
+        sends = juce::ValueTree (ids::SENDS);
+        ins.appendChild (sends, &undo);
+    }
+
+    for (int i = sends.getNumChildren(); --i >= 0;)
+        if ((int) sends.getChild (i)[ids::destInsert] == toInsert)
+        {
+            if (! enabled)
+                sends.removeChild (i, &undo);
+            return;
+        }
+
+    if (enabled)
+    {
+        juce::ValueTree send (ids::SEND);
+        send.setProperty (ids::destInsert, toInsert, nullptr);
+        send.setProperty (ids::level, 1.0, nullptr);
+        sends.appendChild (send, &undo);
+    }
+}
+
+bool ProjectModel::hasSend (int fromInsert, int toInsert) const
+{
+    for (const auto send : getInsert (fromInsert).getChildWithName (ids::SENDS))
+        if ((int) send[ids::destInsert] == toInsert)
+            return true;
+    return false;
+}
+
+bool ProjectModel::sendWouldCycle (int fromInsert, int toInsert) const
+{
+    // Walk the send graph from `toInsert`; reaching `fromInsert` means the
+    // proposed edge would close a loop.
+    std::vector<int> stack { toInsert };
+    std::vector<bool> seen ((size_t) numInserts(), false);
+    while (! stack.empty())
+    {
+        const int at = stack.back();
+        stack.pop_back();
+        if (at == fromInsert)
+            return true;
+        if (at < 0 || at >= numInserts() || seen[(size_t) at])
+            continue;
+        seen[(size_t) at] = true;
+        for (const auto send : getInsert (at).getChildWithName (ids::SENDS))
+            stack.push_back (send[ids::destInsert]);
+    }
+    return false;
+}
+
 juce::ValueTree ProjectModel::makeInsert (int index, const juce::String& name)
 {
     juce::ValueTree insert (ids::INSERT);

@@ -554,3 +554,43 @@ TEST (ProjectModel, AddInsertGrowsMixerUpToCap)
         ASSERT_TRUE (model.addInsert().isValid());
     EXPECT_FALSE (model.addInsert().isValid()) << "cap must hold";
 }
+
+TEST (ProjectModel, SendToggleAddsAndRemovesOneSend)
+{
+    ProjectModel model;
+
+    EXPECT_TRUE (model.hasSend (1, 0)) << "default master route missing";
+    EXPECT_FALSE (model.hasSend (1, 2));
+
+    model.setSendEnabled (1, 2, true);
+    EXPECT_TRUE (model.hasSend (1, 2));
+    model.setSendEnabled (1, 2, true);   // idempotent: still exactly one
+    int count = 0;
+    for (const auto send : model.getInsert (1).getChildWithName (ids::SENDS))
+        if ((int) send[ids::destInsert] == 2)
+            ++count;
+    EXPECT_EQ (count, 1);
+
+    model.setSendEnabled (1, 2, false);
+    EXPECT_FALSE (model.hasSend (1, 2));
+
+    // The default master route is a plain send and can be dropped too.
+    model.setSendEnabled (1, 0, false);
+    EXPECT_FALSE (model.hasSend (1, 0));
+
+    // Self-routing is refused.
+    model.setSendEnabled (1, 1, true);
+    EXPECT_FALSE (model.hasSend (1, 1));
+}
+
+TEST (ProjectModel, SendCycleDetectionWalksTheGraph)
+{
+    ProjectModel model;
+    model.setSendEnabled (1, 2, true);
+    model.setSendEnabled (2, 3, true);
+
+    EXPECT_TRUE (model.sendWouldCycle (2, 1)) << "direct back-edge";
+    EXPECT_TRUE (model.sendWouldCycle (3, 1)) << "transitive back-edge";
+    EXPECT_FALSE (model.sendWouldCycle (1, 3));
+    EXPECT_FALSE (model.sendWouldCycle (4, 1));
+}

@@ -359,6 +359,26 @@ void MixerPanel::showStripMenu (int insertIndex)
                   routedChannels.size() == 1);
     menu.addSeparator();
 
+    // Post-fader routing to other inserts. Master stays the final bus: the
+    // engine never sends from index 0. Items that would close a feedback
+    // loop are disabled (unless already routed, so they can be unticked).
+    if (insertIndex != 0)
+    {
+        juce::PopupMenu routeMenu;
+        for (int i = 0; i < services.project.numInserts(); ++i)
+        {
+            if (i == insertIndex)
+                continue;
+            const bool routed = services.project.hasSend (insertIndex, i);
+            const bool cycles = ! routed && services.project.sendWouldCycle (insertIndex, i);
+            routeMenu.addItem (30000 + i,
+                               (i == 0 ? "Master" : insertTree (i)[ids::name].toString())
+                                   + (cycles ? " (would feed back)" : ""),
+                               ! cycles, routed);
+        }
+        menu.addSubMenu ("Route to", routeMenu);
+    }
+
     // One-click sidechain pump: a compressor keyed from another insert.
     juce::PopupMenu duckMenu;
     const bool haveFreeSlot = firstFreeSlot (insertIndex) >= 0;
@@ -406,6 +426,14 @@ void MixerPanel::showStripMenu (int insertIndex)
                 ins.setProperty (ids::name, routedChannels[0],
                                  &services.project.getUndoManager());
             }
+            return;
+        }
+        if (result >= 30000)
+        {
+            const int dest = result - 30000;
+            const undoGesture::Scoped step (services.project, "Route insert");
+            services.project.setSendEnabled (insertIndex, dest,
+                                             ! services.project.hasSend (insertIndex, dest));
             return;
         }
         if (result >= 20000)

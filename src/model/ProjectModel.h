@@ -130,6 +130,15 @@ public:
         return insert;
     }
 
+    // Post-fader insert-to-insert send (level 1.0 on enable, undoable). The
+    // default route to master is an ordinary send, so it can be turned off
+    // too. One send per (from, to) pair.
+    void setSendEnabled (int fromInsert, int toInsert, bool enabled);
+    bool hasSend (int fromInsert, int toInsert) const;
+    // True when audio from `fromInsert` already reaches `toInsert` through
+    // any chain of sends — routing the other way would close a feedback loop.
+    bool sendWouldCycle (int fromInsert, int toInsert) const;
+
     // --- Persistence ---
     bool saveToFile (const juce::File&) const;
     bool loadFromFile (const juce::File&);
