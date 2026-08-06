@@ -1,5 +1,6 @@
 #include "ChannelEditor.h"
 #include "engine/SamplerGenerator.h"
+#include "engine/SynthOsc.h"
 #include "model/UndoGesture.h"
 #include "plugins/PluginGenerator.h"
 #include "sandbox/SandboxedGenerator.h"
@@ -363,18 +364,67 @@ SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
     bridge = std::make_unique<KeyboardBridge> (services, channel);
     keyboardState.addListener (bridge.get());
 
-    setSize (700, 260);
+    startTimerHz (15);
+    setSize (760, 505);
+}
+
+juce::Rectangle<int> SynthEditor::waveArea() const
+{
+    return getLocalBounds().reduced (10).removeFromTop (56);
+}
+
+void SynthEditor::timerCallback()
+{
+    const float morph = (float) (double) channel.getProperty (ids::oscShape, 0.0);
+    const float warp  = (float) (double) channel.getProperty (ids::oscWarp, 0.0);
+    if (! juce::approximatelyEqual (morph, shownMorph)
+        || ! juce::approximatelyEqual (warp, shownWarp))
+    {
+        shownMorph = morph;
+        shownWarp = warp;
+        repaint (waveArea());
+    }
 }
 
 void SynthEditor::paint (juce::Graphics& g)
 {
     g.fillAll (theme::panelBg);
+
+    // One cycle of oscillator 1, rendered through the same function the audio
+    // thread uses, so the preview is the sound.
+    const auto wave = waveArea();
+    g.setColour (theme::sunken);
+    g.fillRoundedRectangle (wave.toFloat(), 3.0f);
+
+    constexpr int points = 256;
+    juce::Path path;
+    const float midY = (float) wave.getCentreY();
+    const float halfH = (float) wave.getHeight() * 0.42f;
+    for (int i = 0; i < points; ++i)
+    {
+        const float value = synthosc::sample (shownMorph, shownWarp,
+                                              (double) i / points, 1.0 / points);
+        const float x = (float) wave.getX() + 2.0f
+                        + (float) i / (points - 1) * ((float) wave.getWidth() - 4.0f);
+        const float y = midY - value * halfH;
+        if (i == 0)
+            path.startNewSubPath (x, y);
+        else
+            path.lineTo (x, y);
+    }
+    g.setColour (theme::accent);
+    g.strokePath (path, juce::PathStrokeType (1.6f));
+
+    g.setColour (theme::outline);
+    g.drawRoundedRectangle (wave.toFloat(), 3.0f, 1.0f);
+
     grid.paintCaptions (g);
 }
 
 void SynthEditor::resized()
 {
     auto r = getLocalBounds().reduced (10);
+    r.removeFromTop (56 + 10);   // wave preview (painted) + gap
 
     auto keyboardArea = r.removeFromBottom (56);
     // Size the keys so the range exactly fills the width (36..96 spans 36 white keys).

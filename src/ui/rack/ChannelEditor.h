@@ -77,7 +77,8 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SamplerEditor)
 };
 
-class SynthEditor : public juce::Component
+class SynthEditor : public juce::Component,
+                    private juce::Timer
 {
 public:
     SynthEditor (AppServices&, juce::ValueTree channel);
@@ -86,12 +87,17 @@ public:
     void resized() override;
 
 private:
+    // Repaints the wave preview when the morph/warp knobs move.
+    void timerCallback() override;
+    juce::Rectangle<int> waveArea() const;
+
     AppServices& services;
     juce::ValueTree channel;
     juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
     KnobGrid grid;
     std::unique_ptr<juce::MidiKeyboardState::Listener> bridge;
+    float shownMorph = 0.0f, shownWarp = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthEditor)
 };

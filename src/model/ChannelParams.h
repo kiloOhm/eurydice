@@ -83,16 +83,33 @@ inline const std::vector<Descriptor>& kick()
 inline const std::vector<Descriptor>& synth()
 {
     static const std::vector<Descriptor> table {
-        { ids::oscShape,     "SHAPE",  { 0.0, 1.0 },                 0.0,    {},     2, true, "OSCILLATORS" },
-        { ids::osc2Detune,   "DETUNE", { -50.0, 50.0 },              7.0,    " ct",  1, true, {} },
+        { ids::oscShape,     "MORPH",  { -2.0, 1.0 },                0.0,    {},     2, true, "OSC   MORPH: -2 SIN  -1 TRI  0 SAW  1 SQR" },
+        { ids::oscWarp,      "WARP",   { 0.0, 1.0 },                 0.0,    {},     2, true, {} },
+        { ids::osc2Semi,     "SEMI",   { -24.0, 24.0, 1.0 },         0.0,    " st",  0, true, {} },
+        { ids::osc2Detune,   "FINE",   { -50.0, 50.0 },              7.0,    " ct",  1, true, {} },
         { ids::osc2Mix,      "OSC2",   { 0.0, 1.0 },                 0.35,   {},     2, true, {} },
-        { ids::cutoff,       "CUT",    { 40.0, 18000.0, 0.0, 0.28 }, 4000.0, " Hz",  0, true, "FILTER" },
+        { ids::unisonVoices, "VOICES", { 1.0, 7.0, 1.0 },            1.0,    {},     0, true, "UNISON" },
+        { ids::unisonDetune, "DETUNE", { 0.0, 50.0 },                18.0,   " ct",  1, true, {} },
+        { ids::unisonWidth,  "WIDTH",  { 0.0, 1.0 },                 0.7,    {},     2, true, {} },
+        { ids::subLevel,     "SUB",    { 0.0, 1.0 },                 0.0,    {},     2, true, "LAYERS" },
+        { ids::noiseLevel,   "NOISE",  { 0.0, 1.0 },                 0.0,    {},     2, true, {} },
+        { ids::filterType,   "TYPE",   { 0.0, 2.0, 1.0 },            0.0,    {},     0, true, "FILTER   0 LP   1 BP   2 HP" },
+        { ids::cutoff,       "CUT",    { 40.0, 18000.0, 0.0, 0.28 }, 4000.0, " Hz",  0, true, {} },
         { ids::resonance,    "RES",    { 0.0, 1.0 },                 0.3,    {},     2, true, {} },
-        { ids::filterEnvAmt, "ENV",    { 0.0, 1.0 },                 0.35,   {},     2, true, {} },
-        { ids::attack,       "ATT",    { 0.0, 2.0, 0.0, 0.35 },      0.004,  " s",   3, true, "ENVELOPE" },
+        { ids::filterKey,    "KEY",    { 0.0, 1.0 },                 0.0,    {},     2, true, {} },
+        { ids::filterEnvAmt, "ENV",    { -1.0, 1.0 },                0.35,   {},     2, true, {} },
+        { ids::fenvAttack,   "ATT",    { 0.0, 2.0, 0.0, 0.35 },      0.004,  " s",   3, true, "FILTER ENV" },
+        { ids::fenvDecay,    "DEC",    { 0.0, 4.0, 0.0, 0.35 },      0.25,   " s",   2, true, {} },
+        { ids::fenvSustain,  "SUS",    { 0.0, 1.0 },                 0.2,    {},     2, true, {} },
+        { ids::fenvRelease,  "REL",    { 0.0, 4.0, 0.0, 0.35 },      0.08,   " s",   2, true, {} },
+        { ids::attack,       "ATT",    { 0.0, 2.0, 0.0, 0.35 },      0.004,  " s",   3, true, "AMP" },
         { ids::decay,        "DEC",    { 0.0, 4.0, 0.0, 0.35 },      0.25,   " s",   2, true, {} },
         { ids::sustain,      "SUS",    { 0.0, 1.0 },                 0.7,    {},     2, true, {} },
         { ids::release,      "REL",    { 0.0, 4.0, 0.0, 0.35 },      0.08,   " s",   2, true, {} },
+        { ids::lfoRate,      "RATE",   { 0.02, 20.0, 0.0, 0.35 },    5.0,    " Hz",  2, true, "LFO   0 CUT   1 PITCH   2 WARP   3 PAN" },
+        { ids::lfoAmount,    "AMT",    { 0.0, 1.0 },                 0.0,    {},     2, true, {} },
+        { ids::lfoTarget,    "DEST",   { 0.0, 3.0, 1.0 },            0.0,    {},     0, true, {} },
+        { ids::glide,        "GLIDE",  { 0.0, 1.0, 0.0, 0.4 },       0.0,    " s",   2, true, "VOICE" },
     };
     return table;
 }

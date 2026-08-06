@@ -63,10 +63,27 @@ DECLARE_ID (release)
 DECLARE_ID (cutoff)        // Hz
 DECLARE_ID (resonance)     // 0..1
 DECLARE_ID (oneShot)       // sampler: ignore note-offs
-DECLARE_ID (osc2Detune)    // synth: cents
+DECLARE_ID (osc2Detune)    // synth: fine detune, cents
 DECLARE_ID (osc2Mix)       // synth: 0..1
-DECLARE_ID (oscShape)      // synth: 0 = saw, 1 = square
-DECLARE_ID (filterEnvAmt)  // synth: 0..1
+DECLARE_ID (oscShape)      // synth morph: -2 sine, -1 tri, 0 saw, 1 square
+DECLARE_ID (filterEnvAmt)  // synth: -1..1 (bipolar)
+DECLARE_ID (oscWarp)       // synth: 0..1 phase bend / pulse width
+DECLARE_ID (osc2Semi)      // synth: -24..24 semitones
+DECLARE_ID (unisonVoices)  // synth: 1..7
+DECLARE_ID (unisonDetune)  // synth: spread, cents
+DECLARE_ID (unisonWidth)   // synth: 0..1 stereo spread
+DECLARE_ID (subLevel)      // synth: sine one octave down
+DECLARE_ID (noiseLevel)    // synth: white noise layer
+DECLARE_ID (filterType)    // synth: 0 LP, 1 BP, 2 HP
+DECLARE_ID (filterKey)     // synth: 0..1 cutoff keytracking
+DECLARE_ID (fenvAttack)    // synth filter envelope, seconds
+DECLARE_ID (fenvDecay)
+DECLARE_ID (fenvSustain)   // 0..1
+DECLARE_ID (fenvRelease)
+DECLARE_ID (lfoRate)       // synth: Hz
+DECLARE_ID (lfoAmount)     // synth: 0..1
+DECLARE_ID (lfoTarget)     // synth: 0 cut, 1 pitch, 2 warp, 3 pan
+DECLARE_ID (glide)         // synth: seconds
 
 // Kick-design parameters. The sampler and the kick synth share the drive
 // stage and the envelope-shape control; the rest is per-generator.
