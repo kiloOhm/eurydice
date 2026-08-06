@@ -525,6 +525,8 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
                                         : services.effects.isSandboxEnabled();
             menu.addItem (6, "Run sandboxed (reloads the plugin)", true, sandboxNow);
         }
+        menu.addItem (7, "Move up", slotIndex > 0);
+        menu.addItem (8, "Move down", slotIndex < (int) effectSlots.size() - 1);
         menu.addItem (3, "Remove");
         menu.addSeparator();
     }
@@ -591,6 +593,29 @@ void MixerPanel::showEffectSlotMenu (int slotIndex)
                 slot.setProperty (ids::sandboxed, ! now, &undo);
                 clearSlot (slotIndex);
                 slot.setProperty (ids::pluginId, slot[ids::pluginId].toString(), &undo);
+                rebuildDetail();
+            }
+            else if (result == 7 || result == 8)
+            {
+                const int target = slotIndex + (result == 7 ? -1 : 1);
+                if (target < 0 || target >= (int) effectSlots.size())
+                    return;
+                // Editors are keyed by slot; close them rather than leave
+                // them pointing at the old position.
+                services.builtinEditors.closeFor (selectedInsert, slotIndex);
+                services.builtinEditors.closeFor (selectedInsert, target);
+
+                const undoGesture::Scoped step (services.project, "Move effect");
+                auto slot = getSlotTree (selectedInsert, slotIndex, false);
+                auto other = getSlotTree (selectedInsert, target, false);
+                if (slot.isValid())
+                    slot.setProperty (ids::slotIndex, target, &undo);
+                if (other.isValid())
+                    other.setProperty (ids::slotIndex, slotIndex, &undo);
+
+                // Live instances follow their slots — no reload, no state loss.
+                services.effects.swapSlots (selectedInsert, slotIndex, target);
+                services.builtinEffects.swapSlots (selectedInsert, slotIndex, target);
                 rebuildDetail();
             }
             else if (result == 4)

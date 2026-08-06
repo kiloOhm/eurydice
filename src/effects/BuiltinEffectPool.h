@@ -61,6 +61,16 @@ public:
         pool.erase ({ insertIndex, slotIndex });   // snapshot history keeps it alive till swap
     }
 
+    // Reorder support: instances follow their slots (state, meters and open
+    // editors included) instead of being torn down and recreated.
+    void swapSlots (int insertIndex, int slotA, int slotB)
+    {
+        auto a = pool.extract ({ insertIndex, slotA });
+        auto b = pool.extract ({ insertIndex, slotB });
+        if (! a.empty()) { a.key() = { insertIndex, slotB }; pool.insert (std::move (a)); }
+        if (! b.empty()) { b.key() = { insertIndex, slotA }; pool.insert (std::move (b)); }
+    }
+
 private:
     struct Entry
     {

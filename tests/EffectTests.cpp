@@ -838,6 +838,38 @@ TEST (BuiltinEffectSlot, LandsInTheSnapshotChain)
     EXPECT_NE (fixture.builtinEffects.peek (1, 0), nullptr);
 }
 
+TEST (BuiltinEffectSlot, SwapSlotsReordersTheChainWithoutReload)
+{
+    // What the mixer's Move up/down does: swap slotIndex in the model plus
+    // swapSlots in the pools. The same instances must come out in the new
+    // order — no teardown, no state loss.
+    test::EngineFixture fixture;
+    auto slotA = addBuiltinSlot (fixture, 1, 0, ClipperEffect::identifier());
+    auto slotB = addBuiltinSlot (fixture, 1, 1, DelayEffect::identifier());
+
+    const auto clipper = fixture.builtinEffects.peek (1, 0);
+    const auto delay   = fixture.builtinEffects.peek (1, 1);
+    ASSERT_NE (clipper, nullptr);
+    ASSERT_NE (delay, nullptr);
+    {
+        auto snapshot = fixture.engine.getPendingSnapshot();
+        ASSERT_EQ (snapshot->inserts[1].effects.size(), 2u);
+        EXPECT_EQ (snapshot->inserts[1].effects[0].get(), clipper.get());
+    }
+
+    slotA.setProperty (ids::slotIndex, 1, nullptr);
+    slotB.setProperty (ids::slotIndex, 0, nullptr);
+    fixture.builtinEffects.swapSlots (1, 0, 1);
+    fixture.sync.rebuildNow();
+
+    EXPECT_EQ (fixture.builtinEffects.peek (1, 0), delay) << "instance was recreated";
+    EXPECT_EQ (fixture.builtinEffects.peek (1, 1), clipper);
+    auto snapshot = fixture.engine.getPendingSnapshot();
+    ASSERT_EQ (snapshot->inserts[1].effects.size(), 2u);
+    EXPECT_EQ (snapshot->inserts[1].effects[0].get(), delay.get()) << "chain order unchanged";
+    EXPECT_EQ (snapshot->inserts[1].effects[1].get(), clipper.get());
+}
+
 TEST (BuiltinEffectSlot, BypassRemovesItFromTheChain)
 {
     test::EngineFixture fixture;

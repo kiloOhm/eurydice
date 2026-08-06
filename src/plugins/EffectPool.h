@@ -132,6 +132,16 @@ public:
         pool.erase ({ insertIndex, slotIndex });   // snapshot history keeps it alive till swap
     }
 
+    // Reorder support: the live instances follow their slots, so moving an
+    // effect in the chain never reloads a plugin.
+    void swapSlots (int insertIndex, int slotA, int slotB)
+    {
+        auto a = pool.extract ({ insertIndex, slotA });
+        auto b = pool.extract ({ insertIndex, slotB });
+        if (! a.empty()) { a.key() = { insertIndex, slotB }; pool.insert (std::move (a)); }
+        if (! b.empty()) { b.key() = { insertIndex, slotA }; pool.insert (std::move (b)); }
+    }
+
     // For saving plugin state into the project.
     template <typename Fn>
     void forEach (Fn&& fn) const
