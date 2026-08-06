@@ -453,6 +453,93 @@ TEST (SequencerEngine, ProjectSwingAutomationShiftsOddSteps)
     EXPECT_GT (rmsOf (out, swungOnset, 2048), 0.01f);
 }
 
+namespace
+{
+// Stands in for a hosted/sandboxed instrument: releases voices only on MIDI
+// it can see, never on reset(). Counts what the engine actually sends.
+struct MidiCaptureGenerator : public Generator
+{
+    void prepare (double, int) override {}
+    void reset() override { ++resets; }
+    void render (juce::AudioBuffer<float>&, const juce::MidiBuffer& midi) override
+    {
+        for (const auto meta : midi)
+        {
+            const auto msg = meta.getMessage();
+            if (msg.isNoteOn())            ++noteOns;
+            else if (msg.isNoteOff())      ++noteOffs;
+            else if (msg.isAllNotesOff())  ++allNotesOffs;
+        }
+    }
+    std::atomic<int> noteOns { 0 }, noteOffs { 0 }, allNotesOffs { 0 }, resets { 0 };
+};
+
+// A single 4-bar note at tick 0 on channel 0 — far longer than the render
+// windows below, so it is still held when the transport event fires.
+void holdLongNote (EngineFixture& fx)
+{
+    auto pattern = fx.model.getPattern (0);
+    for (int i = pattern.getNumChildren(); --i >= 0;)
+        if (pattern.getChild (i).hasType (ids::LANE))
+            pattern.removeChild (i, nullptr);
+
+    auto lane = fx.model.getOrCreateLane (pattern, fx.model.getChannel (0)[ids::id]);
+    fx.model.addNote (lane, 60, 0, 4 * ids::ticksPerBar);
+    fx.sync.rebuildNow();
+}
+}
+
+TEST (SequencerEngine, StopSendsRealNoteOffsToTheGenerator)
+{
+    // Built-in generators kill voices in reset(), but plugins treat
+    // AudioProcessor::reset() as advisory and a sandboxed child never hears
+    // it — stop has to put actual note-offs on the wire.
+    EngineFixture fx;
+    holdLongNote (fx);
+
+    auto capture = std::make_shared<MidiCaptureGenerator>();
+    auto snap = std::make_shared<EngineSnapshot> (*fx.engine.getPendingSnapshot());
+    ASSERT_FALSE (snap->channels.empty());
+    snap->channels[0].generator = capture;
+    fx.engine.publishSnapshot (snap);
+
+    fx.engine.setPositionTicks (0.0);
+    fx.engine.play();
+    fx.render (2048);                       // note-on lands, note still held
+    EXPECT_GT (capture->noteOns.load(), 0);
+    EXPECT_EQ (capture->noteOffs.load(), 0);
+
+    fx.engine.stop();
+    fx.render (test::kBlockSize);           // the block that services the stop
+
+    EXPECT_GT (capture->noteOffs.load(), 0) << "stop must emit a real MIDI note-off";
+    EXPECT_GT (capture->allNotesOffs.load(), 0) << "stop must emit CC 123 (all notes off)";
+    EXPECT_GT (capture->resets.load(), 0);
+}
+
+TEST (SequencerEngine, SeekSendsRealNoteOffsToTheGenerator)
+{
+    EngineFixture fx;
+    holdLongNote (fx);
+
+    auto capture = std::make_shared<MidiCaptureGenerator>();
+    auto snap = std::make_shared<EngineSnapshot> (*fx.engine.getPendingSnapshot());
+    ASSERT_FALSE (snap->channels.empty());
+    snap->channels[0].generator = capture;
+    fx.engine.publishSnapshot (snap);
+
+    fx.engine.setPositionTicks (0.0);
+    fx.engine.play();
+    fx.render (2048);
+    ASSERT_GT (capture->noteOns.load(), 0);
+
+    fx.engine.setPositionTicks (2 * ids::ticksPerBar);   // seek mid-note
+    fx.render (test::kBlockSize);
+    EXPECT_GT (capture->noteOffs.load(), 0) << "seek must release the held note";
+
+    fx.engine.stop();
+}
+
 TEST (SequencerEngine, PerNotePanReachesTheVoice)
 {
     // notePan was stored but never played back. Two notes, hard left and hard

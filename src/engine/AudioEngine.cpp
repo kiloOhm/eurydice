@@ -250,6 +250,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
     if (snap == nullptr || numOutputChannels < 1)
         return;
 
+    // MIDI buffers are cleared before the transport events so a stop or seek
+    // can write its note-offs into them and have this block render them.
+    const int numChannels = juce::jmin ((int) snap->channels.size(), maxChannels);
+    for (int i = 0; i < numChannels; ++i)
+        channelMidi[(size_t) i].clear();
+
     // --- transport events ---
     if (stopRequest.exchange (false))
     {
@@ -270,10 +276,6 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
         countInTick = 0.0;
     }
     clickStartSample = -1;
-
-    const int numChannels = juce::jmin ((int) snap->channels.size(), maxChannels);
-    for (int i = 0; i < numChannels; ++i)
-        channelMidi[(size_t) i].clear();
 
     // Cleared before sequencing so audio clips can be mixed straight into the
     // master bus per sub-range, ahead of the channels adding their output.
@@ -751,8 +753,22 @@ void AudioEngine::releaseActiveNotes (const EngineSnapshot& snap, int sampleOffs
 
 void AudioEngine::allNotesOff (const EngineSnapshot& snap)
 {
+    // Real MIDI, not just bookkeeping: plugin and sandboxed instruments only
+    // release voices for messages they can see — AudioProcessor::reset() is
+    // advisory and a sandboxed child never hears it at all. The buffers were
+    // cleared just before the transport events, so these render this block.
+    const int numChannels = juce::jmin ((int) snap.channels.size(), maxChannels);
+
     for (auto& slot : activeNotes)
+    {
+        if (slot.channelIndex >= 0 && slot.channelIndex < numChannels)
+            channelMidi[(size_t) slot.channelIndex]
+                .addEvent (juce::MidiMessage::noteOff (1, slot.key), 0);
         slot.channelIndex = -1;
+    }
+
+    for (int i = 0; i < numChannels; ++i)
+        channelMidi[(size_t) i].addEvent (juce::MidiMessage::allNotesOff (1), 0);
 
     for (const auto& ch : snap.channels)
         if (ch.generator != nullptr)
