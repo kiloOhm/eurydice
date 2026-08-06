@@ -359,10 +359,21 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
                      && snap->activePatternIndex >= 0
                      && snap->activePatternIndex < (int) snap->patterns.size())
             {
-                // Wrap in pattern mode so the position readout loops.
+                // Wrap in pattern mode so the position readout loops. Pending
+                // note-offs were scheduled on the continuous timeline, so they
+                // wrap with it — otherwise a note sequenced in the same block
+                // as the wrap (offTick past the pattern end) waits for a tick
+                // the position never reaches again and rings forever, stacking
+                // one stuck voice per pass.
                 const auto len = (double) snap->patterns[(size_t) snap->activePatternIndex].lengthTicks;
                 if (len > 0 && tickPos >= len)
-                    tickPos = std::fmod (tickPos, len);
+                {
+                    const double wrapped = std::floor (tickPos / len) * len;
+                    tickPos -= wrapped;
+                    for (auto& slot : activeNotes)
+                        if (slot.channelIndex >= 0)
+                            slot.offTick -= wrapped;
+                }
             }
 
             done += chunk;

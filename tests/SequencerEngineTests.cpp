@@ -540,6 +540,69 @@ TEST (SequencerEngine, SeekSendsRealNoteOffsToTheGenerator)
     fx.engine.stop();
 }
 
+TEST (SequencerEngine, PatternWrapReleasesNotesSequencedAcrossIt)
+{
+    // A note sequenced in the same block as the pattern wrap gets its off
+    // scheduled past the pattern end; the wrap has to rebase it, or the note
+    // rings forever and stacks one stuck voice per pass ("invisible note at
+    // the start of the pattern").
+    EngineFixture fx;
+    {
+        auto pattern = fx.model.getPattern (0);
+        for (int i = pattern.getNumChildren(); --i >= 0;)
+            if (pattern.getChild (i).hasType (ids::LANE))
+                pattern.removeChild (i, nullptr);
+        auto lane = fx.model.getOrCreateLane (pattern, fx.model.getChannel (0)[ids::id]);
+        fx.model.addNote (lane, 60, 0, 2 * ids::ticksPerStep);
+        fx.sync.rebuildNow();
+    }
+
+    auto capture = std::make_shared<MidiCaptureGenerator>();
+    auto snap = std::make_shared<EngineSnapshot> (*fx.engine.getPendingSnapshot());
+    ASSERT_FALSE (snap->channels.empty());
+    snap->channels[0].generator = capture;
+    fx.engine.publishSnapshot (snap);
+
+    // Three full passes, then far enough into the fourth that its tick-0
+    // note has both sounded and released (off at tick 480), but no further.
+    const double tps = fx.ticksPerSample();
+    const int patternSamples = (int) std::ceil (3840.0 / tps);
+    fx.engine.setPositionTicks (0.0);
+    fx.engine.play();
+    fx.render (3 * patternSamples + (int) std::ceil (700.0 / tps));
+    fx.engine.stop();
+
+    EXPECT_GE (capture->noteOns.load(), 3);
+    EXPECT_EQ (capture->noteOffs.load(), capture->noteOns.load())
+        << "a wrapped pass left its note ringing";
+}
+
+TEST (SequencerEngine, PatternPassesSoundIdentical)
+{
+    // The audible face of the wrap bug: stuck voices stacked up each pass, so
+    // later passes played louder than the first. Every pass must sound the
+    // same.
+    EngineFixture fx;
+    auto pattern = fx.model.getPattern (0);
+    for (int i = pattern.getNumChildren(); --i >= 0;)
+        if (pattern.getChild (i).hasType (ids::LANE))
+            pattern.removeChild (i, nullptr);
+
+    auto synth = fx.model.addChannel ("synth", "Lead");
+    auto lane = fx.model.getOrCreateLane (pattern, synth[ids::id]);
+    fx.model.addNote (lane, 60, 0, 8 * ids::ticksPerStep);   // sustains half the bar
+    fx.sync.rebuildNow();
+
+    const double tps = fx.ticksPerSample();
+    const int passSamples = (int) std::ceil (3840.0 / tps);
+    auto out = fx.renderFromStart (3 * passSamples);
+
+    const float pass1 = rmsOf (out, 0, passSamples);
+    const float pass3 = rmsOf (out, 2 * passSamples, passSamples);
+    ASSERT_GT (pass1, 0.01f);
+    EXPECT_NEAR (pass3 / pass1, 1.0f, 0.1f) << "later passes don't match the first";
+}
+
 TEST (SequencerEngine, InsertRoutesThroughAnotherInsertToMaster)
 {
     // Feed insert 2 into insert 1 only (no direct master route): sound must
