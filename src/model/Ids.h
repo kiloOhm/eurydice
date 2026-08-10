@@ -105,6 +105,34 @@ DECLARE_ID (kickClickDecay)
 DECLARE_ID (kickNoiseLevel)
 DECLARE_ID (kickNoiseDecay)
 
+// Kick layers, envelopes and the built-in output chain. Everything added here
+// defaults to the pre-layer behaviour, so a kick channel saved before them
+// loads and sounds exactly the same.
+DECLARE_ID (kickBodyLevel) // 0..1 body layer trim
+DECLARE_ID (kickBodyHarm)  // 0..1 self-phase-modulation: harmonics on the body
+DECLARE_ID (kickBodyPhase) // 0..1 body start phase, in cycles
+DECLARE_ID (kickHold)      // seconds at full level before the amp decay starts
+DECLARE_ID (kickPunch)     // 0..1 extra transient spike on the amp envelope
+DECLARE_ID (kickSubLevel)  // 0..1 sine layer under the body
+DECLARE_ID (kickSubTune)   // semitones relative to the body's end frequency
+DECLARE_ID (kickSubDecay)  // seconds
+DECLARE_ID (kickClickFreq) // Hz, the click layer's pitch
+DECLARE_ID (kickClickType) // 0 tick, 1 noise, 2 pulse, 3 sample (samplePath)
+DECLARE_ID (kickNoiseTone) // 0..1 dark..bright, the noise layer's lowpass
+DECLARE_ID (kickEqLowFreq)   DECLARE_ID (kickEqLowGain)    // low shelf
+DECLARE_ID (kickEqMidFreq)   DECLARE_ID (kickEqMidGain)    // bell
+DECLARE_ID (kickEqHighFreq)  DECLARE_ID (kickEqHighGain)   // high shelf
+DECLARE_ID (kickComp)      // 0..1 one-knob compressor
+DECLARE_ID (kickLimit)     // 0..1 output limiter amount
+DECLARE_ID (kickOutput)    // dB trim after the chain
+DECLARE_ID (presetName)    // last factory preset loaded onto the channel
+
+// Kick envelopes: a KICKENV child per role, holding POINTs. No child for a
+// role means the classic analytic envelope, which is what old projects get.
+DECLARE_ID (KICKENV)
+DECLARE_ID (role)          // "pitch" | "amp"
+DECLARE_ID (pos)           // on POINT inside a KICKENV: 0..1 of the envelope
+
 // Pattern
 DECLARE_ID (lengthTicks)
 DECLARE_ID (channelId)     // on LANE
@@ -198,6 +226,12 @@ DECLARE_ID (fxCrossHi)      // saturator: mid/high crossover, Hz
 DECLARE_ID (fxSatType1)  DECLARE_ID (fxSatDrive1)  DECLARE_ID (fxSatLevel1)
 DECLARE_ID (fxSatType2)  DECLARE_ID (fxSatDrive2)  DECLARE_ID (fxSatLevel2)
 DECLARE_ID (fxSatType3)  DECLARE_ID (fxSatDrive3)  DECLARE_ID (fxSatLevel3)
+DECLARE_ID (fxTarget)       // shaper: what the drawn wave modulates
+DECLARE_ID (fxBand)         // shaper: which band is shaped, 0 = the whole bus
+DECLARE_ID (fxInvert)       // shaper: flip the wave upside down
+DECLARE_ID (fxSmooth)       // shaper: modulation glide, ms
+DECLARE_ID (fxGrid)         // shaper: editor snapping, in steps per loop
+DECLARE_ID (fxWave)         // shaper: the drawn wave, "x,y,tension|…"
 
 // Drum machine. PADs are children of the CHANNEL, ordered by pad index;
 // the grid shape only affects the editor, never which pads can play.

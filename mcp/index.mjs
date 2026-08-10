@@ -96,7 +96,7 @@ server.tool("daw_transport",
   });
 
 tool("daw_channel_add",
-  "Add a channel to the rack. type: 'sampler' (drum/one-shot, give samplePath for a wav), 'synth' (built-in subtractive synth), 'kick' (synthesised hardcore kick) or 'plugin' (needs pluginId from daw_plugins_list).",
+  "Add a channel to the rack. type: 'sampler' (drum/one-shot, give samplePath for a wav), 'synth' (built-in subtractive synth), 'kick' (the kick designer: layered body/sub/click/noise plus its own drive, EQ, compressor and limiter) or 'plugin' (needs pluginId from daw_plugins_list).",
   {
     type: z.enum(["sampler", "synth", "kick", "plugin"]),
     name: z.string(),
@@ -108,8 +108,14 @@ tool("daw_channel_set",
   "Update a channel: volume (0..1), pan (-1..1), mute, insert (mixer routing 0=master), name, rootNote, samplePath. "
   + "Sampler kick design: sampleStart/sampleEnd (0..1 trim), reverse, pitchEnvDepth (semitones) + pitchEnvDecay (s), "
   + "envShape (0 linear .. 1 exponential), drive (0..1) + driveCurve (0 soft, 1 hard, 2 fold). "
-  + "Kick synth: kickStartFreq/kickEndFreq (Hz), kickPitchDecay/kickAmpDecay (s), kickBodyShape (0 sine .. 1 triangle), "
-  + "kickClickLevel/kickClickDecay, kickNoiseLevel/kickNoiseDecay.",
+  + "Kick designer body: kickStartFreq/kickEndFreq (Hz sweep), kickPitchDecay (s), kickBodyShape (0 sine .. 1 triangle), "
+  + "kickBodyHarm (0..1 harmonics), kickBodyPhase (0..1), kickBodyLevel. "
+  + "Amp: kickAmpDecay (s), kickHold (s at full level), envShape, kickPunch (0..1 transient). "
+  + "Layers: kickSubLevel/kickSubTune (st)/kickSubDecay, kickClickLevel/kickClickDecay/kickClickFreq/kickClickType "
+  + "(0 tick, 1 noise, 2 pulse, 3 the WAV at samplePath), kickNoiseLevel/kickNoiseDecay/kickNoiseTone (0 dark .. 1 bright). "
+  + "Output chain: drive + driveCurve, kickEqLowFreq/kickEqLowGain (shelf, dB), kickEqMidFreq/kickEqMidGain (bell), "
+  + "kickEqHighFreq/kickEqHighGain (shelf), kickComp (0..1), kickLimit (0..1), kickOutput (dB). "
+  + "For a whole sound at once, prefer daw_kick_preset.",
   {
     channelId: z.number(),
     volume: z.number().optional(), pan: z.number().optional(), mute: z.boolean().optional(),
@@ -122,12 +128,31 @@ tool("daw_channel_set",
     drive: z.number().optional(), driveCurve: z.number().optional(),
     kickStartFreq: z.number().optional(), kickEndFreq: z.number().optional(),
     kickPitchDecay: z.number().optional(), kickAmpDecay: z.number().optional(),
-    kickBodyShape: z.number().optional(),
+    kickBodyShape: z.number().optional(), kickBodyHarm: z.number().optional(),
+    kickBodyPhase: z.number().optional(), kickBodyLevel: z.number().optional(),
+    kickHold: z.number().optional(), kickPunch: z.number().optional(),
+    kickSubLevel: z.number().optional(), kickSubTune: z.number().optional(),
+    kickSubDecay: z.number().optional(),
     kickClickLevel: z.number().optional(), kickClickDecay: z.number().optional(),
+    kickClickFreq: z.number().optional(), kickClickType: z.number().optional(),
     kickNoiseLevel: z.number().optional(), kickNoiseDecay: z.number().optional(),
+    kickNoiseTone: z.number().optional(),
+    kickEqLowFreq: z.number().optional(), kickEqLowGain: z.number().optional(),
+    kickEqMidFreq: z.number().optional(), kickEqMidGain: z.number().optional(),
+    kickEqHighFreq: z.number().optional(), kickEqHighGain: z.number().optional(),
+    kickComp: z.number().optional(), kickLimit: z.number().optional(),
+    kickOutput: z.number().optional(),
   }, "channel.set");
 
 tool("daw_channel_remove", "Delete a channel and its notes.", { channelId: z.number() }, "channel.remove");
+
+tool("daw_kick_presets",
+  "List the kick designer's factory presets with their categories (House, Techno, Hardstyle, Trance, Trap, Drum & Bass, Dubstep, Vintage, Pop).",
+  {}, "kick.presets");
+
+tool("daw_kick_preset",
+  "Load a factory preset onto a kick channel. Writes every kick parameter and both envelopes; leaves the channel's rootNote alone so the kick stays tuned to the track.",
+  { channelId: z.number(), preset: z.string() }, "kick.loadPreset");
 
 tool("daw_pattern_create", "Create a pattern. " + TIME_HELP,
   { name: z.string().optional(), lengthTicks: z.number().optional() }, "pattern.create");
@@ -197,9 +222,9 @@ tool("daw_mixer_set_insert", "Set insert volume/pan/mute/name. Insert 0 is the m
 tool("daw_mixer_add_send", "Route one insert into another (bus/sidechain routing). level 0..1.25.",
   { from: z.number(), to: z.number(), level: z.number().optional() }, "mixer.addSend");
 
-tool("daw_mixer_set_effect", "Load an effect plugin (pluginId from daw_plugins_list) into an insert slot (0-9). For built-ins, params overrides individual fx* parameters (e.g. {\"fxThreshold\": -30, \"fxSidechain\": 1}) — unknown ids are rejected.",
+tool("daw_mixer_set_effect", "Load an effect plugin (pluginId from daw_plugins_list) into an insert slot (0-9). For built-ins, params overrides individual fx* parameters (e.g. {\"fxThreshold\": -30, \"fxSidechain\": 1}) — unknown ids are rejected. builtin:shaper also takes fxWave, its drawn modulation curve, as \"x,y,tension|…\" points with x and y in 0..1 (e.g. \"0,0,0.55|0.45,1,0|1,1,0\" is a sidechain pump); the loop wraps from the last point back to the first.",
   { insert: z.number(), slot: z.number(), pluginId: z.string(),
-    params: z.record(z.string(), z.union([z.number(), z.boolean()])).optional() }, "mixer.setEffect");
+    params: z.record(z.string(), z.union([z.number(), z.boolean(), z.string()])).optional() }, "mixer.setEffect");
 
 tool("daw_mixer_remove_effect", "Remove the effect in an insert slot.",
   { insert: z.number(), slot: z.number() }, "mixer.removeEffect");

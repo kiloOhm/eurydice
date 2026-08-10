@@ -61,21 +61,48 @@ inline const std::vector<Descriptor>& sampler()
     return table;
 }
 
+// The click layer's source is an index like the drive curve, so its caption
+// carries the legend a rotary cannot.
+inline const juce::String clickSection { "CLICK   0 TICK   1 NOISE   2 PULSE   3 SAMPLE" };
+
 inline const std::vector<Descriptor>& kick()
 {
     static const std::vector<Descriptor> table {
-        { ids::kickStartFreq,  "START", { 40.0, 800.0, 0.0, 0.4 },  240.0, " Hz", 0, true, "BODY" },
-        { ids::kickEndFreq,    "END",   { 20.0, 200.0, 0.0, 0.5 },  48.0,  " Hz", 0, true, {} },
-        { ids::kickPitchDecay, "PDEC",  { 0.002, 0.5, 0.0, 0.35 },  0.035, " s",  3, true, {} },
-        { ids::kickAmpDecay,   "ADEC",  { 0.02, 3.0, 0.0, 0.35 },   0.5,   " s",  2, true, {} },
-        { ids::kickBodyShape,  "SHAPE", { 0.0, 1.0 },               0.0,   {},    2, true, {} },
-        { ids::kickClickLevel, "LEVEL", { 0.0, 1.0 },               0.3,   {},    2, true, "CLICK" },
-        { ids::kickClickDecay, "DECAY", { 0.0005, 0.05, 0.0, 0.4 }, 0.004, " s",  4, true, {} },
-        { ids::kickNoiseLevel, "LEVEL", { 0.0, 1.0 },               0.12,  {},    2, true, "NOISE" },
-        { ids::kickNoiseDecay, "DECAY", { 0.002, 0.5, 0.0, 0.35 },  0.02,  " s",  3, true, {} },
-        { ids::drive,          "DRIVE", { 0.0, 1.0 },               0.25,  {},    2, true, driveSection },
-        { ids::driveCurve,     "CURVE", { 0.0, 2.0, 1.0 },          0.0,   {},    0, true, {} },
-        { ids::envShape,       "ENV",   { 0.0, 1.0 },               1.0,   {},    2, true, {} },
+        { ids::rootNote,       "ROOT",  { 0.0, 127.0, 1.0 },          60.0,   {},    0, false, "TUNE" },
+        { ids::kickStartFreq,  "FROM",  { 40.0, 2000.0, 0.0, 0.4 },   240.0,  " Hz", 0, true,  "BODY" },
+        { ids::kickEndFreq,    "TO",    { 20.0, 400.0, 0.0, 0.5 },    48.0,   " Hz", 1, true,  {} },
+        { ids::kickPitchDecay, "TIME",  { 0.001, 2.0, 0.0, 0.3 },     0.035,  " s",  3, true,  {} },
+        { ids::kickBodyShape,  "SHAPE", { 0.0, 1.0 },                 0.0,    {},    2, true,  {} },
+        { ids::kickBodyHarm,   "HARM",  { 0.0, 1.0 },                 0.0,    {},    2, true,  {} },
+        { ids::kickBodyPhase,  "PHASE", { 0.0, 1.0 },                 0.0,    {},    2, true,  {} },
+        { ids::kickBodyLevel,  "LEVEL", { 0.0, 2.0 },                 1.0,    {},    2, true,  {} },
+        { ids::kickAmpDecay,   "DECAY", { 0.02, 4.0, 0.0, 0.35 },     0.5,    " s",  2, true,  "AMP" },
+        { ids::kickHold,       "HOLD",  { 0.0, 0.5, 0.0, 0.4 },       0.0,    " s",  3, true,  {} },
+        { ids::envShape,       "CURVE", { 0.0, 1.0 },                 1.0,    {},    2, true,  {} },
+        { ids::kickPunch,      "PUNCH", { 0.0, 1.0 },                 0.0,    {},    2, true,  {} },
+        { ids::kickSubLevel,   "LEVEL", { 0.0, 1.0 },                 0.0,    {},    2, true,  "SUB" },
+        { ids::kickSubTune,    "TUNE",  { -24.0, 24.0 },              0.0,    " st", 1, true,  {} },
+        { ids::kickSubDecay,   "DECAY", { 0.01, 3.0, 0.0, 0.35 },     0.4,    " s",  2, true,  {} },
+        { ids::kickClickLevel, "LEVEL", { 0.0, 1.0 },                 0.3,    {},    2, true,  clickSection },
+        { ids::kickClickDecay, "DECAY", { 0.0005, 2.0, 0.0, 0.25 },   0.004,  " s",  4, true,  {} },
+        { ids::kickClickFreq,  "FREQ",  { 20.0, 12000.0, 0.0, 0.3 },  1400.0, " Hz", 0, true,  {} },
+        { ids::kickClickType,  "TYPE",  { 0.0, 3.0, 1.0 },            0.0,    {},    0, false, {} },
+        { ids::kickNoiseLevel, "LEVEL", { 0.0, 1.0 },                 0.12,   {},    2, true,  "NOISE" },
+        { ids::kickNoiseDecay, "DECAY", { 0.001, 1.0, 0.0, 0.3 },     0.02,   " s",  3, true,  {} },
+        { ids::kickNoiseTone,  "TONE",  { 0.02, 1.0 },                0.4,    {},    2, true,  {} },
+        { ids::drive,          "DRIVE", { 0.0, 1.0 },                 0.25,   {},    2, true,  driveSection },
+        // An index, not a continuous value: a curve sweeping it would step
+        // through unrelated shapes, so it stays off the automation list.
+        { ids::driveCurve,     "CURVE", { 0.0, 2.0, 1.0 },            0.0,    {},    0, false, {} },
+        { ids::kickEqLowFreq,  "LO Hz", { 20.0, 500.0, 0.0, 0.5 },    90.0,   " Hz", 0, true,  "EQ" },
+        { ids::kickEqLowGain,  "LO",    { -18.0, 18.0 },              0.0,    " dB", 1, true,  {} },
+        { ids::kickEqMidFreq,  "MID Hz",{ 100.0, 6000.0, 0.0, 0.35 }, 500.0,  " Hz", 0, true,  {} },
+        { ids::kickEqMidGain,  "MID",   { -18.0, 18.0 },              0.0,    " dB", 1, true,  {} },
+        { ids::kickEqHighFreq, "HI Hz", { 1000.0, 16000.0, 0.0, 0.35 }, 4000.0, " Hz", 0, true, {} },
+        { ids::kickEqHighGain, "HI",    { -18.0, 18.0 },              0.0,    " dB", 1, true,  {} },
+        { ids::kickComp,       "COMP",  { 0.0, 1.0 },                 0.0,    {},    2, true,  "OUT" },
+        { ids::kickLimit,      "LIMIT", { 0.0, 1.0 },                 0.0,    {},    2, true,  {} },
+        { ids::kickOutput,     "GAIN",  { -24.0, 12.0 },              0.0,    " dB", 1, true,  {} },
     };
     return table;
 }
