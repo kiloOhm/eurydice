@@ -3,6 +3,7 @@
 #include "model/ChannelParams.h"
 #include "model/DrumPads.h"
 #include "model/KickPresets.h"
+#include "model/SynthPresets.h"
 #include "model/UndoGesture.h"
 
 namespace
@@ -209,7 +210,8 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         // Every generator knob the descriptor tables declare, so a parameter
         // added there is reachable over the API without a second edit here.
         // rootNote is handled above; the rest go through as plain numbers.
-        for (const auto* table : { &channelparams::sampler(), &channelparams::kick() })
+        for (const auto* table : { &channelparams::sampler(), &channelparams::kick(),
+                                   &channelparams::synth() })
             for (const auto& descriptor : *table)
             {
                 if (descriptor.id == ids::rootNote)
@@ -247,6 +249,46 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
 
         kickpresets::apply (ch, *preset, &undo);
         return makeObj ({ { "preset", preset->name }, { "category", preset->category } });
+    }
+    if (method == "synth.presets")
+    {
+        juce::Array<juce::var> list;
+        for (const auto& preset : synthpresets::all())
+            list.add (makeObj ({ { "name", preset.name }, { "category", preset.category },
+                                 { "description", preset.description } }));
+        return juce::var (list);
+    }
+    if (method == "synth.loadPreset")
+    {
+        auto ch = requireChannel (params);
+        if (ch[ids::type].toString() != "synth")
+            throw ControlError { "channel is not a synth channel" };
+
+        const auto preset = synthpresets::find (getOr (params, "preset", "").toString());
+        if (! preset.has_value())
+            throw ControlError { "unknown preset (use synth.presets)" };
+
+        synthpresets::apply (ch, *preset, &undo);
+        return makeObj ({ { "preset", preset->name }, { "category", preset->category } });
+    }
+    if (method == "synth.savePreset")
+    {
+        auto ch = requireChannel (params);
+        if (ch[ids::type].toString() != "synth")
+            throw ControlError { "channel is not a synth channel" };
+
+        const auto name = getOr (params, "preset", "").toString().trim();
+        if (name.isEmpty())
+            throw ControlError { "a preset needs a name" };
+        if (synthpresets::isFactoryName (name))
+            throw ControlError { "that name belongs to a factory patch; pick another" };
+
+        const auto file = synthpresets::save (ch, name);
+        if (file == juce::File())
+            throw ControlError { "could not write the preset file" };
+
+        ch.setProperty (ids::presetName, name, &undo);
+        return makeObj ({ { "preset", name }, { "path", file.getFullPathName() } });
     }
 
     // ---------- notes ----------

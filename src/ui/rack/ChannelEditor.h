@@ -85,6 +85,9 @@ public:
     SynthModule (juce::String titleText, std::unique_ptr<juce::Component> displayComponent);
 
     void addKnob (std::unique_ptr<LabelledKnob>);
+    // Pulls every knob back from the tree — what a preset load, an undo or an
+    // edit made anywhere else needs before the panel tells the truth again.
+    void refreshKnobs();
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -107,7 +110,8 @@ private:
 };
 
 class SynthEditor : public juce::Component,
-                    private AppServices::LiveNoteListener
+                    private AppServices::LiveNoteListener,
+                    private juce::ValueTree::Listener
 {
 public:
     SynthEditor (AppServices&, juce::ValueTree channel);
@@ -116,19 +120,37 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    static constexpr int preferredWidth = 700;
+
 private:
     // Builds one module from parameter ids out of the synth descriptor table.
     SynthModule& addModule (const juce::String& title,
                             std::unique_ptr<juce::Component> display,
                             std::initializer_list<juce::Identifier> params);
 
+    void buildPresetBar();
+    void refreshPresetLists (bool keepSelection);
+    void applyPreset (const juce::String& name);
+    void stepPreset (int delta);
+    void savePreset();
+
     // MIDI / typing-piano input lights the on-screen keys.
     void liveNoteOn (int channelId, int key, float velocity) override;
     void liveNoteOff (int channelId, int key) override;
     void echoLiveNote (int channelId, int key, float velocity, bool on);
 
+    // A preset load, an undo or a control-API edit all land on the channel
+    // tree; the knobs only follow it if something pulls them.
+    void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
+
     AppServices& services;
     juce::ValueTree channel;
+
+    juce::TextButton prevButton { "<" }, nextButton { ">" };
+    juce::ComboBox categoryBox, presetBox;
+    juce::TextButton saveButton { "Save..." };
+    juce::Label descriptionLabel;
+
     juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
     std::vector<std::unique_ptr<SynthModule>> modules;
