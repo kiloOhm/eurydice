@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "app/AppServices.h"
 #include "ui/rack/ChannelEditor.h"
+#include "ui/rack/KickEditor.h"
 
 namespace
 {

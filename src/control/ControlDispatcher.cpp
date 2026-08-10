@@ -1,6 +1,8 @@
 #include "ControlDispatcher.h"
 #include "engine/OfflineRenderer.h"
+#include "model/ChannelParams.h"
 #include "model/DrumPads.h"
+#include "model/KickPresets.h"
 #include "model/UndoGesture.h"
 
 namespace
@@ -204,17 +206,18 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
         if (has (params, "rootNote")) ch.setProperty (ids::rootNote, (int) getOr (params, "rootNote", 60), &undo);
         if (has (params, "samplePath")) ch.setProperty (ids::samplePath, getOr (params, "samplePath", "").toString(), &undo);
 
-        // Kick-design parameters, shared by the sampler and the kick synth.
-        for (const auto* id : { &ids::sampleStart, &ids::sampleEnd, &ids::pitchEnvDepth,
-                                &ids::pitchEnvDecay, &ids::drive, &ids::driveCurve, &ids::envShape,
-                                &ids::kickStartFreq, &ids::kickEndFreq, &ids::kickPitchDecay,
-                                &ids::kickAmpDecay, &ids::kickBodyShape, &ids::kickClickLevel,
-                                &ids::kickClickDecay, &ids::kickNoiseLevel, &ids::kickNoiseDecay })
-        {
-            const auto key = id->toString();
-            if (has (params, key.toRawUTF8()))
-                ch.setProperty (*id, (double) getOr (params, key.toRawUTF8(), 0.0), &undo);
-        }
+        // Every generator knob the descriptor tables declare, so a parameter
+        // added there is reachable over the API without a second edit here.
+        // rootNote is handled above; the rest go through as plain numbers.
+        for (const auto* table : { &channelparams::sampler(), &channelparams::kick() })
+            for (const auto& descriptor : *table)
+            {
+                if (descriptor.id == ids::rootNote)
+                    continue;
+                const auto key = descriptor.id.toString();
+                if (has (params, key.toRawUTF8()))
+                    ch.setProperty (descriptor.id, (double) getOr (params, key.toRawUTF8(), 0.0), &undo);
+            }
 
         if (has (params, "reverse")) ch.setProperty (ids::reverse, (bool) getOr (params, "reverse", false), &undo);
         return true;
@@ -223,6 +226,27 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     {
         project.removeChannel (requireChannel (params));
         return true;
+    }
+    if (method == "kick.presets")
+    {
+        juce::Array<juce::var> list;
+        for (const auto& preset : kickpresets::all())
+            list.add (makeObj ({ { "name", preset.name }, { "category", preset.category } }));
+        return juce::var (list);
+    }
+    if (method == "kick.loadPreset")
+    {
+        auto ch = requireChannel (params);
+        if (ch[ids::type].toString() != "kick")
+            throw ControlError { "channel is not a kick channel" };
+
+        const auto name = getOr (params, "preset", "").toString();
+        const auto* preset = kickpresets::find (name);
+        if (preset == nullptr)
+            throw ControlError { "unknown preset (use kick.presets)" };
+
+        kickpresets::apply (ch, *preset, &undo);
+        return makeObj ({ { "preset", preset->name }, { "category", preset->category } });
     }
 
     // ---------- notes ----------
@@ -474,14 +498,16 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
             BuiltinEffect::writeDefaults (slotTree, builtin->specs, &undo);
 
         // Optional per-parameter overrides, e.g. {"fxThreshold": -30}. Only
-        // ids the effect declares are accepted, so typos fail loudly.
+        // ids the effect declares are accepted, so typos fail loudly — its
+        // specs plus any non-scalar state it reads, such as the shaper's wave.
         if (builtin != nullptr && has (params, "params"))
         {
             if (auto* overrides = getOr (params, "params", {}).getDynamicObject())
                 for (const auto& prop : overrides->getProperties())
                 {
                     const bool known = std::any_of (builtin->specs.begin(), builtin->specs.end(),
-                        [&prop] (const fx::ParamSpec& spec) { return spec.id == prop.name; });
+                        [&prop] (const fx::ParamSpec& spec) { return spec.id == prop.name; })
+                        || builtin->extraProperties.contains (prop.name.toString());
                     if (! known)
                         throw ControlError { "unknown effect param: " + prop.name.toString() };
                     slotTree.setProperty (prop.name, prop.value, &undo);

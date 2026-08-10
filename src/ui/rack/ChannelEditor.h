@@ -137,38 +137,7 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthEditor)
 };
 
-// Editor for the synthesised kick channel. The keyboard is the tuning tool:
-// the body sweep tracks the note, so auditioning across keys is how the kick
-// gets tuned to the track.
-class KickEditor : public juce::Component,
-                   private juce::Timer,
-                   private AppServices::LiveNoteListener
-{
-public:
-    KickEditor (AppServices&, juce::ValueTree channel);
-    ~KickEditor() override;
-
-    void paint (juce::Graphics&) override;
-    void resized() override;
-
-private:
-    void timerCallback() override;
-
-    // MIDI / typing-piano input lights the on-screen keys.
-    void liveNoteOn (int channelId, int key, float velocity) override;
-    void liveNoteOff (int channelId, int key) override;
-    void echoLiveNote (int channelId, int key, float velocity, bool on);
-
-    AppServices& services;
-    juce::ValueTree channel;
-    juce::TextButton previewButton { juce::CharPointer_UTF8 ("\xe2\x96\xb6") };
-    juce::MidiKeyboardState keyboardState;
-    juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
-    KnobGrid grid;
-    std::unique_ptr<juce::MidiKeyboardState::Listener> bridge;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KickEditor)
-};
+// The kick channel's editor lives in KickEditor.h — it outgrew this file.
 
 // Owns the open channel-editor windows. Lives on MainComponent so the windows
 // are destroyed while JUCE is still up (a static map would outlive the leak

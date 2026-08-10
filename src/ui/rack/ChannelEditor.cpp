@@ -2,47 +2,16 @@
 #include "engine/SamplerGenerator.h"
 #include "engine/SynthOsc.h"
 #include "DrumMachineEditor.h"
+#include "EditorParts.h"
+#include "KickEditor.h"
 #include "SynthDisplays.h"
 #include "model/UndoGesture.h"
 #include "plugins/PluginGenerator.h"
 #include "sandbox/SandboxedGenerator.h"
 #include "model/ChannelParams.h"
-#include "ui/automation/AutomationMenu.h"
 
 namespace
 {
-// Builds a generator's knob row from the shared parameter table and wires each
-// knob into the automation layer: moving one records while the write arm is
-// on, right-clicking one offers to create or edit its clip.
-std::unique_ptr<LabelledKnob> makeParamKnob (AppServices& services, juce::ValueTree channel,
-                                             const channelparams::Descriptor& descriptor)
-{
-    auto knob = std::make_unique<LabelledKnob> (descriptor.caption, services.project, channel,
-                                                descriptor.id, descriptor.range,
-                                                descriptor.defaultValue, descriptor.suffix,
-                                                descriptor.decimals);
-    if (descriptor.automatable)
-    {
-        // The table is a function-local static, so &descriptor outlives
-        // every editor window that captures it.
-        const AutomationWriter::Target target { "channel-param", (int) channel[ids::id],
-                                                descriptor.id.toString(),
-                                                channel[ids::name].toString() + " " + descriptor.caption };
-        auto* knobPtr = knob.get();
-
-        knob->onLiveEdit = [&services, target, &descriptor] (double value)
-        {
-            services.automationWriter.touch (target, descriptor.toNormalised (value));
-        };
-        knob->onContextMenu = [&services, target, &descriptor, knobPtr] (double value)
-        {
-            automationmenu::show (services, target, descriptor.toNormalised (value),
-                                  [knobPtr] { knobPtr->resetToDefault(); });
-        };
-    }
-    return knob;
-}
-
 void buildKnobs (KnobGrid& grid, juce::Component& owner,
                  AppServices& services, juce::ValueTree channel)
 {
@@ -56,32 +25,6 @@ void buildKnobs (KnobGrid& grid, juce::Component& owner,
         grid.adopt (std::move (knob));
     }
 }
-}
-
-namespace
-{
-// The drive curve is an index, not a continuous value; the section caption
-// spells the choices out because a rotary can only show the number.
-const juce::String driveSectionCaption { "DRIVE   0 SOFT   1 HARD   2 FOLD" };
-
-// Routes an on-screen keyboard through the engine's preview path.
-struct KeyboardBridge : juce::MidiKeyboardState::Listener
-{
-    KeyboardBridge (AppServices& s, juce::ValueTree c) : services (s), channel (c) {}
-
-    void handleNoteOn (juce::MidiKeyboardState*, int, int note, float vel) override
-    {
-        services.engine.previewNote (channel[ids::id], note, juce::jmax (0.3f, vel), 0);
-    }
-
-    void handleNoteOff (juce::MidiKeyboardState*, int, int note, float) override
-    {
-        services.engine.previewNoteOff (channel[ids::id], note);
-    }
-
-    AppServices& services;
-    juce::ValueTree channel;
-};
 } // namespace
 
 // ================= KnobGrid =================
@@ -545,112 +488,6 @@ void SynthEditor::resized()
             first = false;
         }
     }
-}
-
-// ================= KickEditor =================
-
-KickEditor::KickEditor (AppServices& s, juce::ValueTree ch)
-    : services (s), channel (ch)
-{
-    auto& model = services.project;
-
-    previewButton.setWantsKeyboardFocus (false);
-    previewButton.setTooltip ("Preview at the root note");
-    previewButton.onClick = [this]
-    {
-        services.engine.previewNote (channel[ids::id],
-                                     (int) channel.getProperty (ids::rootNote, 60), 1.0f, 200);
-    };
-    addAndMakeVisible (previewButton);
-
-    grid.beginSection ("BODY");
-    grid.add (*this, "ROOT",  model, channel, ids::rootNote,       { 0.0, 127.0, 1.0 }, 60.0, {}, 0);
-    grid.add (*this, "FROM",  model, channel, ids::kickStartFreq,  { 40.0, 2000.0, 0.0, 0.4 }, 240.0, " Hz", 0);
-    grid.add (*this, "TO",    model, channel, ids::kickEndFreq,    { 20.0, 400.0, 0.0, 0.5 }, 48.0, " Hz", 1);
-    grid.add (*this, "PDEC",  model, channel, ids::kickPitchDecay, { 0.001, 1.0, 0.0, 0.35 }, 0.035, " s", 3);
-    grid.add (*this, "ADEC",  model, channel, ids::kickAmpDecay,   { 0.02, 4.0, 0.0, 0.4 }, 0.5, " s", 2);
-    grid.add (*this, "SHAPE", model, channel, ids::kickBodyShape,  { 0.0, 1.0 }, 0.0, {}, 2);
-
-    grid.beginSection ("CLICK");
-    grid.add (*this, "LEVEL", model, channel, ids::kickClickLevel, { 0.0, 1.0 }, 0.3, {}, 2);
-    grid.add (*this, "CDEC",  model, channel, ids::kickClickDecay, { 0.0005, 0.2, 0.0, 0.35 }, 0.004, " s", 4);
-
-    grid.beginSection ("NOISE");
-    grid.add (*this, "LEVEL", model, channel, ids::kickNoiseLevel, { 0.0, 1.0 }, 0.12, {}, 2);
-    grid.add (*this, "NDEC",  model, channel, ids::kickNoiseDecay, { 0.001, 0.5, 0.0, 0.35 }, 0.02, " s", 3);
-
-    grid.beginSection (driveSectionCaption);
-    grid.add (*this, "CURVE",  model, channel, ids::driveCurve, { 0.0, 2.0, 1.0 }, 0.0, {}, 0);
-    grid.add (*this, "DRIVE",  model, channel, ids::drive,      { 0.0, 1.0 }, 0.25, {}, 2);
-    grid.add (*this, "ENVSHP", model, channel, ids::envShape,   { 0.0, 1.0 }, 1.0, {}, 2);
-
-    keyboard.setAvailableRange (24, 72);
-    keyboard.setWantsKeyboardFocus (false);
-    addAndMakeVisible (keyboard);
-
-    bridge = std::make_unique<KeyboardBridge> (services, channel);
-    keyboardState.addListener (bridge.get());
-    services.liveNoteListeners.add (this);
-
-    startTimerHz (4);
-    setSize (700, 340);
-}
-
-KickEditor::~KickEditor()
-{
-    services.liveNoteListeners.remove (this);
-}
-
-// See SynthEditor::echoLiveNote — same detach-echo-reattach.
-void KickEditor::echoLiveNote (int channelId, int key, float velocity, bool on)
-{
-    if (channelId != (int) channel[ids::id])
-        return;
-
-    keyboardState.removeListener (bridge.get());
-    if (on)
-        keyboardState.noteOn (1, key, velocity);
-    else
-        keyboardState.noteOff (1, key, 0.0f);
-    keyboardState.addListener (bridge.get());
-}
-
-void KickEditor::liveNoteOn (int channelId, int key, float velocity)
-{
-    echoLiveNote (channelId, key, velocity, true);
-}
-
-void KickEditor::liveNoteOff (int channelId, int key)
-{
-    echoLiveNote (channelId, key, 0.0f, false);
-}
-
-void KickEditor::timerCallback()
-{
-    grid.refresh();
-}
-
-void KickEditor::paint (juce::Graphics& g)
-{
-    g.fillAll (theme::panelBg);
-    grid.paintCaptions (g);
-}
-
-void KickEditor::resized()
-{
-    auto r = getLocalBounds().reduced (10);
-
-    auto top = r.removeFromTop (26);
-    previewButton.setBounds (top.removeFromLeft (32));
-    r.removeFromTop (6);
-
-    auto keyboardArea = r.removeFromBottom (56);
-    // 24..72 spans 29 white keys.
-    keyboard.setKeyWidth (juce::jmax (8.0f, (float) keyboardArea.getWidth() / 29.0f));
-    keyboard.setBounds (keyboardArea);
-    r.removeFromBottom (8);
-
-    grid.layout (r);
 }
 
 // ================= window management =================

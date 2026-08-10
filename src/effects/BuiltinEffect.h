@@ -22,6 +22,27 @@ struct ParamSpec
     {
     }
 
+    // Heading for the row this parameter opens, drawn in the editor's left
+    // gutter — how an effect built out of modules says where one ends and the
+    // next begins. Implies startsRow.
+    ParamSpec inGroup (juce::String heading) const
+    {
+        auto copy = *this;
+        copy.group = std::move (heading);
+        copy.startsRow = true;
+        return copy;
+    }
+
+    // The effect's own display draws this control, so the generic knob grid
+    // skips it. The spec still exists, so the value keeps its range, its
+    // default and its automation and control-API reach.
+    ParamSpec drawnByDisplay() const
+    {
+        auto copy = *this;
+        copy.ownDrawn = true;
+        return copy;
+    }
+
     juce::Identifier id;
     juce::String name;
     double minValue = 0.0;
@@ -33,6 +54,8 @@ struct ParamSpec
     juce::StringArray choices;    // non-empty: drawn as a combo box
     bool insertChooser = false;   // combo filled from the mixer inserts (-1 = off)
     bool startsRow = false;       // editor hint: begin a fresh row here
+    juce::String group;           // editor hint: row heading, see inGroup()
+    bool ownDrawn = false;        // editor hint: the display draws it, not the grid
 };
 
 // Tempo-synced note lengths, shortest first. Index is what gets stored on the
@@ -77,10 +100,17 @@ public:
     virtual const std::vector<fx::ParamSpec>& getParamSpecs() const = 0;
     virtual void setParameter (const juce::Identifier& paramId, double value) = 0;
 
+    // State an effect keeps on the slot that isn't a scalar parameter — the
+    // shaper's drawn wave. Called on the message thread after the parameters,
+    // on every snapshot rebuild, so an implementation should return early when
+    // nothing it cares about has changed.
+    virtual void applyExtraState (const juce::ValueTree& slot) { juce::ignoreUnused (slot); }
+
     void applyParameters (juce::ValueTree slot)
     {
         for (const auto& spec : getParamSpecs())
             setParameter (spec.id, (double) slot.getProperty (spec.id, spec.defaultValue));
+        applyExtraState (slot);
     }
 
     static void writeDefaults (juce::ValueTree slot, const std::vector<fx::ParamSpec>& specs,

@@ -1,5 +1,7 @@
 #include "BuiltinEffectEditor.h"
 #include "app/Theme.h"
+#include "ui/mixer/RetroRackDisplay.h"
+#include "ui/mixer/ShaperDisplay.h"
 
 BuiltinEffectEditor::BuiltinEffectEditor (ProjectModel& projectModel, juce::ValueTree slot,
                                           const fx::BuiltinEntry& entry, int ownInsertIndex,
@@ -16,8 +18,24 @@ BuiltinEffectEditor::BuiltinEffectEditor (ProjectModel& projectModel, juce::Valu
 
     for (const auto& spec : specs)
     {
+        // The effect's own display draws this one; it stays a parameter, it just
+        // doesn't get a knob in the grid as well.
+        if (spec.ownDrawn)
+            continue;
+
         auto control = std::make_unique<Control>();
         control->id = spec.id;
+        control->group = spec.group;
+        control->startsRow = spec.startsRow;
+
+        // Combos with long option names need two cells to read.
+        control->span = 1;
+        if (spec.insertChooser)
+            control->span = 2;
+        else
+            for (const auto& choice : spec.choices)
+                if (choice.length() > 5)
+                    control->span = 2;
 
         if (spec.insertChooser || ! spec.choices.isEmpty())
         {
@@ -83,7 +101,7 @@ BuiltinEffectEditor::BuiltinEffectEditor (ProjectModel& projectModel, juce::Valu
         controls.push_back (std::move (control));
     }
 
-    layOutControls (specs);
+    layOutControls();
     slotTree.addListener (this);
 }
 
@@ -105,10 +123,30 @@ void BuiltinEffectEditor::buildDisplay (const fx::BuiltinEntry& entry,
         display = std::make_unique<AutoPanDisplay> (slotTree);
     else if (entry.id == SaturatorEffect::identifier())
         display = std::make_unique<SaturatorDisplay> (slotTree);
+    else if (entry.id == RetroEffect::identifier())
+    {
+        // Six module rows and the Magnitude slider: the rack *is* how this one
+        // is played, so it gets the room a rack needs.
+        display = std::make_unique<RetroRackDisplay> (model, slotTree, std::move (liveInstance));
+        displayHeight = 180;
+        displayMinWidth = 560;
+    }
+    else if (entry.id == ShaperEffect::identifier())
+    {
+        // The wave *is* the interface here rather than a readout beside the
+        // knobs, so it gets room to draw in.
+        display = std::make_unique<ShaperDisplay> (model, slotTree, std::move (liveInstance));
+        displayHeight = 210;
+        displayMinWidth = 560;
+    }
 
     if (display != nullptr)
     {
-        displayHeight = 110;
+        if (displayHeight == 0)
+        {
+            displayHeight = 110;
+            displayMinWidth = 330;
+        }
         addAndMakeVisible (*display);
     }
 }
@@ -123,6 +161,8 @@ void BuiltinEffectEditor::buildPresetChooser()
 
     presetCombo = std::make_unique<juce::ComboBox>();
     presetCombo->setWantsKeyboardFocus (false);
+    // Explicitly UTF-8: the ellipsis is multi-byte, and juce::String reads a
+    // bare char* as ASCII (which asserts in debug and mangles the glyph).
     presetCombo->setTextWhenNothingSelected (
         juce::String (juce::CharPointer_UTF8 ("Preset\xe2\x80\xa6")));
     for (size_t i = 0; i < presets->size(); ++i)
@@ -145,25 +185,24 @@ void BuiltinEffectEditor::buildPresetChooser()
 }
 
 // Packs the controls into rows: combos with long labels take two cells, and a
-// spec can force a fresh row so grouped parameters (EQ bands) stay together.
-void BuiltinEffectEditor::layOutControls (const std::vector<fx::ParamSpec>& specs)
+// spec can force a fresh row so grouped parameters (EQ bands, the Retro
+// modules) stay together. A named group also claims a left gutter, which is
+// where its heading goes — cheaper vertically than a heading strip per row.
+void BuiltinEffectEditor::layOutControls()
 {
+    for (const auto& control : controls)
+        if (control->group.isNotEmpty())
+            groupGutter = 58;
+
+    maxColumns = juce::jmax (5, (displayMinWidth - 16 - groupGutter) / cellW);
+
     int row = 0, column = 0, widest = 1;
 
-    for (size_t i = 0; i < controls.size(); ++i)
+    for (auto& owned : controls)
     {
-        const auto& spec = specs[i];
-        auto& control = *controls[i];
+        auto& control = *owned;
 
-        int span = 1;
-        if (spec.insertChooser)
-            span = 2;
-        else
-            for (const auto& choice : spec.choices)
-                if (choice.length() > 5)
-                    span = 2;
-
-        if ((spec.startsRow && column > 0) || column + span > maxColumns)
+        if ((control.startsRow && column > 0) || column + control.span > maxColumns)
         {
             ++row;
             column = 0;
@@ -171,13 +210,21 @@ void BuiltinEffectEditor::layOutControls (const std::vector<fx::ParamSpec>& spec
 
         control.row = row;
         control.column = column;
-        control.span = span;
-        column += span;
+        column += control.span;
         widest = juce::jmax (widest, column);
     }
 
-    setSize (juce::jmax (widest * cellW + 16, display != nullptr ? 330 : 0),
+    setSize (juce::jmax (widest * cellW + 16 + groupGutter, displayMinWidth),
              displayHeight + presetHeight + (row + 1) * cellH + 16);
+}
+
+// Where the knob grid starts, below the display and the preset strip.
+juce::Rectangle<int> BuiltinEffectEditor::gridArea() const
+{
+    auto area = getLocalBounds().reduced (8);
+    area.removeFromTop (displayHeight);
+    area.removeFromTop (presetHeight);
+    return area;
 }
 
 BuiltinEffectEditor::~BuiltinEffectEditor()
@@ -213,6 +260,25 @@ void BuiltinEffectEditor::valueTreePropertyChanged (juce::ValueTree& tree, const
 void BuiltinEffectEditor::paint (juce::Graphics& g)
 {
     g.fillAll (theme::panelBg);
+
+    if (groupGutter == 0)
+        return;
+
+    // Group headings, one per named row, in the gutter beside their controls.
+    const auto area = gridArea();
+    g.setFont (theme::uiFont (10.0f, true));
+    for (const auto& control : controls)
+    {
+        if (control->group.isEmpty())
+            continue;
+
+        const juce::Rectangle<int> label (area.getX(), area.getY() + control->row * cellH,
+                                          groupGutter - 8, cellH);
+        g.setColour (theme::outlineLight.withAlpha (0.35f));
+        g.drawHorizontalLine (label.getY(), (float) label.getX(), (float) area.getRight());
+        g.setColour (theme::textDim);
+        g.drawText (control->group, label, juce::Justification::centredLeft);
+    }
 }
 
 void BuiltinEffectEditor::resized()
@@ -227,6 +293,7 @@ void BuiltinEffectEditor::resized()
         presetCombo->setBounds (area.removeFromTop (22).reduced (2, 0));
         area.removeFromTop (presetHeight - 22);
     }
+    area.removeFromLeft (groupGutter);
     for (auto& control : controls)
     {
         const juce::Rectangle<int> cell (area.getX() + control->column * cellW,

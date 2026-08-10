@@ -31,7 +31,8 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 | Playlist | Free tracks; pattern, audio and automation clips; drag/resize/cross-track move; alt-resize time-stretches audio |
 | Mixer | Master + as many inserts as you add (`+` in the mixer or the routing menus), 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters, per-insert renaming |
 | Effects | Six built-ins: oversampled clipper, filter with envelope follower + synced LFO, 4-band EQ, compressor with external sidechain, tempo-synced delay, reverb |
-| Generators | Sampler channel (drop a WAV in, ADSR + lowpass, one-shot or sustained, start/end trim, reverse, pitch envelope, drive), a built-in 2-osc subtractive synth, and a synthesised kick channel (swept body, click, noise, drive) — all with editor windows |
+| Generators | Sampler channel (drop a WAV in, ADSR + lowpass, one-shot or sustained, start/end trim, reverse, pitch envelope, drive), a built-in 2-osc subtractive synth, and a kick designer — all with editor windows |
+| Kick designer | Four layers (swept body with harmonics, tuned sub, click as tick/noise/pulse/your own WAV, filtered noise), draggable multi-point pitch and amp envelopes, and a built-in output chain: drive, three bands of EQ, compressor, limiter. 40 factory presets across nine genres, a live render of the hit with waveform, spectrum, peak and detected tuning, and drag-out or Export to WAV |
 | Plugins | VST3 + AU hosting: background scan, instrument channels, effect slots, native editor windows, state saved in the project; optional per-process sandboxing (Options menu) for effects and instruments, so a crashing plugin costs one slot's sound and a one-click restart, not the DAW |
 | Automation | Right-click any knob or fader → automation clip with a tension-curve editor; arm `AUTO` (playlist header) to record moves live |
 | Transport | Loop range (drag the playlist ruler, `LOOP` in the playlist header), metronome with count-in, per-pattern swing |
@@ -70,16 +71,17 @@ fully off-screen, and double-clicking a title bar maximises it.
 
 Click a channel name to open its editor (sampler: sample slot, trim, reverse,
 pitch envelope, ADSR, filter, drive; synth: oscillators, filter, envelope,
-keyboard; kick: body sweep, click, noise, drive, keyboard). Right-click a
+keyboard; kick: presets, envelope graph, live render, the four layers and the
+output chain, keyboard). Right-click a
 channel for piano roll, routing, and automation. Double-click a pattern clip in
 the playlist to edit that pattern.
 
 ## AI control (MCP)
 
 The app hosts a JSON-RPC 2.0 server on `127.0.0.1:44890` (override with
-`EURYDICE_CONTROL_PORT`). `mcp/index.mjs` bridges it to any MCP client as 38
+`EURYDICE_CONTROL_PORT`). `mcp/index.mjs` bridges it to any MCP client as 40
 typed tools — transport, channels, notes, patterns, playlist, mixer, plugins,
-automation, meters, render, project I/O.
+automation, meters, render, kick presets, project I/O.
 
 ```bash
 cd mcp && npm install
