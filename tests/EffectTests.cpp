@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "effects/AutoPanEffect.h"
 #include "effects/ClipperEffect.h"
 #include "effects/CompressorEffect.h"
 #include "effects/DelayEffect.h"
@@ -6,6 +7,7 @@
 #include "effects/EqEffect.h"
 #include "effects/FilterEffect.h"
 #include "effects/ReverbEffect.h"
+#include "effects/SaturatorEffect.h"
 #include "ui/mixer/BuiltinEffectEditor.h"
 #include "TestHelpers.h"
 
@@ -91,7 +93,7 @@ void applyDefaults (BuiltinEffect& effect)
 TEST (EffectRegistry, ExposesEveryBuiltinAndCreatesIt)
 {
     const auto& entries = fx::builtinEffects();
-    EXPECT_EQ (entries.size(), 6u);
+    EXPECT_EQ (entries.size(), 8u);
 
     for (const auto& entry : entries)
     {
@@ -227,6 +229,195 @@ TEST (ClipperEffect, FullyDryPassesTheInputThrough)
 
     for (int i = 0; i < buffer.getNumSamples(); ++i)
         ASSERT_NEAR (buffer.getSample (0, i), input.getSample (0, i), 1.0e-6f) << i;
+}
+
+// ============================ saturator ==============================
+
+namespace
+{
+// Every band clean at zero drive: the closest the saturator gets to a
+// straight wire.
+void setCleanThreeBands (SaturatorEffect& saturator)
+{
+    setParams (saturator, { { ids::fxBands, 2.0 }, { ids::fxCrossLo, 150.0 },
+                            { ids::fxCrossHi, 2500.0 }, { ids::fxOversample, 0.0 },
+                            { ids::fxOutput, 0.0 }, { ids::fxMix, 1.0 },
+                            { ids::fxSatType1, 0.0 }, { ids::fxSatDrive1, 0.0 }, { ids::fxSatLevel1, 0.0 },
+                            { ids::fxSatType2, 0.0 }, { ids::fxSatDrive2, 0.0 }, { ids::fxSatLevel2, 0.0 },
+                            { ids::fxSatType3, 0.0 }, { ids::fxSatDrive3, 0.0 }, { ids::fxSatLevel3, 0.0 } });
+}
+}
+
+TEST (SaturatorEffect, StylesStayBounded)
+{
+    for (int style = 0; style < SaturatorEffect::styleNames().size(); ++style)
+        for (float x = -40.0f; x <= 40.0f; x += 0.01f)
+        {
+            const float y = SaturatorEffect::shapeSample (style, x);
+            ASSERT_TRUE (std::isfinite (y)) << style << " @ " << x;
+            ASSERT_LE (std::abs (y), 1.001f) << style << " @ " << x;
+        }
+}
+
+TEST (SaturatorEffect, CleanBandsSumFlat)
+{
+    // The Linkwitz-Riley split must reconstruct to an allpass: quiet material
+    // through three clean bands comes out at the level it went in, at any
+    // frequency — including right at the crossovers.
+    for (const double freq : { 50.0, 150.0, 600.0, 2500.0, 8000.0, 14000.0 })
+    {
+        SaturatorEffect saturator;
+        saturator.prepare (sr, block);
+        setCleanThreeBands (saturator);
+
+        auto buffer = makeTone (freq, 0.1f, block * 24);
+        renderThrough (saturator, buffer);
+
+        const double out = toneAmplitude (buffer, 0, block * 8, block * 16, freq);
+        EXPECT_NEAR (out, 0.1, 0.012) << freq << " Hz";
+    }
+}
+
+TEST (SaturatorEffect, DrivingOneBandLeavesTheOthersClean)
+{
+    // A 5 kHz tone lives in the high band. Hammering the low band's shaper
+    // must not distort it; hammering the high band must.
+    auto secondHarmonic = [] (int drivenBand)
+    {
+        SaturatorEffect saturator;
+        saturator.prepare (sr, block);
+        setCleanThreeBands (saturator);
+        const juce::Identifier& type  = drivenBand == 0 ? ids::fxSatType1  : ids::fxSatType3;
+        const juce::Identifier& drive = drivenBand == 0 ? ids::fxSatDrive1 : ids::fxSatDrive3;
+        setParams (saturator, { { type, 2.0 }, { drive, 18.0 } });   // Tube, hard
+
+        auto buffer = makeTone (5000.0, 0.4f, block * 24);
+        renderThrough (saturator, buffer);
+        return toneAmplitude (buffer, 0, block * 8, block * 16, 10000.0);
+    };
+
+    const double lowDriven = secondHarmonic (0);
+    const double highDriven = secondHarmonic (2);
+
+    EXPECT_GT (highDriven, 0.02);               // the tube really distorts
+    EXPECT_GT (highDriven, lowDriven * 10.0);   // and only in its own band
+}
+
+TEST (SaturatorEffect, TubeStyleAddsEvenHarmonicsTapeDoesNot)
+{
+    auto secondHarmonic = [] (double style)
+    {
+        SaturatorEffect saturator;
+        saturator.prepare (sr, block);
+        setParams (saturator, { { ids::fxBands, 0.0 }, { ids::fxOversample, 0.0 },
+                                { ids::fxOutput, 0.0 }, { ids::fxMix, 1.0 },
+                                { ids::fxSatType1, style }, { ids::fxSatDrive1, 12.0 },
+                                { ids::fxSatLevel1, 0.0 } });
+
+        auto buffer = makeTone (200.0, 0.5f, block * 24);
+        renderThrough (saturator, buffer);
+        return toneAmplitude (buffer, 0, block * 8, block * 16, 400.0);
+    };
+
+    const double tube = secondHarmonic (2.0);
+    const double tape = secondHarmonic (1.0);
+
+    EXPECT_GT (tube, 0.02);            // asymmetry puts real energy at 2f
+    EXPECT_LT (tape, tube * 0.1);      // the symmetric curve keeps it out
+}
+
+TEST (SaturatorEffect, RectifyLeavesNoDcBehind)
+{
+    SaturatorEffect saturator;
+    saturator.prepare (sr, block);
+    setParams (saturator, { { ids::fxBands, 0.0 }, { ids::fxOversample, 0.0 },
+                            { ids::fxOutput, 0.0 }, { ids::fxMix, 1.0 },
+                            { ids::fxSatType1, 5.0 }, { ids::fxSatDrive1, 18.0 },
+                            { ids::fxSatLevel1, 0.0 } });
+
+    // Period of exactly 256 samples, so the measurement window below covers
+    // whole cycles and the waveform itself can't tilt the mean.
+    auto buffer = makeTone (sr / 256.0, 0.5f, block * 32);
+    renderThrough (saturator, buffer);
+
+    // The raw rectify curve has a big DC term; the blocker must eat it.
+    double mean = 0.0;
+    const int start = block * 16;
+    for (int i = start; i < buffer.getNumSamples(); ++i)
+        mean += buffer.getSample (0, i);
+    mean /= buffer.getNumSamples() - start;
+    EXPECT_LT (std::abs (mean), 0.005);
+}
+
+TEST (SaturatorEffect, OversamplingLowersAliasing)
+{
+    // Same trap as the clipper test: a squared-off 5 kHz sine puts a harmonic
+    // at 45 kHz, which folds down to 900 Hz at 44.1 kHz — pure aliasing.
+    constexpr double toneHz = 5000.0;
+    constexpr double aliasHz = 900.0;
+    const int numSamples = block * 32;
+
+    auto measure = [&] (int oversampleIndex)
+    {
+        SaturatorEffect saturator;
+        saturator.prepare (sr, block);
+        setParams (saturator, { { ids::fxBands, 0.0 },
+                                { ids::fxOversample, (double) oversampleIndex },
+                                { ids::fxOutput, 0.0 }, { ids::fxMix, 1.0 },
+                                { ids::fxSatType1, 1.0 }, { ids::fxSatDrive1, 24.0 },
+                                { ids::fxSatLevel1, 0.0 } });
+        auto buffer = makeTone (toneHz, 0.8f, numSamples);
+        renderThrough (saturator, buffer);
+        return toneAmplitude (buffer, 0, block * 4, block * 24, aliasHz);
+    };
+
+    const double naive = measure (0);
+    const double oversampled = measure (3);   // 8x
+
+    EXPECT_GT (naive, 0.01);
+    EXPECT_LT (oversampled, naive * 0.2);
+}
+
+TEST (SaturatorEffect, FullyDryPassesTheInputThrough)
+{
+    SaturatorEffect saturator;
+    saturator.prepare (sr, block);
+    setCleanThreeBands (saturator);
+    setParams (saturator, { { ids::fxSatType2, 4.0 }, { ids::fxSatDrive2, 36.0 },
+                            { ids::fxMix, 0.0 } });
+
+    const auto input = makeTone (220.0, 0.4f, block * 4);
+    auto buffer = input;
+    renderThrough (saturator, buffer);
+
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+        ASSERT_NEAR (buffer.getSample (0, i), input.getSample (0, i), 1.0e-6f) << i;
+}
+
+TEST (SaturatorEffect, PresetsOnlyUseRealParametersWithinRange)
+{
+    const auto& satSpecs = SaturatorEffect::specs();
+    const auto& satPresets = SaturatorEffect::presets();
+    ASSERT_FALSE (satPresets.empty());
+
+    const auto* entry = fx::findBuiltin (SaturatorEffect::identifier());
+    ASSERT_NE (entry, nullptr);
+    EXPECT_EQ (entry->presets, &satPresets);
+
+    for (const auto& preset : satPresets)
+    {
+        EXPECT_FALSE (preset.name.isEmpty());
+        for (const auto& [paramId, value] : preset.values)
+        {
+            EXPECT_NE (paramId, ids::fxMix) << preset.name << ": presets must not move the mix";
+            const auto spec = std::find_if (satSpecs.begin(), satSpecs.end(),
+                                            [&paramId = paramId] (const fx::ParamSpec& s)
+                                            { return s.id == paramId; });
+            ASSERT_NE (spec, satSpecs.end()) << preset.name << ": " << paramId.toString();
+            EXPECT_GE (value, spec->minValue) << preset.name << ": " << paramId.toString();
+            EXPECT_LE (value, spec->maxValue) << preset.name << ": " << paramId.toString();
+        }
+    }
 }
 
 // ============================== filter ===============================
@@ -726,7 +917,7 @@ TEST (ReverbEffect, TailDecaysAfterTheInputStops)
     ReverbEffect reverb;
     reverb.prepare (sr, block);
     applyDefaults (reverb);
-    setParams (reverb, { { ids::fxSize, 0.8 }, { ids::fxDamping, 0.3 },
+    setParams (reverb, { { ids::fxDecay, 2.0 }, { ids::fxSize, 0.8 },
                          { ids::fxPreDelay, 0.0 }, { ids::fxHpFreq, 20.0 },
                          { ids::fxLpFreq, 20000.0 }, { ids::fxMix, 1.0 } });
 
@@ -757,7 +948,8 @@ TEST (ReverbEffect, LowCutKeepsTheTailOutOfTheSub)
         ReverbEffect reverb;
         reverb.prepare (sr, block);
         applyDefaults (reverb);
-        setParams (reverb, { { ids::fxSize, 0.7 }, { ids::fxDamping, 0.2 },
+        setParams (reverb, { { ids::fxDecay, 2.0 }, { ids::fxSize, 0.7 },
+                             { ids::fxDampFreq, 20000.0 },
                              { ids::fxPreDelay, 0.0 }, { ids::fxHpFreq, lowCut },
                              { ids::fxLpFreq, 20000.0 }, { ids::fxMix, 1.0 } });
         auto buffer = makeTone (60.0, 0.6f, block * 64);
@@ -791,7 +983,7 @@ TEST (ReverbEffect, ResetClearsTheTail)
     ReverbEffect reverb;
     reverb.prepare (sr, block);
     applyDefaults (reverb);
-    setParams (reverb, { { ids::fxSize, 0.9 }, { ids::fxMix, 1.0 } });
+    setParams (reverb, { { ids::fxDecay, 20.0 }, { ids::fxMix, 1.0 } });
 
     auto loud = makeTone (400.0, 0.8f, block * 20);
     renderThrough (reverb, loud);
@@ -800,6 +992,255 @@ TEST (ReverbEffect, ResetClearsTheTail)
     auto silence = makeSilence (block * 20);
     renderThrough (reverb, silence);
     EXPECT_LT (silence.getMagnitude (0, 0, silence.getNumSamples()), 1.0e-12f);
+}
+
+TEST (ReverbEffect, DecayControlsTheTailLength)
+{
+    auto tailLevel = [] (double decaySeconds)
+    {
+        ReverbEffect reverb;
+        reverb.prepare (sr, block);
+        applyDefaults (reverb);
+        setParams (reverb, { { ids::fxDecay, decaySeconds }, { ids::fxPreDelay, 0.0 },
+                             { ids::fxDampFreq, 20000.0 }, { ids::fxHpFreq, 20.0 },
+                             { ids::fxLpFreq, 20000.0 }, { ids::fxMix, 1.0 } });
+        auto buffer = makeSilence ((int) (sr * 3.0));
+        for (int i = 0; i < (int) (sr * 0.05); ++i)
+        {
+            const auto s = (float) (0.6 * std::sin (juce::MathConstants<double>::twoPi * 300.0 * i / sr));
+            buffer.setSample (0, i, s);
+            buffer.setSample (1, i, s);
+        }
+        renderThrough (reverb, buffer);
+        return buffer.getRMSLevel (0, (int) (sr * 2.0), 4410);
+    };
+
+    const float shortTail = tailLevel (0.4);
+    const float longTail = tailLevel (10.0);
+    EXPECT_GT (longTail, 0.001f);
+    EXPECT_LT (shortTail, longTail * 0.05f);
+}
+
+TEST (ReverbEffect, DampingDarkensTheTail)
+{
+    auto trebleInTail = [] (double dampHz)
+    {
+        ReverbEffect reverb;
+        reverb.prepare (sr, block);
+        applyDefaults (reverb);
+        setParams (reverb, { { ids::fxDecay, 4.0 }, { ids::fxDampFreq, dampHz },
+                             { ids::fxColor, 2.0 }, { ids::fxPreDelay, 0.0 },
+                             { ids::fxModDepth, 0.0 }, { ids::fxHpFreq, 20.0 },
+                             { ids::fxLpFreq, 20000.0 }, { ids::fxMix, 1.0 } });
+        auto buffer = makeTone (6000.0, 0.6f, block * 96);
+        renderThrough (reverb, buffer);
+        return toneAmplitude (buffer, 0, block * 64, block * 24, 6000.0);
+    };
+
+    const double open = trebleInTail (20000.0);
+    EXPECT_GT (open, 0.005);
+    EXPECT_LT (trebleInTail (1500.0), open * 0.2);
+}
+
+TEST (ReverbEffect, EveryModeAndColorProducesAStableTail)
+{
+    for (int reverbMode = 0; reverbMode <= 4; ++reverbMode)
+        for (int color = 0; color <= 2; ++color)
+        {
+            ReverbEffect reverb;
+            reverb.prepare (sr, block);
+            applyDefaults (reverb);
+            setParams (reverb, { { ids::fxReverbMode, (double) reverbMode },
+                                 { ids::fxColor, (double) color },
+                                 { ids::fxDecay, 1.5 }, { ids::fxPreDelay, 0.0 },
+                                 { ids::fxModDepth, 1.0 }, { ids::fxMix, 1.0 } });
+
+            auto buffer = makeImpulse ((int) (sr * 4.0));
+            renderThrough (reverb, buffer);
+
+            const float early = buffer.getRMSLevel (0, (int) (sr * 0.2), 4410);
+            const float late = buffer.getRMSLevel (0, (int) (sr * 3.5), 4410);
+            EXPECT_GT (early, 1.0e-5f) << "mode " << reverbMode << " color " << color;
+            EXPECT_LT (late, early) << "mode " << reverbMode << " color " << color;
+
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+                ASSERT_TRUE (std::isfinite (buffer.getSample (0, i)))
+                    << "mode " << reverbMode << " color " << color << " sample " << i;
+        }
+}
+
+TEST (ReverbEffect, ZeroWidthCollapsesTheTailToMono)
+{
+    auto sideLevel = [] (double widthValue)
+    {
+        ReverbEffect reverb;
+        reverb.prepare (sr, block);
+        applyDefaults (reverb);
+        setParams (reverb, { { ids::fxWidth, widthValue }, { ids::fxPreDelay, 0.0 },
+                             { ids::fxDecay, 2.0 }, { ids::fxMix, 1.0 } });
+
+        auto buffer = makeImpulse (block * 64, 1.0f, true);
+        renderThrough (reverb, buffer);
+
+        double side = 0.0;
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            side += std::abs (buffer.getSample (0, i) - buffer.getSample (1, i));
+        return side;
+    };
+
+    EXPECT_LT (sideLevel (0.0), 1.0e-6);
+    EXPECT_GT (sideLevel (1.0), 0.01);
+}
+
+TEST (ReverbEffect, PresetsOnlyUseRealParametersWithinRange)
+{
+    const auto& reverbSpecs = ReverbEffect::specs();
+    const auto& reverbPresets = ReverbEffect::presets();
+    ASSERT_FALSE (reverbPresets.empty());
+
+    const auto* entry = fx::findBuiltin (ReverbEffect::identifier());
+    ASSERT_NE (entry, nullptr);
+    EXPECT_EQ (entry->presets, &reverbPresets);
+
+    for (const auto& preset : reverbPresets)
+    {
+        EXPECT_FALSE (preset.name.isEmpty());
+        for (const auto& [paramId, value] : preset.values)
+        {
+            EXPECT_NE (paramId, ids::fxMix) << preset.name << ": presets must not move the mix";
+            const auto spec = std::find_if (reverbSpecs.begin(), reverbSpecs.end(),
+                                            [&paramId = paramId] (const fx::ParamSpec& s)
+                                            { return s.id == paramId; });
+            ASSERT_NE (spec, reverbSpecs.end()) << preset.name << ": " << paramId.toString();
+            EXPECT_GE (value, spec->minValue) << preset.name << ": " << paramId.toString();
+            EXPECT_LE (value, spec->maxValue) << preset.name << ": " << paramId.toString();
+        }
+    }
+}
+
+// ============================== auto pan ==============================
+
+TEST (AutoPanEffect, ChannelGainCoversTheFullRangeAndStaysBounded)
+{
+    for (int shape = 0; shape < 4; ++shape)
+    {
+        float lo = 1.0f, hi = 0.0f;
+        for (int i = 0; i < 512; ++i)
+        {
+            const float gain = AutoPanEffect::channelGain (shape, i / 512.0, 1.0f);
+            ASSERT_TRUE (std::isfinite (gain)) << shape << " @ " << i;
+            ASSERT_GE (gain, -1.0e-4f) << shape << " @ " << i;
+            ASSERT_LE (gain, 1.0f + 1.0e-4f) << shape << " @ " << i;
+            lo = juce::jmin (lo, gain);
+            hi = juce::jmax (hi, gain);
+        }
+        EXPECT_NEAR (lo, 0.0f, 0.02f) << shape;
+        EXPECT_NEAR (hi, 1.0f, 0.02f) << shape;
+
+        // Every cycle starts loud, so a synced LFO hits the beat at full level.
+        EXPECT_NEAR (AutoPanEffect::channelGain (shape, 0.0, 1.0f), 1.0f, 1.0e-4f) << shape;
+    }
+}
+
+TEST (AutoPanEffect, AmountZeroPassesAudioUntouched)
+{
+    AutoPanEffect pan;
+    pan.prepare (sr, block);
+    setParams (pan, { { ids::fxLfoShape, 0.0 }, { ids::fxLfoSync, 0.0 },
+                      { ids::fxLfoHz, 5.0 }, { ids::fxPhase, 180.0 },
+                      { ids::fxLfoAmount, 0.0 }, { ids::fxMix, 1.0 } });
+
+    auto buffer = makeTone (440.0, 0.5f, block * 4);
+    const auto reference = buffer;
+    renderThrough (pan, buffer);
+
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            ASSERT_NEAR (buffer.getSample (ch, i), reference.getSample (ch, i), 1.0e-6f);
+}
+
+TEST (AutoPanEffect, PhaseZeroSquareGatesBothChannelsTogether)
+{
+    AutoPanEffect pan;
+    pan.prepare (sr, block);
+    setParams (pan, { { ids::fxLfoShape, 3.0 }, { ids::fxLfoSync, 0.0 },
+                      { ids::fxLfoHz, 4.0 }, { ids::fxPhase, 0.0 },
+                      { ids::fxLfoAmount, 1.0 }, { ids::fxMix, 1.0 } });
+
+    // 4 Hz at 44.1 kHz: 11025-sample cycle, loud first half, gated second half.
+    auto buffer = makeTone (440.0, 0.5f, (int) sr);
+    renderThrough (pan, buffer);
+
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        EXPECT_GT (buffer.getRMSLevel (ch, 1000, 3500), 0.3f) << ch;
+        EXPECT_LT (buffer.getRMSLevel (ch, 6600, 3900), 0.02f) << ch;
+    }
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+        ASSERT_NEAR (buffer.getSample (0, i), buffer.getSample (1, i), 1.0e-6f) << i;
+}
+
+TEST (AutoPanEffect, Phase180AlternatesTheChannels)
+{
+    AutoPanEffect pan;
+    pan.prepare (sr, block);
+    setParams (pan, { { ids::fxLfoShape, 3.0 }, { ids::fxLfoSync, 0.0 },
+                      { ids::fxLfoHz, 4.0 }, { ids::fxPhase, 180.0 },
+                      { ids::fxLfoAmount, 1.0 }, { ids::fxMix, 1.0 } });
+
+    auto buffer = makeTone (440.0, 0.5f, (int) sr);
+    renderThrough (pan, buffer);
+
+    // First half of the cycle: hard left. Second half: hard right.
+    EXPECT_GT (buffer.getRMSLevel (0, 1000, 3500), 0.3f);
+    EXPECT_LT (buffer.getRMSLevel (1, 1000, 3500), 0.02f);
+    EXPECT_LT (buffer.getRMSLevel (0, 6600, 3900), 0.02f);
+    EXPECT_GT (buffer.getRMSLevel (1, 6600, 3900), 0.3f);
+}
+
+TEST (AutoPanEffect, SyncedRateFollowsTheTempo)
+{
+    AutoPanEffect pan;
+    pan.prepare (sr, block);
+    setParams (pan, { { ids::fxLfoShape, 3.0 }, { ids::fxLfoSync, 1.0 },
+                      { ids::fxLfoRate, 8.0 },   // 1/4
+                      { ids::fxPhase, 0.0 }, { ids::fxLfoAmount, 1.0 },
+                      { ids::fxMix, 1.0 } });
+
+    // A quarter at 120 BPM is 0.5 s = 22050 samples: gate opens for 11025.
+    Effect::Context context;
+    context.tempo = 120.0;
+    auto buffer = makeTone (440.0, 0.5f, (int) sr);
+    renderThrough (pan, buffer, context);
+
+    EXPECT_GT (buffer.getRMSLevel (0, 1000, 9000), 0.3f);
+    EXPECT_LT (buffer.getRMSLevel (0, 12000, 9000), 0.02f);
+}
+
+TEST (AutoPanEffect, PresetsOnlyUseRealParametersWithinRange)
+{
+    const auto& panSpecs = AutoPanEffect::specs();
+    const auto& panPresets = AutoPanEffect::presets();
+    ASSERT_FALSE (panPresets.empty());
+
+    const auto* entry = fx::findBuiltin (AutoPanEffect::identifier());
+    ASSERT_NE (entry, nullptr);
+    EXPECT_EQ (entry->presets, &panPresets);
+
+    for (const auto& preset : panPresets)
+    {
+        EXPECT_FALSE (preset.name.isEmpty());
+        for (const auto& [paramId, value] : preset.values)
+        {
+            EXPECT_NE (paramId, ids::fxMix) << preset.name << ": presets must not move the mix";
+            const auto spec = std::find_if (panSpecs.begin(), panSpecs.end(),
+                                            [&paramId = paramId] (const fx::ParamSpec& s)
+                                            { return s.id == paramId; });
+            ASSERT_NE (spec, panSpecs.end()) << preset.name << ": " << paramId.toString();
+            EXPECT_GE (value, spec->minValue) << preset.name << ": " << paramId.toString();
+            EXPECT_LE (value, spec->maxValue) << preset.name << ": " << paramId.toString();
+        }
+    }
 }
 
 // ==================== model / engine integration =====================

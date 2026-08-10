@@ -63,6 +63,12 @@ struct Biquad
         set (1.0, -2.0 * c.cosw, 1.0, c);
     }
 
+    void setAllPass (double sampleRate, double freq, double q) noexcept
+    {
+        const auto c = common (sampleRate, freq, q);
+        set (1.0 - c.alpha, -2.0 * c.cosw, 1.0 + c.alpha, c);
+    }
+
     void setPeak (double sampleRate, double freq, double q, double gainDb) noexcept
     {
         const auto c = common (sampleRate, freq, q);

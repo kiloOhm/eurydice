@@ -182,8 +182,22 @@ DECLARE_ID (fxFeedback)
 DECLARE_ID (fxPingPong)
 DECLARE_ID (fxPreDelay)
 DECLARE_ID (fxSize)
-DECLARE_ID (fxDamping)
 DECLARE_ID (fxWidth)
+DECLARE_ID (fxDecay)        // reverb tail RT60, seconds
+DECLARE_ID (fxDampFreq)     // reverb high-frequency damping corner, Hz
+DECLARE_ID (fxModRate)      // tank modulation, Hz
+DECLARE_ID (fxModDepth)     // tank modulation amount, 0..1
+DECLARE_ID (fxReverbMode)   // index: room / chamber / plate / hall / cathedral
+DECLARE_ID (fxColor)        // index: 1970s / 1980s / now
+DECLARE_ID (fxLfoSync)      // 0 = free-running Hz, 1 = locked to the beat grid
+DECLARE_ID (fxLfoHz)        // free-running LFO rate, Hz
+DECLARE_ID (fxPhase)        // stereo LFO offset, degrees (0 = tremolo, 180 = auto-pan)
+DECLARE_ID (fxBands)        // saturator: active band count index (0 = single band)
+DECLARE_ID (fxCrossLo)      // saturator: low/mid crossover, Hz
+DECLARE_ID (fxCrossHi)      // saturator: mid/high crossover, Hz
+DECLARE_ID (fxSatType1)  DECLARE_ID (fxSatDrive1)  DECLARE_ID (fxSatLevel1)
+DECLARE_ID (fxSatType2)  DECLARE_ID (fxSatDrive2)  DECLARE_ID (fxSatLevel2)
+DECLARE_ID (fxSatType3)  DECLARE_ID (fxSatDrive3)  DECLARE_ID (fxSatLevel3)
 
 // Drum machine. PADs are children of the CHANNEL, ordered by pad index;
 // the grid shape only affects the editor, never which pads can play.

@@ -46,7 +46,13 @@ private:
     std::unique_ptr<juce::Component> display;   // response curve / GR meter
     int displayHeight = 0;
 
+    const std::vector<fx::BuiltinPreset>* presets = nullptr;
+    std::unique_ptr<juce::ComboBox> presetCombo;
+    bool applyingPreset = false;
+    int presetHeight = 0;
+
     void buildDisplay (const fx::BuiltinEntry&, std::shared_ptr<BuiltinEffect> liveInstance);
+    void buildPresetChooser();
     void layOutControls (const std::vector<fx::ParamSpec>& specs);
 
     static constexpr int cellW = 62;

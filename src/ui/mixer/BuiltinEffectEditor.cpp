@@ -11,6 +11,9 @@ BuiltinEffectEditor::BuiltinEffectEditor (ProjectModel& projectModel, juce::Valu
 
     buildDisplay (entry, std::move (liveInstance));
 
+    presets = entry.presets;
+    buildPresetChooser();
+
     for (const auto& spec : specs)
     {
         auto control = std::make_unique<Control>();
@@ -98,12 +101,46 @@ void BuiltinEffectEditor::buildDisplay (const fx::BuiltinEntry& entry,
             [] (BuiltinEffect& fx, double f) { return static_cast<FilterEffect&> (fx).magnitudeAt (f); });
     else if (entry.id == CompressorEffect::identifier())
         display = std::make_unique<CompressorDisplay> (slotTree, std::move (liveInstance));
+    else if (entry.id == AutoPanEffect::identifier())
+        display = std::make_unique<AutoPanDisplay> (slotTree);
+    else if (entry.id == SaturatorEffect::identifier())
+        display = std::make_unique<SaturatorDisplay> (slotTree);
 
     if (display != nullptr)
     {
         displayHeight = 110;
         addAndMakeVisible (*display);
     }
+}
+
+// Effects that ship presets get a chooser strip. Picking one writes every
+// preset value onto the slot in a single undoable step; touching any knob
+// afterwards drops the selection back to "Preset…".
+void BuiltinEffectEditor::buildPresetChooser()
+{
+    if (presets == nullptr || presets->empty())
+        return;
+
+    presetCombo = std::make_unique<juce::ComboBox>();
+    presetCombo->setWantsKeyboardFocus (false);
+    presetCombo->setTextWhenNothingSelected ("Preset…");
+    for (size_t i = 0; i < presets->size(); ++i)
+        presetCombo->addItem ((*presets)[i].name, (int) i + 1);
+
+    presetCombo->onChange = [this]
+    {
+        const int index = presetCombo->getSelectedId() - 1;
+        if (index < 0 || index >= (int) presets->size())
+            return;
+        const juce::ScopedValueSetter<bool> applying (applyingPreset, true);
+        auto& undo = model.getUndoManager();
+        undo.beginNewTransaction ("Load preset");
+        for (const auto& [paramId, value] : (*presets)[(size_t) index].values)
+            slotTree.setProperty (paramId, value, &undo);
+    };
+
+    addAndMakeVisible (*presetCombo);
+    presetHeight = 30;
 }
 
 // Packs the controls into rows: combos with long labels take two cells, and a
@@ -139,7 +176,7 @@ void BuiltinEffectEditor::layOutControls (const std::vector<fx::ParamSpec>& spec
     }
 
     setSize (juce::jmax (widest * cellW + 16, display != nullptr ? 330 : 0),
-             displayHeight + (row + 1) * cellH + 16);
+             displayHeight + presetHeight + (row + 1) * cellH + 16);
 }
 
 BuiltinEffectEditor::~BuiltinEffectEditor()
@@ -151,6 +188,10 @@ void BuiltinEffectEditor::valueTreePropertyChanged (juce::ValueTree& tree, const
 {
     if (tree != slotTree)
         return;
+
+    // A manual tweak means the slot no longer matches the loaded preset.
+    if (presetCombo != nullptr && ! applyingPreset)
+        presetCombo->setSelectedId (0, juce::dontSendNotification);
 
     for (auto& control : controls)
     {
@@ -180,6 +221,11 @@ void BuiltinEffectEditor::resized()
         display->setBounds (area.removeFromTop (displayHeight - 6));
     if (displayHeight > 0)
         area.removeFromTop (6);
+    if (presetCombo != nullptr)
+    {
+        presetCombo->setBounds (area.removeFromTop (22).reduced (2, 0));
+        area.removeFromTop (presetHeight - 22);
+    }
     for (auto& control : controls)
     {
         const juce::Rectangle<int> cell (area.getX() + control->column * cellW,
