@@ -185,6 +185,16 @@ DECLARE_ID (fxSize)
 DECLARE_ID (fxDamping)
 DECLARE_ID (fxWidth)
 
+// Drum machine. PADs are children of the CHANNEL, ordered by pad index;
+// the grid shape only affects the editor, never which pads can play.
+DECLARE_ID (PAD)
+DECLARE_ID (padRows)       // editor grid shape, matched to the user's controller
+DECLARE_ID (padCols)
+DECLARE_ID (padBaseNote)   // note of pad 0 when auto-mapping (36 = FPC/MPC style)
+DECLARE_ID (tune)          // semitones, per pad
+DECLARE_ID (choke)         // 0 = off, 1..8 choke group
+DECLARE_ID (synthDrum)     // "kick"/"snare"/"clap"/"hat": built-in sound when no sample
+
 #undef DECLARE_ID
 
 inline constexpr int ticksPerQuarter = 960;

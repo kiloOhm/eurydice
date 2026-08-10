@@ -1,5 +1,6 @@
 #include "GeneratorPool.h"
 #include "Drive.h"
+#include "DrumMachineGenerator.h"
 #include "KickGenerator.h"
 #include "SamplerGenerator.h"
 #include "SynthGenerator.h"
@@ -61,6 +62,27 @@ void applyKickParams (KickGenerator& kick, const juce::ValueTree& channel)
     kick.setRootNote ((int) channel.getProperty (ids::rootNote, 60));
 }
 
+void applyDrumParams (DrumMachineGenerator& drums, const juce::ValueTree& channel)
+{
+    int padIndex = 0;
+    for (const auto& pad : channel)
+    {
+        if (! pad.hasType (ids::PAD) || padIndex >= DrumMachineGenerator::maxPads)
+            continue;
+
+        auto& params = drums.padParams (padIndex);
+        params.key.store ((int) pad.getProperty (ids::key, -1));
+        params.gain.store (prop (pad, ids::volume, 0.9f));
+        params.pan.store (prop (pad, ids::pan, 0.0f));
+        params.tune.store (prop (pad, ids::tune, 0.0f));
+        params.choke.store ((int) pad.getProperty (ids::choke, 0));
+        drums.setPadSource (padIndex, pad[ids::samplePath].toString(),
+                            pad[ids::synthDrum].toString());
+        ++padIndex;
+    }
+    drums.setNumPads (padIndex);
+}
+
 void applySynthParams (SynthGenerator& synth, const juce::ValueTree& channel)
 {
     auto& p = synth.params();
@@ -115,6 +137,10 @@ std::shared_ptr<Generator> GeneratorPool::getOrCreate (const juce::ValueTree& ch
         {
             applySynthParams (*synth, channel);
         }
+        else if (auto* drums = dynamic_cast<DrumMachineGenerator*> (it->second.get()))
+        {
+            applyDrumParams (*drums, channel);
+        }
         else if (auto* kick = dynamic_cast<KickGenerator*> (it->second.get()))
         {
             applyKickParams (*kick, channel);
@@ -148,6 +174,13 @@ std::shared_ptr<Generator> GeneratorPool::getOrCreate (const juce::ValueTree& ch
         kick->prepare (sampleRate, blockSize);
         applyKickParams (*kick, channel);
         gen = kick;
+    }
+    else if (type == "drums")
+    {
+        auto drums = std::make_shared<DrumMachineGenerator>();
+        drums->prepare (sampleRate, blockSize);
+        applyDrumParams (*drums, channel);
+        gen = drums;
     }
     else if (type == "plugin" && pluginManager != nullptr)
     {

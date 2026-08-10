@@ -1,6 +1,7 @@
 #include "ChannelRackPanel.h"
 #include "ChannelEditor.h"
 #include "app/Theme.h"
+#include "model/DrumPads.h"
 #include "model/UndoGesture.h"
 #include "model/ChannelParams.h"
 #include "ui/automation/AutomationMenu.h"
@@ -306,6 +307,7 @@ void ChannelRackPanel::showAddChannelMenu()
     menu.addItem (1, "Sampler channel");
     menu.addItem (2, "Synth channel (built-in)");
     menu.addItem (4, "Kick synth channel");
+    menu.addItem (5, "Drum machine channel");
 
     const auto instruments = services.plugins.getInstrumentsForDisplay();
     juce::PopupMenu instrumentMenu;
@@ -333,6 +335,12 @@ void ChannelRackPanel::showAddChannelMenu()
                 project.addChannel ("synth", "Synth " + juce::String (project.numChannels() + 1));
             else if (result == 4)
                 project.addChannel ("kick", "Kick " + juce::String (project.numChannels() + 1));
+            else if (result == 5)
+            {
+                auto channel = project.addChannel ("drums", "Drums "
+                                                       + juce::String (project.numChannels() + 1));
+                drumpads::initialiseDrumChannel (channel, &project.getUndoManager());
+            }
             else if (result >= 1000)
             {
                 const auto desc = instruments[result - 1000];

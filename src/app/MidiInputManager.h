@@ -38,6 +38,8 @@ public:
         services.engine.previewNote (chId, key, velocity, 0);
         if (onLiveNote)
             onLiveNote (key, true);
+        services.liveNoteListeners.call ([key, velocity] (AppServices::LiveNoteListener& l)
+                                         { l.liveNoteOn (key, velocity); });
 
         if (recordArmed.load() && services.engine.isPlaying())
         {
@@ -58,6 +60,8 @@ public:
         services.engine.previewNoteOff (chId, key);
         if (onLiveNote)
             onLiveNote (key, false);
+        services.liveNoteListeners.call ([key] (AppServices::LiveNoteListener& l)
+                                         { l.liveNoteOff (key); });
 
         if (auto it = heldNotes.find (key); it != heldNotes.end())
         {

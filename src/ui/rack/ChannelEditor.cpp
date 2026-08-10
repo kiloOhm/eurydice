@@ -1,6 +1,7 @@
 #include "ChannelEditor.h"
 #include "engine/SamplerGenerator.h"
 #include "engine/SynthOsc.h"
+#include "DrumMachineEditor.h"
 #include "SynthDisplays.h"
 #include "model/UndoGesture.h"
 #include "plugins/PluginGenerator.h"
@@ -684,6 +685,8 @@ void ChannelEditorManager::show (AppServices& services, juce::ValueTree channel)
         window->setContentOwned (new SamplerEditor (services, channel), true);
     else if (type == "kick")
         window->setContentOwned (new KickEditor (services, channel), true);
+    else if (type == "drums")
+        window->setContentOwned (new DrumMachineEditor (services, channel), true);
     else
         window->setContentOwned (new SynthEditor (services, channel), true);
 

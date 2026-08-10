@@ -126,6 +126,17 @@ public:
     // Set by the host window: channel editor windows live there.
     std::function<void()> onCloseChannelEditors;
 
+    // Live input feed (hardware MIDI + typing piano), broadcast on the message
+    // thread by MidiInputManager. Editors subscribe for pad lights and
+    // MIDI-learn; the piano roll's key highlight rides the same feed.
+    struct LiveNoteListener
+    {
+        virtual ~LiveNoteListener() = default;
+        virtual void liveNoteOn (int key, float velocity) = 0;
+        virtual void liveNoteOff (int key) = 0;
+    };
+    juce::ListenerList<LiveNoteListener> liveNoteListeners;
+
     void capturePluginState()
     {
         for (int i = 0; i < project.numChannels(); ++i)

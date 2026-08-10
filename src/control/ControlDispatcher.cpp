@@ -1,5 +1,6 @@
 #include "ControlDispatcher.h"
 #include "engine/OfflineRenderer.h"
+#include "model/DrumPads.h"
 #include "model/UndoGesture.h"
 
 namespace
@@ -175,9 +176,12 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
     if (method == "channel.add")
     {
         const auto type = getOr (params, "type", "sampler").toString();
-        if (type != "sampler" && type != "synth" && type != "kick" && type != "plugin")
-            throw ControlError { "type must be sampler|synth|kick|plugin" };
+        if (type != "sampler" && type != "synth" && type != "kick" && type != "drums"
+            && type != "plugin")
+            throw ControlError { "type must be sampler|synth|kick|drums|plugin" };
         auto ch = project.addChannel (type, getOr (params, "name", type).toString());
+        if (type == "drums")
+            drumpads::initialiseDrumChannel (ch, nullptr);
         if (has (params, "pluginId"))
         {
             const auto pluginId = getOr (params, "pluginId", "").toString();
