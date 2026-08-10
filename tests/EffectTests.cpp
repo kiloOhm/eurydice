@@ -6,6 +6,7 @@
 #include "effects/EffectRegistry.h"
 #include "effects/EqEffect.h"
 #include "effects/FilterEffect.h"
+#include "effects/RetroEffect.h"
 #include "effects/ReverbEffect.h"
 #include "effects/SaturatorEffect.h"
 #include "effects/ShaperEffect.h"
@@ -95,7 +96,7 @@ void applyDefaults (BuiltinEffect& effect)
 TEST (EffectRegistry, ExposesEveryBuiltinAndCreatesIt)
 {
     const auto& entries = fx::builtinEffects();
-    EXPECT_EQ (entries.size(), 9u);
+    EXPECT_EQ (entries.size(), 10u);
 
     for (const auto& entry : entries)
     {
@@ -1444,7 +1445,11 @@ TEST (BuiltinEffectEditor, LaysOutEveryParameterInsideItsBounds)
             if (! child->getBounds().isEmpty())
                 ++visibleControls;
         }
-        EXPECT_GE (visibleControls, (int) entry.specs.size()) << entry.id;
+        // Parameters the effect's own display draws don't get a grid control as
+        // well, so only the rest have to be accounted for here.
+        const auto inGrid = std::count_if (entry.specs.begin(), entry.specs.end(),
+                                           [] (const fx::ParamSpec& s) { return ! s.ownDrawn; });
+        EXPECT_GE (visibleControls, (int) inGrid) << entry.id;
     }
 }
 
@@ -1969,4 +1974,402 @@ TEST (ShaperEffect, NeutralValuesAndLabelsCoverEveryTarget)
     EXPECT_EQ (ShaperEffect::gridSteps (-5), 0);
     EXPECT_EQ (ShaperEffect::gridSteps (500), 32);
     EXPECT_EQ (ShaperEffect::gridNames().size(), 10);
+}
+
+// =============================== retro ===============================
+
+namespace
+{
+// A Retro instance with every module switched off: the state a test builds up
+// from when it only wants one of them in the path.
+std::unique_ptr<RetroEffect> makeRetro (
+    std::initializer_list<std::pair<juce::Identifier, double>> overrides = {})
+{
+    auto effect = std::make_unique<RetroEffect>();
+    effect->prepare (sr, block);
+    applyDefaults (*effect);
+    for (const auto& module : RetroEffect::modules())
+        effect->setParameter (*module.enableId, 0.0);
+    setParams (*effect, { { ids::fxMagnitude, 1.0 }, { ids::fxOversample, 0.0 },
+                          { ids::fxOutput, 0.0 }, { ids::fxMix, 1.0 } });
+    for (const auto& [id, value] : overrides)
+        effect->setParameter (id, value);
+    return effect;
+}
+
+juce::AudioBuffer<float> makeDcBuffer (float amp, int numSamples)
+{
+    juce::AudioBuffer<float> buffer (2, numSamples);
+    for (int ch = 0; ch < 2; ++ch)
+        juce::FloatVectorOperations::fill (buffer.getWritePointer (ch), amp, numSamples);
+    return buffer;
+}
+} // namespace
+
+TEST (RetroEffect, DistortCurvesStayBounded)
+{
+    ASSERT_EQ (RetroEffect::distortTypeNames().size(), 6);
+    for (int type = 0; type < RetroEffect::distortTypeNames().size(); ++type)
+        for (float x = -40.0f; x <= 40.0f; x += 0.01f)
+        {
+            const float y = RetroEffect::shapeSample (type, x);
+            ASSERT_TRUE (std::isfinite (y)) << type << " @ " << x;
+            ASSERT_LE (std::abs (y), 1.001f) << type << " @ " << x;
+        }
+}
+
+TEST (RetroEffect, MagnitudeAtZeroIsATrueBypass)
+{
+    // Every module on and wide open, but Magnitude scales all six amounts to
+    // nothing — including the latency the wobble and the drive would add, which
+    // is what makes this bit-exact rather than merely quiet.
+    auto effect = makeRetro();
+    for (const auto& module : RetroEffect::modules())
+    {
+        effect->setParameter (*module.enableId, 1.0);
+        effect->setParameter (*module.amountId, 1.0);
+    }
+    setParams (*effect, { { ids::fxMagnitude, 0.0 }, { ids::fxOversample, 3.0 } });
+
+    const auto input = makeTone (220.0, 0.4f, block * 8);
+    auto buffer = input;
+    renderThrough (*effect, buffer);
+
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+        ASSERT_EQ (buffer.getSample (0, i), input.getSample (0, i)) << i;
+}
+
+TEST (RetroEffect, TheDryPathCarriesTheWobblesLatency)
+{
+    // Fully dry with the wobble in the path: the output must be the input
+    // delayed by the same amount the wet path was, or a partial mix would comb.
+    auto effect = makeRetro ({ { ids::fxWobbleOn, 1.0 }, { ids::fxWobbleAmount, 1.0 },
+                               { ids::fxMix, 0.0 } });
+
+    const auto input = makeTone (330.0, 0.5f, block * 16);
+    auto buffer = input;
+    renderThrough (*effect, buffer);
+
+    const int latency = juce::roundToInt (0.012 * sr);   // RetroEffect::wobbleBaseMs
+    for (int i = latency; i < buffer.getNumSamples(); ++i)
+        ASSERT_NEAR (buffer.getSample (0, i), input.getSample (0, i - latency), 1.0e-6f) << i;
+}
+
+TEST (RetroEffect, WobbleMovesTheSignalWithoutMovingTheLevel)
+{
+    auto effect = makeRetro ({ { ids::fxWobbleOn, 1.0 }, { ids::fxWobbleAmount, 1.0 },
+                               { ids::fxWobbleType, 3.0 }, { ids::fxWobbleRate, 4.0 } });
+
+    const auto input = makeTone (500.0, 0.5f, (int) sr);
+    auto buffer = input;
+    renderThrough (*effect, buffer);
+
+    const int start = (int) (sr * 0.2);
+    const int length = (int) (sr * 0.6);
+    const float wet = test::rmsOf (buffer, start, length);
+    const float clean = test::rmsOf (input, start, length);
+    // A time/pitch effect, so the level survives...
+    EXPECT_NEAR (wet / clean, 1.0f, 0.05f);
+    // ...but the waveform itself does not sit still.
+    float biggestShift = 0.0f;
+    for (int i = start; i < start + length; ++i)
+        biggestShift = juce::jmax (biggestShift,
+                                   std::abs (buffer.getSample (0, i) - input.getSample (0, i)));
+    EXPECT_GT (biggestShift, 0.2f);
+}
+
+TEST (RetroEffect, BitCrushQuantisesToTheChosenStep)
+{
+    // Three bits is four steps either side of zero; the hold runs at the sample
+    // rate, so what comes out is the quantiser on its own.
+    auto effect = makeRetro ({ { ids::fxDigitalOn, 1.0 }, { ids::fxDigitalAmount, 1.0 },
+                               { ids::fxBits, 3.0 }, { ids::fxDownsample, 48000.0 },
+                               { ids::fxJitter, 0.0 } });
+
+    auto buffer = makeTone (110.0, 0.9f, block * 4);
+    renderThrough (*effect, buffer);
+
+    constexpr float step = 1.0f / 4.0f;
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+    {
+        const float x = buffer.getSample (0, i);
+        ASSERT_NEAR (x, std::round (x / step) * step, 1.0e-5f) << i;
+    }
+}
+
+TEST (RetroEffect, DownsamplingHoldsTheSignalBetweenSteps)
+{
+    auto effect = makeRetro ({ { ids::fxDigitalOn, 1.0 }, { ids::fxDigitalAmount, 1.0 },
+                               { ids::fxBits, 16.0 }, { ids::fxDownsample, 4000.0 } });
+
+    auto buffer = makeTone (300.0, 0.6f, block * 8);
+    renderThrough (*effect, buffer);
+
+    // At 4 kHz out of 44.1 kHz roughly every eleventh sample is new, so the vast
+    // majority repeat the one before them.
+    int repeats = 0;
+    for (int i = 1; i < buffer.getNumSamples(); ++i)
+        if (buffer.getSample (0, i) == buffer.getSample (0, i - 1))
+            ++repeats;
+    EXPECT_GT (repeats, buffer.getNumSamples() * 3 / 4);
+}
+
+TEST (RetroEffect, EveryNoiseTypeLaysAFloorOverSilence)
+{
+    ASSERT_EQ (RetroEffect::noiseTypeNames().size(), 7);
+    for (int type = 0; type < RetroEffect::noiseTypeNames().size(); ++type)
+    {
+        auto effect = makeRetro ({ { ids::fxNoiseOn, 1.0 }, { ids::fxNoiseAmount, 0.8 },
+                                   { ids::fxNoiseType, (double) type },
+                                   { ids::fxNoiseTone, 18000.0 } });
+        auto buffer = makeSilence ((int) sr);
+        renderThrough (*effect, buffer);
+
+        const float level = test::rmsOf (buffer, (int) (sr * 0.25), (int) (sr * 0.5));
+        EXPECT_GT (level, 1.0e-4f) << RetroEffect::noiseTypeNames()[type];
+        EXPECT_LT (buffer.getMagnitude (0, 0, buffer.getNumSamples()), 1.5f)
+            << RetroEffect::noiseTypeNames()[type];
+    }
+}
+
+TEST (RetroEffect, FollowLiftsTheNoiseWithTheSignalAndDuckUndercutsIt)
+{
+    auto measureOverSilence = [] (double follow)
+    {
+        auto effect = makeRetro ({ { ids::fxNoiseOn, 1.0 }, { ids::fxNoiseAmount, 0.8 },
+                                   { ids::fxNoiseType, 2.0 }, { ids::fxNoiseTone, 18000.0 },
+                                   { ids::fxNoiseFollow, follow } });
+        auto buffer = makeSilence ((int) sr);
+        renderThrough (*effect, buffer);
+        return test::rmsOf (buffer, (int) (sr * 0.25), (int) (sr * 0.5));
+    };
+
+    const float still = measureOverSilence (0.0);
+    const float rising = measureOverSilence (1.0);
+    const float ducking = measureOverSilence (-1.0);
+
+    ASSERT_GT (still, 1.0e-4f);
+    // Nothing playing: Follow has nothing to rise with, Duck has nothing to hide
+    // under, so the floor is at its loudest.
+    EXPECT_LT (rising, still * 0.05f);
+    EXPECT_NEAR (ducking, still, still * 0.05f);
+}
+
+TEST (RetroEffect, HumSitsOnItsMainsFrequency)
+{
+    for (const auto& [type, mains] : { std::pair<double, double> { 4.0, 50.0 },
+                                       std::pair<double, double> { 5.0, 60.0 } })
+    {
+        auto effect = makeRetro ({ { ids::fxNoiseOn, 1.0 }, { ids::fxNoiseAmount, 1.0 },
+                                   { ids::fxNoiseType, type }, { ids::fxNoiseTone, 18000.0 } });
+        auto buffer = makeSilence (block * 64);
+        renderThrough (*effect, buffer);
+
+        const int start = block * 8;
+        const int length = block * 48;
+        const double atMains = toneAmplitude (buffer, 0, start, length, mains);
+        const double elsewhere = toneAmplitude (buffer, 0, start, length, mains * 1.7);
+        EXPECT_GT (atMains, 0.05) << mains;
+        EXPECT_GT (atMains, elsewhere * 8.0) << mains;
+    }
+}
+
+TEST (RetroEffect, NoiseWidthCollapsesTheTwoGeneratorsTogether)
+{
+    auto measureWidth = [] (double width)
+    {
+        auto effect = makeRetro ({ { ids::fxNoiseOn, 1.0 }, { ids::fxNoiseAmount, 0.8 },
+                                   { ids::fxNoiseType, 2.0 }, { ids::fxNoiseTone, 18000.0 },
+                                   { ids::fxNoiseWidth, width } });
+        auto buffer = makeSilence (block * 32);
+        renderThrough (*effect, buffer);
+
+        // Side energy: zero when both ears carry the same noise.
+        double side = 0.0;
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            const double d = buffer.getSample (0, i) - buffer.getSample (1, i);
+            side += d * d;
+        }
+        return std::sqrt (side / buffer.getNumSamples());
+    };
+
+    EXPECT_LT (measureWidth (0.0), 1.0e-6);
+    EXPECT_GT (measureWidth (1.0), 1.0e-3);
+}
+
+TEST (RetroEffect, DropsDuckTheLevelAllTheWayAndLetItBack)
+{
+    auto effect = makeRetro ({ { ids::fxDropsOn, 1.0 }, { ids::fxDropsAmount, 1.0 },
+                               { ids::fxDropRate, 8.0 }, { ids::fxDropLength, 60.0 },
+                               { ids::fxDropVary, 0.0 } });
+
+    auto buffer = makeDcBuffer (1.0f, (int) (sr * 2.0));
+    renderThrough (*effect, buffer);
+
+    float lowest = 1.0f, highest = 0.0f;
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+    {
+        lowest = juce::jmin (lowest, buffer.getSample (0, i));
+        highest = juce::jmax (highest, buffer.getSample (0, i));
+    }
+    EXPECT_LT (lowest, 0.02f) << "a full-depth drop should reach silence";
+    EXPECT_GT (highest, 0.99f) << "and the level should come all the way back";
+}
+
+TEST (RetroEffect, DropsAtZeroAmountLeaveTheLevelAlone)
+{
+    auto effect = makeRetro ({ { ids::fxDropsOn, 1.0 }, { ids::fxDropsAmount, 0.0 },
+                               { ids::fxDropRate, 8.0 } });
+
+    auto buffer = makeDcBuffer (1.0f, (int) sr);
+    renderThrough (*effect, buffer);
+
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+        ASSERT_NEAR (buffer.getSample (0, i), 1.0f, 1.0e-6f) << i;
+}
+
+TEST (RetroEffect, SpaceLeavesATailBehindTheInput)
+{
+    auto effect = makeRetro ({ { ids::fxSpaceOn, 1.0 }, { ids::fxSpaceAmount, 1.0 },
+                               { ids::fxSize, 0.8 }, { ids::fxDampFreq, 16000.0 },
+                               { ids::fxPreDelay, 0.0 } });
+
+    auto buffer = makeImpulse (block * 16, 1.0f);
+    renderThrough (*effect, buffer);
+
+    const float tail = test::rmsOf (buffer, block * 2, block * 8);
+    EXPECT_GT (tail, 1.0e-4f);
+    EXPECT_TRUE (std::isfinite (buffer.getMagnitude (0, 0, buffer.getNumSamples())));
+}
+
+TEST (RetroEffect, DriveAddsHarmonicsAndOversamplingKeepsThemInBand)
+{
+    // Fuzz is an odd-order curve, so a 9 kHz tone puts its fifth harmonic at
+    // 45 kHz — which folds back to 900 Hz at 44.1 kHz. More oversampling has to
+    // leave less of it sitting there.
+    auto measureAlias = [] (double osIndex)
+    {
+        auto effect = makeRetro ({ { ids::fxDistortOn, 1.0 }, { ids::fxDistortAmount, 1.0 },
+                                   { ids::fxDistortType, 3.0 }, { ids::fxDistortTone, 20000.0 },
+                                   { ids::fxOversample, osIndex } });
+        auto buffer = makeTone (9000.0, 0.5f, block * 32);
+        renderThrough (*effect, buffer);
+        return toneAmplitude (buffer, 0, block * 8, block * 16, 900.0);
+    };
+
+    const double none = measureAlias (0.0);
+    const double eight = measureAlias (3.0);
+    EXPECT_GT (none, 1.0e-5);
+    EXPECT_LT (eight, none * 0.5);
+}
+
+TEST (RetroEffect, DriveAtZeroAmountIsStillAWire)
+{
+    // Amount is both the drive and the blend, so the bottom of the range has to
+    // be the input itself and not the curve's shape at unity gain.
+    auto effect = makeRetro ({ { ids::fxDistortOn, 1.0 }, { ids::fxDistortAmount, 0.0 },
+                               { ids::fxDistortType, 3.0 } });
+
+    const auto input = makeTone (440.0, 0.7f, block * 4);
+    auto buffer = input;
+    renderThrough (*effect, buffer);
+
+    for (int i = 0; i < buffer.getNumSamples(); ++i)
+        ASSERT_NEAR (buffer.getSample (0, i), input.getSample (0, i), 2.0e-3f) << i;
+}
+
+TEST (RetroEffect, BiasedDriveLeavesNoDcBehind)
+{
+    auto effect = makeRetro ({ { ids::fxDistortOn, 1.0 }, { ids::fxDistortAmount, 0.8 },
+                               { ids::fxDistortType, 2.0 }, { ids::fxBias, 1.0 } });
+
+    auto buffer = makeTone (200.0, 0.6f, (int) sr);
+    renderThrough (*effect, buffer);
+
+    double sum = 0.0;
+    const int start = (int) (sr * 0.3);
+    const int length = (int) (sr * 0.6);
+    for (int i = start; i < start + length; ++i)
+        sum += buffer.getSample (0, i);
+    EXPECT_LT (std::abs (sum / length), 1.0e-3);
+}
+
+TEST (RetroEffect, TheRackOwnsTheModuleSwitchesAndAmounts)
+{
+    // The editor's rack draws exactly the thirteen values it is responsible for;
+    // everything else has to reach the generic knob grid.
+    const auto& retroSpecs = RetroEffect::specs();
+    juce::StringArray ownDrawn;
+    for (const auto& spec : retroSpecs)
+        if (spec.ownDrawn)
+            ownDrawn.add (spec.id.toString());
+
+    juce::StringArray expected { ids::fxMagnitude.toString() };
+    for (const auto& module : RetroEffect::modules())
+    {
+        expected.add (module.enableId->toString());
+        expected.add (module.amountId->toString());
+    }
+    ownDrawn.sort (false);
+    expected.sort (false);
+    EXPECT_EQ (ownDrawn.joinIntoString (","), expected.joinIntoString (","));
+
+    // Each module opens its own named row of detail knobs, and Output closes it.
+    juce::StringArray groups;
+    for (const auto& spec : retroSpecs)
+        if (spec.group.isNotEmpty())
+        {
+            EXPECT_TRUE (spec.startsRow) << spec.group;
+            groups.add (spec.group);
+        }
+    EXPECT_EQ (groups.joinIntoString (","), "Wobble,Distort,Digital,Noise,Space,Drops,Output");
+}
+
+TEST (RetroEffect, PresetsOnlyUseRealParametersWithinRange)
+{
+    const auto& retroSpecs = RetroEffect::specs();
+    const auto& retroPresets = RetroEffect::presets();
+    ASSERT_FALSE (retroPresets.empty());
+
+    const auto* entry = fx::findBuiltin (RetroEffect::identifier());
+    ASSERT_NE (entry, nullptr);
+    EXPECT_EQ (entry->presets, &retroPresets);
+
+    for (const auto& preset : retroPresets)
+    {
+        EXPECT_FALSE (preset.name.isEmpty());
+        for (const auto& [paramId, value] : preset.values)
+        {
+            EXPECT_NE (paramId, ids::fxMix) << preset.name << ": presets must not move the mix";
+            const auto spec = std::find_if (retroSpecs.begin(), retroSpecs.end(),
+                                            [&paramId = paramId] (const fx::ParamSpec& s)
+                                            { return s.id == paramId; });
+            ASSERT_NE (spec, retroSpecs.end()) << preset.name << ": " << paramId.toString();
+            EXPECT_GE ((double) value, spec->minValue) << preset.name << ": " << paramId.toString();
+            EXPECT_LE ((double) value, spec->maxValue) << preset.name << ": " << paramId.toString();
+        }
+    }
+}
+
+TEST (RetroEffect, EveryPresetStaysFiniteAndInBounds)
+{
+    for (const auto& preset : RetroEffect::presets())
+    {
+        juce::ValueTree slot (ids::SLOT);
+        BuiltinEffect::writeDefaults (slot, RetroEffect::specs(), nullptr);
+        for (const auto& [paramId, value] : preset.values)
+            slot.setProperty (paramId, value, nullptr);
+
+        RetroEffect effect;
+        effect.prepare (sr, block);
+        effect.applyParameters (slot);
+
+        auto buffer = makeTone (220.0, 0.5f, (int) (sr * 0.5));
+        renderThrough (effect, buffer);
+
+        const float peak = buffer.getMagnitude (0, 0, buffer.getNumSamples());
+        EXPECT_TRUE (std::isfinite (peak)) << preset.name;
+        EXPECT_LT (peak, 4.0f) << preset.name;
+    }
 }

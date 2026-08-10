@@ -33,6 +33,8 @@ private:
         std::unique_ptr<juce::Label> caption;
         std::unique_ptr<juce::ComboBox> combo;
         std::vector<int> comboValues;   // item index -> value stored on the tree
+        juce::String group;             // non-empty: this control opens a named row
+        bool startsRow = false;
         int row = 0;
         int column = 0;
         int span = 1;
@@ -54,11 +56,14 @@ private:
 
     void buildDisplay (const fx::BuiltinEntry&, std::shared_ptr<BuiltinEffect> liveInstance);
     void buildPresetChooser();
-    void layOutControls (const std::vector<fx::ParamSpec>& specs);
+    void layOutControls();
+    juce::Rectangle<int> gridArea() const;
 
     static constexpr int cellW = 62;
     static constexpr int cellH = 76;
     int maxColumns = 5;   // widened to fill the space a big display already takes
+    // Left column holding the group headings, when any spec asked for one.
+    int groupGutter = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BuiltinEffectEditor)
 };
