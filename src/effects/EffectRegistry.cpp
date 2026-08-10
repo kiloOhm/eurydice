@@ -1,4 +1,5 @@
 #include "EffectRegistry.h"
+#include "model/Ids.h"
 #include "AutoPanEffect.h"
 #include "ClipperEffect.h"
 #include "CompressorEffect.h"
@@ -7,6 +8,7 @@
 #include "FilterEffect.h"
 #include "ReverbEffect.h"
 #include "SaturatorEffect.h"
+#include "ShaperEffect.h"
 
 namespace fx
 {
@@ -21,6 +23,8 @@ const std::vector<BuiltinEntry>& builtinEffects()
         { EqEffect::identifier(),         EqEffect::displayName(),         EqEffect::specs() },
         { AutoPanEffect::identifier(),    AutoPanEffect::displayName(),    AutoPanEffect::specs(),
           &AutoPanEffect::presets() },
+        { ShaperEffect::identifier(),     ShaperEffect::displayName(),     ShaperEffect::specs(),
+          &ShaperEffect::presets(), { ids::fxWave.toString() } },
         { DelayEffect::identifier(),      DelayEffect::displayName(),      DelayEffect::specs() },
         { ReverbEffect::identifier(),     ReverbEffect::displayName(),     ReverbEffect::specs(),
           &ReverbEffect::presets() },
@@ -49,6 +53,7 @@ std::unique_ptr<BuiltinEffect> createBuiltin (const juce::String& pluginId)
     if (pluginId == FilterEffect::identifier())     return std::make_unique<FilterEffect>();
     if (pluginId == EqEffect::identifier())         return std::make_unique<EqEffect>();
     if (pluginId == AutoPanEffect::identifier())    return std::make_unique<AutoPanEffect>();
+    if (pluginId == ShaperEffect::identifier())     return std::make_unique<ShaperEffect>();
     if (pluginId == DelayEffect::identifier())      return std::make_unique<DelayEffect>();
     if (pluginId == ReverbEffect::identifier())     return std::make_unique<ReverbEffect>();
     return nullptr;

@@ -77,10 +77,17 @@ public:
     virtual const std::vector<fx::ParamSpec>& getParamSpecs() const = 0;
     virtual void setParameter (const juce::Identifier& paramId, double value) = 0;
 
+    // State an effect keeps on the slot that isn't a scalar parameter — the
+    // shaper's drawn wave. Called on the message thread after the parameters,
+    // on every snapshot rebuild, so an implementation should return early when
+    // nothing it cares about has changed.
+    virtual void applyExtraState (const juce::ValueTree& slot) { juce::ignoreUnused (slot); }
+
     void applyParameters (juce::ValueTree slot)
     {
         for (const auto& spec : getParamSpecs())
             setParameter (spec.id, (double) slot.getProperty (spec.id, spec.defaultValue));
+        applyExtraState (slot);
     }
 
     static void writeDefaults (juce::ValueTree slot, const std::vector<fx::ParamSpec>& specs,

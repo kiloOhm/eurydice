@@ -198,6 +198,12 @@ DECLARE_ID (fxCrossHi)      // saturator: mid/high crossover, Hz
 DECLARE_ID (fxSatType1)  DECLARE_ID (fxSatDrive1)  DECLARE_ID (fxSatLevel1)
 DECLARE_ID (fxSatType2)  DECLARE_ID (fxSatDrive2)  DECLARE_ID (fxSatLevel2)
 DECLARE_ID (fxSatType3)  DECLARE_ID (fxSatDrive3)  DECLARE_ID (fxSatLevel3)
+DECLARE_ID (fxTarget)       // shaper: what the drawn wave modulates
+DECLARE_ID (fxBand)         // shaper: which band is shaped, 0 = the whole bus
+DECLARE_ID (fxInvert)       // shaper: flip the wave upside down
+DECLARE_ID (fxSmooth)       // shaper: modulation glide, ms
+DECLARE_ID (fxGrid)         // shaper: editor snapping, in steps per loop
+DECLARE_ID (fxWave)         // shaper: the drawn wave, "x,y,tension|…"
 
 // Drum machine. PADs are children of the CHANNEL, ordered by pad index;
 // the grid shape only affects the editor, never which pads can play.

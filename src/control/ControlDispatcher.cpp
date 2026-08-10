@@ -474,14 +474,16 @@ juce::var ControlDispatcher::dispatch (const juce::String& method, const juce::v
             BuiltinEffect::writeDefaults (slotTree, builtin->specs, &undo);
 
         // Optional per-parameter overrides, e.g. {"fxThreshold": -30}. Only
-        // ids the effect declares are accepted, so typos fail loudly.
+        // ids the effect declares are accepted, so typos fail loudly — its
+        // specs plus any non-scalar state it reads, such as the shaper's wave.
         if (builtin != nullptr && has (params, "params"))
         {
             if (auto* overrides = getOr (params, "params", {}).getDynamicObject())
                 for (const auto& prop : overrides->getProperties())
                 {
                     const bool known = std::any_of (builtin->specs.begin(), builtin->specs.end(),
-                        [&prop] (const fx::ParamSpec& spec) { return spec.id == prop.name; });
+                        [&prop] (const fx::ParamSpec& spec) { return spec.id == prop.name; })
+                        || builtin->extraProperties.contains (prop.name.toString());
                     if (! known)
                         throw ControlError { "unknown effect param: " + prop.name.toString() };
                     slotTree.setProperty (prop.name, prop.value, &undo);

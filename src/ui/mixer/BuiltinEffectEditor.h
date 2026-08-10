@@ -43,8 +43,9 @@ private:
     ProjectModel& model;
     juce::ValueTree slotTree;
     std::vector<std::unique_ptr<Control>> controls;
-    std::unique_ptr<juce::Component> display;   // response curve / GR meter
+    std::unique_ptr<juce::Component> display;   // response curve / GR meter / wave editor
     int displayHeight = 0;
+    int displayMinWidth = 0;   // a display the user draws in needs more room than a readout
 
     const std::vector<fx::BuiltinPreset>* presets = nullptr;
     std::unique_ptr<juce::ComboBox> presetCombo;
@@ -57,7 +58,7 @@ private:
 
     static constexpr int cellW = 62;
     static constexpr int cellH = 76;
-    static constexpr int maxColumns = 5;
+    int maxColumns = 5;   // widened to fill the space a big display already takes
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BuiltinEffectEditor)
 };

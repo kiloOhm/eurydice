@@ -1,5 +1,6 @@
 #include "BuiltinEffectEditor.h"
 #include "app/Theme.h"
+#include "ui/mixer/ShaperDisplay.h"
 
 BuiltinEffectEditor::BuiltinEffectEditor (ProjectModel& projectModel, juce::ValueTree slot,
                                           const fx::BuiltinEntry& entry, int ownInsertIndex,
@@ -105,10 +106,22 @@ void BuiltinEffectEditor::buildDisplay (const fx::BuiltinEntry& entry,
         display = std::make_unique<AutoPanDisplay> (slotTree);
     else if (entry.id == SaturatorEffect::identifier())
         display = std::make_unique<SaturatorDisplay> (slotTree);
+    else if (entry.id == ShaperEffect::identifier())
+    {
+        // The wave *is* the interface here rather than a readout beside the
+        // knobs, so it gets room to draw in.
+        display = std::make_unique<ShaperDisplay> (model, slotTree, std::move (liveInstance));
+        displayHeight = 210;
+        displayMinWidth = 560;
+    }
 
     if (display != nullptr)
     {
-        displayHeight = 110;
+        if (displayHeight == 0)
+        {
+            displayHeight = 110;
+            displayMinWidth = 330;
+        }
         addAndMakeVisible (*display);
     }
 }
@@ -123,7 +136,10 @@ void BuiltinEffectEditor::buildPresetChooser()
 
     presetCombo = std::make_unique<juce::ComboBox>();
     presetCombo->setWantsKeyboardFocus (false);
-    presetCombo->setTextWhenNothingSelected ("Preset…");
+    // Explicitly UTF-8: the ellipsis is multi-byte, and juce::String reads a
+    // bare char* as ASCII (which asserts in debug and mangles the glyph).
+    presetCombo->setTextWhenNothingSelected (
+        juce::String (juce::CharPointer_UTF8 ("Preset\xe2\x80\xa6")));
     for (size_t i = 0; i < presets->size(); ++i)
         presetCombo->addItem ((*presets)[i].name, (int) i + 1);
 
@@ -147,6 +163,8 @@ void BuiltinEffectEditor::buildPresetChooser()
 // spec can force a fresh row so grouped parameters (EQ bands) stay together.
 void BuiltinEffectEditor::layOutControls (const std::vector<fx::ParamSpec>& specs)
 {
+    maxColumns = juce::jmax (5, (displayMinWidth - 16) / cellW);
+
     int row = 0, column = 0, widest = 1;
 
     for (size_t i = 0; i < controls.size(); ++i)
@@ -175,7 +193,7 @@ void BuiltinEffectEditor::layOutControls (const std::vector<fx::ParamSpec>& spec
         widest = juce::jmax (widest, column);
     }
 
-    setSize (juce::jmax (widest * cellW + 16, display != nullptr ? 330 : 0),
+    setSize (juce::jmax (widest * cellW + 16, displayMinWidth),
              displayHeight + presetHeight + (row + 1) * cellH + 16);
 }
 
