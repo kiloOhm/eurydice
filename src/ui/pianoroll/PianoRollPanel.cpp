@@ -1,6 +1,7 @@
 #include "PianoRollPanel.h"
 #include "app/Theme.h"
 #include "model/UndoGesture.h"
+#include <algorithm>
 
 namespace
 {
@@ -26,13 +27,44 @@ const Division rollDivisions[] = {
 };
 constexpr int numRollDivisions = (int) std::size (rollDivisions);
 
+// Draw and Select are one either/or pair.
+constexpr int toolRadioGroup = 1701;
+
 // Tool menu ids.
 enum ToolMenu
 {
     menuRoll = 1, menuChop, menuGlue, menuStrumForward, menuStrumBack, menuDelete,
+    menuCut, menuCopy, menuDuplicate,
     menuRampFlat = 10, menuRampRising, menuRampFalling,
     menuRollDivisionBase = 100
 };
+
+// First start and last end of a set of notes: the block a copy or duplicate
+// moves around. Empty input gives an empty range at 0.
+juce::Range<int> noteSpan (const std::vector<notetools::Note>& notes)
+{
+    if (notes.empty())
+        return {};
+
+    int first = notes.front().startTicks, last = first;
+    for (const auto& note : notes)
+    {
+        first = std::min (first, note.startTicks);
+        last  = std::max (last, note.startTicks + note.lengthTicks);
+    }
+    return { first, last };
+}
+
+// Reading order, so pasted notes land in the lane the way they were drawn.
+void sortByTimeThenPitch (std::vector<notetools::Note>& notes)
+{
+    std::sort (notes.begin(), notes.end(), [] (const notetools::Note& a, const notetools::Note& b)
+    {
+        if (a.startTicks != b.startTicks)
+            return a.startTicks < b.startTicks;
+        return a.key < b.key;
+    });
+}
 }
 
 PianoRollPanel::PianoRollPanel (AppServices& s)
@@ -42,6 +74,20 @@ PianoRollPanel::PianoRollPanel (AppServices& s)
     observedRoot.addListener (this);
 
     setWantsKeyboardFocus (true);
+
+    drawToolButton.setTooltip ("Draw tool: click or drag on the grid to paint notes");
+    selectToolButton.setTooltip ("Select tool: drag over empty grid to lasso notes "
+                                 "(Cmd-drag does the same from the Draw tool), "
+                                 "double-click to draw one");
+    for (auto* button : { &drawToolButton, &selectToolButton })
+    {
+        button->setClickingTogglesState (true);
+        button->setRadioGroupId (toolRadioGroup);
+        button->setColour (juce::TextButton::buttonOnColourId, theme::accentDim);
+    }
+    drawToolButton.setToggleState (true, juce::dontSendNotification);
+    drawToolButton.onClick   = [this] { setTool (Tool::draw); };
+    selectToolButton.onClick = [this] { setTool (Tool::select); };
 
     snapBox.addItem ("Snap: Step",     240);
     snapBox.addItem ("Snap: 1/2 Step", 120);
@@ -119,7 +165,8 @@ PianoRollPanel::PianoRollPanel (AppServices& s)
     zoomFitButton.setTooltip ("Fit the whole pattern in the window (Cmd 0)");
     zoomFitButton.onClick = [this] { zoomToFitPattern(); };
 
-    for (auto* button : { &rollButton, &chopButton, &glueButton, &strumBackButton, &strumForwardButton,
+    for (auto* button : { &drawToolButton, &selectToolButton,
+                          &rollButton, &chopButton, &glueButton, &strumBackButton, &strumForwardButton,
                           &zoomOutButton, &zoomInButton, &zoomFitButton })
     {
         button->setWantsKeyboardFocus (false);
@@ -315,16 +362,133 @@ void PianoRollPanel::deleteNoteAt (juce::Point<int> pos)
     }
 }
 
-void PianoRollPanel::deleteSelected()
+void PianoRollPanel::removeSelectedNotes()
 {
     auto lane = currentLane (false);
     if (! lane.isValid())
         return;
-    const undoGesture::Scoped step (services.project, "Delete notes");
-    for (auto& note : selection)
-        services.project.removeNote (lane, note);
+
+    // Take a copy and empty the selection first: removing a note calls back
+    // into valueTreeChildRemoved, which drops it from `selection` — shifting
+    // the array out from under an iterator walking it, so every second note
+    // used to survive.
+    const auto doomed = selection;
     selection.clearQuick();
+
+    for (const auto& note : doomed)
+        services.project.removeNote (lane, note);
+}
+
+void PianoRollPanel::deleteSelected()
+{
+    const undoGesture::Scoped step (services.project, "Delete notes");
+    removeSelectedNotes();
     repaint();
+}
+
+// ---------- clipboard ----------
+
+void PianoRollPanel::copySelection()
+{
+    if (selection.isEmpty())
+        return;
+
+    auto notes = selectedNotes();
+    sortByTimeThenPitch (notes);
+    const auto span = noteSpan (notes);
+
+    for (auto& note : notes)
+        note.startTicks -= span.getStart();
+
+    auto& clip = clipboard();
+    clip.notes = std::move (notes);
+    clip.spanTicks = juce::jmax (1, span.getLength());
+    clip.originTicks = span.getStart();
+}
+
+void PianoRollPanel::cutSelection()
+{
+    if (selection.isEmpty())
+        return;
+
+    copySelection();
+    const undoGesture::Scoped step (services.project, "Cut notes");
+    removeSelectedNotes();
+    repaint();
+}
+
+// Where a paste lands: under the pointer when it is over the grid, so the
+// mouse aims the block, and otherwise one block-length on from the last paste,
+// so repeated Cmd-V from the keyboard marches along instead of stacking up.
+int PianoRollPanel::pasteAnchorTicks() const
+{
+    if (isMouseOver (true))
+    {
+        const auto pos = getMouseXYRelative();
+        if (gridArea().contains (pos))
+            return (int) snapDown (xToTicks (pos.x));
+    }
+
+    const auto& clip = clipboard();
+    const int step = snapTicks();
+    const int span = (clip.spanTicks + step - 1) / step * step;   // whole snap steps
+    return clip.originTicks + juce::jmax (step, span);
+}
+
+void PianoRollPanel::insertNotes (const std::vector<notetools::Note>& notes, int anchorTicks)
+{
+    if (notes.empty())
+        return;
+
+    auto lane = currentLane (true);
+    if (! lane.isValid())
+        return;
+
+    lanes::markEditedWithPianoRoll (lane);
+
+    auto& model = services.project;
+    selection.clearQuick();
+    for (const auto& note : notes)
+        selection.add (model.addNote (lane,
+                                      juce::jlimit (0, 127, note.key),
+                                      juce::jmax (0, anchorTicks + note.startTicks),
+                                      juce::jmax (1, note.lengthTicks),
+                                      note.velocity, note.pan));
+
+    // A paste past the loop end takes the pattern with it, as drawing does.
+    growPatternToFitNotes();
+    repaint();
+}
+
+void PianoRollPanel::pasteClipboard()
+{
+    auto& clip = clipboard();
+    if (clip.isEmpty())
+        return;
+
+    const int anchor = pasteAnchorTicks();
+    const undoGesture::Scoped step (services.project, "Paste notes");
+    insertNotes (clip.notes, anchor);
+    clip.originTicks = anchor;
+}
+
+// Cmd-D: a copy right after the selection, without disturbing the clipboard.
+void PianoRollPanel::duplicateSelection()
+{
+    if (selection.isEmpty())
+        return;
+
+    auto notes = selectedNotes();
+    sortByTimeThenPitch (notes);
+    const auto span = noteSpan (notes);
+    for (auto& note : notes)
+        note.startTicks -= span.getStart();
+
+    const int step = snapTicks();
+    const int length = (span.getLength() + step - 1) / step * step;
+
+    const undoGesture::Scoped gesture (services.project, "Duplicate notes");
+    insertNotes (notes, span.getStart() + juce::jmax (step, length));
 }
 
 // ---------- editing tools ----------
@@ -455,6 +619,10 @@ void PianoRollPanel::showToolMenu()
     menu.addItem (menuStrumForward, "Strum later (" + strum + ")", selection.size() > 1);
     menu.addItem (menuStrumBack,    "Strum earlier (" + strum + ")", selection.size() > 1);
     menu.addSeparator();
+    menu.addItem (menuCut,       "Cut");
+    menu.addItem (menuCopy,      "Copy");
+    menu.addItem (menuDuplicate, "Duplicate");
+    menu.addSeparator();
     menu.addItem (menuDelete, "Delete");
 
     menu.showMenuAsync (juce::PopupMenu::Options().withMinimumWidth (180),
@@ -485,6 +653,9 @@ void PianoRollPanel::handleToolMenu (int result)
         case menuGlue:         applyGlue(); break;
         case menuStrumForward: applyStrum (strumOffsetTicks()); break;
         case menuStrumBack:    applyStrum (-strumOffsetTicks()); break;
+        case menuCut:          cutSelection(); break;
+        case menuCopy:         copySelection(); break;
+        case menuDuplicate:    duplicateSelection(); break;
         case menuDelete:       deleteSelected(); break;
         case menuRampFlat:     rampBox.setSelectedId (1, juce::dontSendNotification); break;
         case menuRampRising:   rampBox.setSelectedId (2, juce::dontSendNotification); break;
@@ -740,6 +911,47 @@ void PianoRollPanel::paintVelocityLane (juce::Graphics& g)
 
 // ---------- interaction ----------
 
+void PianoRollPanel::setTool (Tool newTool)
+{
+    tool = newTool;
+    drawToolButton.setToggleState (tool == Tool::draw, juce::dontSendNotification);
+    selectToolButton.setToggleState (tool == Tool::select, juce::dontSendNotification);
+}
+
+// Shift keeps whatever was already selected, so a lasso can be built up in
+// several passes; without it the drag starts from nothing.
+void PianoRollPanel::beginMarquee (juce::Point<int> pos, bool additive)
+{
+    drag = Drag::marquee;
+    dragStart = pos;
+    marqueeRect = { pos, pos };
+    marqueeBase = additive ? selection : juce::Array<juce::ValueTree>();
+    selection = marqueeBase;
+    repaint();
+}
+
+void PianoRollPanel::updateMarquee (juce::Point<int> pos)
+{
+    marqueeRect = juce::Rectangle<int>::leftTopRightBottom (
+        juce::jmin (dragStart.x, pos.x), juce::jmin (dragStart.y, pos.y),
+        juce::jmax (dragStart.x, pos.x), juce::jmax (dragStart.y, pos.y));
+
+    selection = marqueeBase;
+    if (auto lane = currentLane (false); lane.isValid())
+    {
+        for (auto note : lane)
+        {
+            const int y = keyToY ((int) note[ids::key]);
+            const int x0 = ticksToX ((int) note[ids::startTicks]);
+            const int x1 = ticksToX ((int) note[ids::startTicks] + (int) note[ids::lengthTicks]);
+            if (marqueeRect.intersects (juce::Rectangle<int>::leftTopRightBottom (x0, y, x1, y + keyHeight))
+                && ! selection.contains (note))
+                selection.add (note);
+        }
+    }
+    repaint();
+}
+
 void PianoRollPanel::mouseDown (const juce::MouseEvent& e)
 {
     grabKeyboardFocus();
@@ -780,16 +992,17 @@ void PianoRollPanel::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    if (e.mods.isCommandDown())
-    {
-        drag = Drag::marquee;
-        dragStart = pos;
-        marqueeRect = { pos, pos };
-        return;
-    }
-
     bool overRightEdge = false;
     auto note = noteAt (pos, overRightEdge);
+
+    // Marquee: the Select tool makes it the plain left-drag over empty grid,
+    // and Cmd-drag reaches it from the Draw tool without switching. Dragging a
+    // note still moves it either way, so the Select tool never blocks editing.
+    if (e.mods.isCommandDown() || (tool == Tool::select && ! note.isValid()))
+    {
+        beginMarquee (pos, e.mods.isShiftDown());
+        return;
+    }
 
     if (note.isValid())
     {
@@ -831,26 +1044,8 @@ void PianoRollPanel::mouseDrag (const juce::MouseEvent& e)
             return;
 
         case Drag::marquee:
-        {
-            marqueeRect = juce::Rectangle<int>::leftTopRightBottom (
-                juce::jmin (dragStart.x, pos.x), juce::jmin (dragStart.y, pos.y),
-                juce::jmax (dragStart.x, pos.x), juce::jmax (dragStart.y, pos.y));
-
-            selection.clearQuick();
-            if (auto lane = currentLane (false); lane.isValid())
-            {
-                for (auto note : lane)
-                {
-                    const int y = keyToY ((int) note[ids::key]);
-                    const int x0 = ticksToX ((int) note[ids::startTicks]);
-                    const int x1 = ticksToX ((int) note[ids::startTicks] + (int) note[ids::lengthTicks]);
-                    if (marqueeRect.intersects (juce::Rectangle<int>::leftTopRightBottom (x0, y, x1, y + keyHeight)))
-                        selection.add (note);
-                }
-            }
-            repaint();
+            updateMarquee (pos);
             return;
-        }
 
         case Drag::move:
         case Drag::create:
@@ -926,12 +1121,34 @@ void PianoRollPanel::mouseMove (const juce::MouseEvent& e)
     bool overRightEdge = false;
     if (gridArea().contains (e.getPosition()))
     {
-        noteAt (e.getPosition(), overRightEdge);
-        setMouseCursor (overRightEdge ? juce::MouseCursor::LeftRightResizeCursor
-                                      : juce::MouseCursor::NormalCursor);
+        const bool overNote = noteAt (e.getPosition(), overRightEdge).isValid();
+        setMouseCursor (overRightEdge          ? juce::MouseCursor::LeftRightResizeCursor
+                        : (tool == Tool::select && ! overNote)
+                                               ? juce::MouseCursor::CrosshairCursor
+                                               : juce::MouseCursor::NormalCursor);
     }
     else
         setMouseCursor (juce::MouseCursor::NormalCursor);
+}
+
+// The Select tool still needs a way to write a note: double-click draws one,
+// the way clicking does under the Draw tool.
+void PianoRollPanel::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    const auto pos = e.getPosition();
+    if (tool != Tool::select || e.mods.isPopupMenu() || ! gridArea().contains (pos))
+        return;
+
+    bool overRightEdge = false;
+    if (noteAt (pos, overRightEdge).isValid())
+        return;
+
+    const undoGesture::Scoped step (services.project, "Add note");
+    addNoteAt (pos);
+    growPatternToFitNotes();
+    drag = Drag::none;
+    dragNote = {};
+    marqueeRect = {};
 }
 
 void PianoRollPanel::setVelocityAt (juce::Point<int> pos)
@@ -1013,12 +1230,14 @@ void PianoRollPanel::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
 
 bool PianoRollPanel::keyPressed (const juce::KeyPress& key)
 {
+    const auto cmd = juce::ModifierKeys::commandModifier;
+
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
         deleteSelected();
         return true;
     }
-    if (key == juce::KeyPress ('a', juce::ModifierKeys::commandModifier, 0))
+    if (key == juce::KeyPress ('a', cmd, 0))
     {
         selection.clearQuick();
         if (auto lane = currentLane (false); lane.isValid())
@@ -1028,8 +1247,15 @@ bool PianoRollPanel::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
+    // Clipboard. Claimed even with an empty selection: these are the roll's
+    // keys while it has focus, and falling through would play typing-piano
+    // notes instead.
+    if (key == juce::KeyPress ('c', cmd, 0)) { copySelection();     return true; }
+    if (key == juce::KeyPress ('x', cmd, 0)) { cutSelection();      return true; }
+    if (key == juce::KeyPress ('v', cmd, 0)) { pasteClipboard();    return true; }
+    if (key == juce::KeyPress ('d', cmd, 0)) { duplicateSelection(); return true; }
+
     // Horizontal zoom. '=' is the unshifted '+' key, so accept both.
-    const auto cmd = juce::ModifierKeys::commandModifier;
     if (key == juce::KeyPress ('+', cmd, 0) || key == juce::KeyPress ('=', cmd, 0))
     {
         zoomHorizontally (1.3, gridArea().getCentreX());
@@ -1107,6 +1333,10 @@ void PianoRollPanel::resized()
 {
     auto header = headerArea().reduced (6, 4);
     auto viewRow = header.removeFromTop (headerRowH);
+    drawToolButton.setBounds (viewRow.removeFromLeft (50));
+    viewRow.removeFromLeft (2);
+    selectToolButton.setBounds (viewRow.removeFromLeft (56));
+    viewRow.removeFromLeft (10);
     snapBox.setBounds (viewRow.removeFromLeft (110));
     viewRow.removeFromLeft (6);
     chordBox.setBounds (viewRow.removeFromLeft (110));

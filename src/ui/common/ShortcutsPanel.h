@@ -160,8 +160,16 @@ private:
         section ("Piano Roll");
         row ("Delete / " + backspaceKey, "Delete the selected notes");
         row (cmdKey + "A", "Select all notes in the current channel");
+        row (cmdKey + "C  /  " + cmdKey + "X", "Copy / cut the selected notes");
+        row (cmdKey + "V", "Paste under the pointer, or after the last paste");
+        row (cmdKey + "D", "Duplicate the selection, right after itself");
+        list.rows.push_back ({ {}, "The clipboard follows the current channel and pattern: "
+                                   "switch either, then paste, to move a part across.",
+                               Row::Kind::note });
         row ("Right-click", "Tool menu on a selection; erase elsewhere (drag to keep erasing)");
-        row (cmdKey + "-drag", "Marquee select");
+        row ("Drag (Select tool)", "Lasso notes; double-click draws one");
+        row (cmdKey + "-drag", "Lasso from the Draw tool");
+        row ("Shift-drag", "Lasso, keeping the current selection");
         row ("Shift-click", "Add a note to the selection");
         row (cmdKey + "-wheel", "Zoom horizontally (around the pointer)");
         row (cmdKey + "+  /  " + cmdKey + "-", "Zoom in / out horizontally");

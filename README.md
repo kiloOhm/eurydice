@@ -27,7 +27,7 @@ Builds default to `RelWithDebInfo` — an unoptimised audio engine drops buffers
 | Area | Notes |
 |---|---|
 | Channel rack | Step sequencer with 4-step group tinting, per-pattern swing, per-channel pan/volume, insert routing |
-| Piano roll | Draw/paint/move/resize, right-click delete, marquee select, velocity lane, ghost notes from other channels, chord stamp, scale highlighting |
+| Piano roll | Draw/paint/move/resize, right-click delete, Draw/Select tools with lasso selection, copy/cut/paste/duplicate across channels and patterns, velocity lane, ghost notes from other channels, chord stamp, scale highlighting |
 | Playlist | Free tracks; pattern, audio and automation clips; drag/resize/cross-track move; alt-resize time-stretches audio |
 | Mixer | Master + as many inserts as you add (`+` in the mixer or the routing menus), 10 effect slots each, insert→insert sends (buses and sidechain), live peak meters, per-insert renaming |
 | Effects | Six built-ins: oversampled clipper, filter with envelope follower + synced LFO, 4-band EQ, compressor with external sidechain, tempo-synced delay, reverb |

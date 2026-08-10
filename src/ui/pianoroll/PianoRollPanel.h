@@ -8,10 +8,13 @@
 
 // FL-style piano roll for the selected channel's lane in the active pattern.
 // Draw notes with left click (click-drag moves, right edge resizes),
-// right-click deletes, cmd-drag marquee-selects. Velocity lane at the bottom,
-// ghost notes from other channels, chord stamp + scale highlighting.
-// Tool row: roll/ratchet, chop, glue and strum over the selection, also
-// reachable by right-clicking a selected note.
+// right-click deletes. The Select tool turns a plain left-drag over empty grid
+// into a marquee; cmd-drag reaches the same thing from the Draw tool.
+// Cmd C/X/V/D copy, cut, paste and duplicate the selection — across channels
+// and patterns, since paste writes into whichever lane is current.
+// Velocity lane at the bottom, ghost notes from other channels, chord stamp +
+// scale highlighting. Tool row: roll/ratchet, chop, glue and strum over the
+// selection, also reachable by right-clicking a selected note.
 class PianoRollPanel : public juce::Component,
                        private juce::ValueTree::Listener,
                        private juce::Timer
@@ -27,12 +30,18 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
 
     // Live-input feedback: lights the key on the keyboard column while a
     // MIDI/typing-piano note is held. Message thread.
     void setLiveKey (int key, bool on);
+
+    // Draw paints notes on a left-drag; Select turns the same drag over empty
+    // grid into a lasso. Cmd-drag lassos under either.
+    enum class Tool { draw, select };
+    void setTool (Tool);
 
 private:
     // --- geometry ---
@@ -61,7 +70,25 @@ private:
     void addNoteAt (juce::Point<int> gridPos);
     void deleteNoteAt (juce::Point<int> gridPos);
     void deleteSelected();
+    void removeSelectedNotes();   // no undo transaction of its own
     void preview (int key);
+
+    // --- clipboard ---
+    // Shared with every other roll through AppServices, so a copy survives the
+    // panel being rebuilt when the layout changes.
+    notetools::Clipboard& clipboard() const { return services.noteClipboard; }
+
+    void copySelection();
+    void cutSelection();
+    void pasteClipboard();
+    void duplicateSelection();
+    int  pasteAnchorTicks() const;
+    // Adds notes (starts relative to anchorTicks) and selects them.
+    void insertNotes (const std::vector<notetools::Note>& notes, int anchorTicks);
+
+    // --- tools ---
+    void beginMarquee (juce::Point<int> gridPos, bool additive);
+    void updateMarquee (juce::Point<int> gridPos);
 
     // --- editing tools ---
     int rollDivisionTicks() const;
@@ -103,6 +130,7 @@ private:
     // header widgets
     juce::ComboBox snapBox, chordBox, scaleRootBox, scaleTypeBox;
     juce::Label targetLabel;
+    juce::TextButton drawToolButton { "Draw" }, selectToolButton { "Select" };
     juce::TextButton zoomOutButton { "-" }, zoomInButton { "+" }, zoomFitButton { "Fit" };
 
     // tool row
@@ -120,8 +148,10 @@ private:
     // interaction state
     enum class Drag { none, create, move, resize, marquee, erase, velocity };
     Drag drag = Drag::none;
+    Tool tool = Tool::draw;
     juce::ValueTree dragNote;
     juce::Array<juce::ValueTree> selection;
+    juce::Array<juce::ValueTree> marqueeBase;   // kept when shift-lassoing
     juce::Point<int> dragStart;
     juce::Rectangle<int> marqueeRect;
     int dragKeyOffset = 0;
