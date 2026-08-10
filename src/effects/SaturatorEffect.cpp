@@ -6,8 +6,6 @@ namespace
 const juce::Identifier* satTypeIds[]  { &ids::fxSatType1,  &ids::fxSatType2,  &ids::fxSatType3 };
 const juce::Identifier* satDriveIds[] { &ids::fxSatDrive1, &ids::fxSatDrive2, &ids::fxSatDrive3 };
 const juce::Identifier* satLevelIds[] { &ids::fxSatLevel1, &ids::fxSatLevel2, &ids::fxSatLevel3 };
-
-constexpr double crossoverQ = 0.70710678;   // Butterworth: two cascaded == LR4
 }
 
 const juce::String& SaturatorEffect::identifier()
@@ -196,20 +194,10 @@ void SaturatorEffect::setParameter (const juce::Identifier& paramId, double valu
 
 void SaturatorEffect::updateCrossovers()
 {
-    const double lo = crossLoHz.load (std::memory_order_relaxed);
-    const double hi = juce::jmax ((double) crossHiHz.load (std::memory_order_relaxed), lo);
-
     for (auto& split : splits)
-    {
-        for (int s = 0; s < 2; ++s)
-        {
-            split.lowLp[s].setLowPass  (sampleRateHz, lo, crossoverQ);
-            split.lowHp[s].setHighPass (sampleRateHz, lo, crossoverQ);
-            split.midLp[s].setLowPass  (sampleRateHz, hi, crossoverQ);
-            split.midHp[s].setHighPass (sampleRateHz, hi, crossoverQ);
-        }
-        split.lowAp.setAllPass (sampleRateHz, hi, crossoverQ);
-    }
+        split.setFrequencies (sampleRateHz,
+                              crossLoHz.load (std::memory_order_relaxed),
+                              crossHiHz.load (std::memory_order_relaxed));
 }
 
 void SaturatorEffect::splitBands (const juce::AudioBuffer<float>& input, int numCh,
@@ -219,31 +207,16 @@ void SaturatorEffect::splitBands (const juce::AudioBuffer<float>& input, int num
     {
         auto& split = splits[(size_t) ch];
         const auto* in = input.getReadPointer (ch);
-        auto* band0 = bandBuffers[0].getWritePointer (ch);
-        auto* band1 = bandBuffers[1].getWritePointer (ch);
-        auto* band2 = bandBuffers[2].getWritePointer (ch);
+        float* bands[maxBands];
+        for (int b = 0; b < numBands; ++b)
+            bands[b] = bandBuffers[(size_t) b].getWritePointer (ch);
 
-        if (numBands == 2)
+        for (int i = 0; i < numSamples; ++i)
         {
-            for (int i = 0; i < numSamples; ++i)
-            {
-                band0[i] = split.lowLp[1].processSample (split.lowLp[0].processSample (in[i]));
-                band1[i] = split.lowHp[1].processSample (split.lowHp[0].processSample (in[i]));
-            }
-        }
-        else
-        {
-            for (int i = 0; i < numSamples; ++i)
-            {
-                // LR4 low + high sum to a 2nd-order allpass at the crossover,
-                // so the low band runs through the same allpass at the high
-                // split to stay phase-coherent with mid + high.
-                band0[i] = split.lowAp.processSample (
-                    split.lowLp[1].processSample (split.lowLp[0].processSample (in[i])));
-                const float top = split.lowHp[1].processSample (split.lowHp[0].processSample (in[i]));
-                band1[i] = split.midLp[1].processSample (split.midLp[0].processSample (top));
-                band2[i] = split.midHp[1].processSample (split.midHp[0].processSample (top));
-            }
+            float out[maxBands] {};
+            split.processSample (in[i], out, numBands);
+            for (int b = 0; b < numBands; ++b)
+                bands[b][i] = out[b];
         }
     }
 }

@@ -4,8 +4,8 @@
 #include <atomic>
 #include <memory>
 #include <juce_dsp/juce_dsp.h>
-#include "Biquad.h"
 #include "BuiltinEffect.h"
+#include "Crossover.h"
 #include "DelayLine.h"
 #include "EffectRegistry.h"
 
@@ -63,24 +63,7 @@ private:
 
     double sampleRateHz = 44100.0;
 
-    // Crossover tree per channel: LR4 split at the low crossover, the top half
-    // split again at the high crossover, and the low band pushed through the
-    // matching allpass so all three bands still sum flat.
-    struct ChannelSplit
-    {
-        fx::Biquad lowLp[2], lowHp[2], midLp[2], midHp[2], lowAp;
-
-        void reset()
-        {
-            for (int s = 0; s < 2; ++s)
-            {
-                lowLp[s].reset(); lowHp[s].reset();
-                midLp[s].reset(); midHp[s].reset();
-            }
-            lowAp.reset();
-        }
-    };
-    std::array<ChannelSplit, 2> splits;
+    std::array<fx::Crossover3, 2> splits;   // one per channel
     int activeBands = -1;
 
     // One oversampler per band per factor (index 0..2 == 2x/4x/8x). All bands

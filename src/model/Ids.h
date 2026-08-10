@@ -233,6 +233,26 @@ DECLARE_ID (fxSmooth)       // shaper: modulation glide, ms
 DECLARE_ID (fxGrid)         // shaper: editor snapping, in steps per loop
 DECLARE_ID (fxWave)         // shaper: the drawn wave, "x,y,tension|…"
 
+// Retro: six lo-fi modules in one slot, each with an on/off and an amount.
+// fxMagnitude scales every module's amount at once. The Space module reuses
+// the reverb's fxSize / fxDampFreq / fxPreDelay / fxWidth.
+DECLARE_ID (fxMagnitude)
+DECLARE_ID (fxNoiseOn)     DECLARE_ID (fxNoiseAmount)
+DECLARE_ID (fxNoiseType)   DECLARE_ID (fxNoiseTone)
+DECLARE_ID (fxNoiseFollow) // -1 = duck under the signal, +1 = rise with it
+DECLARE_ID (fxNoiseWidth)
+DECLARE_ID (fxWobbleOn)    DECLARE_ID (fxWobbleAmount)
+DECLARE_ID (fxWobbleType)  DECLARE_ID (fxWobbleRate)
+DECLARE_ID (fxFlutter)     DECLARE_ID (fxDrift)
+DECLARE_ID (fxDistortOn)   DECLARE_ID (fxDistortAmount)
+DECLARE_ID (fxDistortType) DECLARE_ID (fxDistortTone)
+DECLARE_ID (fxBias)        // waveshaper asymmetry, 0..1
+DECLARE_ID (fxDigitalOn)   DECLARE_ID (fxDigitalAmount)
+DECLARE_ID (fxBits)        DECLARE_ID (fxDownsample)  DECLARE_ID (fxJitter)
+DECLARE_ID (fxSpaceOn)     DECLARE_ID (fxSpaceAmount)
+DECLARE_ID (fxDropsOn)     DECLARE_ID (fxDropsAmount)
+DECLARE_ID (fxDropRate)    DECLARE_ID (fxDropLength)  DECLARE_ID (fxDropVary)
+
 // Drum machine. PADs are children of the CHANNEL, ordered by pad index;
 // the grid shape only affects the editor, never which pads can play.
 DECLARE_ID (PAD)
