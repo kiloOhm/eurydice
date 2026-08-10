@@ -258,6 +258,31 @@ MainComponent::MainComponent()
     };
     transportBar.setTempoDisplay (services.project.getTempo());
 
+    // --- master EQ scope ---
+    auto& scope = transportBar.getMasterScope();
+    scope.pullSamples = [this] (float* left, float* right, int maxFrames)
+    {
+        return services.engine.popScopeSamples (left, right, maxFrames);
+    };
+    scope.getSampleRate = [this] { return services.engine.getSampleRate(); };
+    {
+        auto scopeOptions = scope.getOptions();
+        scopeOptions.fftOrder         = settings->getIntValue ("scopeFftOrder", scopeOptions.fftOrder);
+        scopeOptions.rangeDb          = settings->getIntValue ("scopeRangeDb", scopeOptions.rangeDb);
+        scopeOptions.decayDbPerSecond = settings->getIntValue ("scopeDecay", scopeOptions.decayDbPerSecond);
+        scopeOptions.fill             = settings->getBoolValue ("scopeFill", scopeOptions.fill);
+        scopeOptions.peakHold         = settings->getBoolValue ("scopePeakHold", scopeOptions.peakHold);
+        scope.setOptions (scopeOptions);
+    }
+    scope.onOptionsChanged = [this] (const MasterScope::Options& o)
+    {
+        settings->setValue ("scopeFftOrder", o.fftOrder);
+        settings->setValue ("scopeRangeDb", o.rangeDb);
+        settings->setValue ("scopeDecay", o.decayDbPerSecond);
+        settings->setValue ("scopeFill", o.fill);
+        settings->setValue ("scopePeakHold", o.peakHold);
+    };
+
     services.engine.setMetronomeEnabled (settings->getBoolValue ("metronomeEnabled", false));
     services.engine.setMetronomeLevel ((float) settings->getDoubleValue ("metronomeLevel", 0.5));
     services.engine.setCountInBars (settings->getIntValue ("countInBars", 0));

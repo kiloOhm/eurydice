@@ -65,7 +65,7 @@ TransportBar::TransportBar()
     for (auto* c : std::initializer_list<juce::Component*> { &playButton, &stopButton, &recordButton,
                                                              &patButton, &songButton, &metronomeButton,
                                                              &metronomeSlider, &tempoSlider,
-                                                             &positionLabel })
+                                                             &positionLabel, &masterScope })
         addAndMakeVisible (c);
 
     // Visible panel toggles: the discoverable route to every window. Compact
@@ -158,6 +158,14 @@ void TransportBar::resized()
         entry->button.setBounds (r.removeFromLeft (34));
         r.removeFromLeft (3);
     }
+
+    // The scope keeps to the right edge and gives way entirely when the
+    // window leaves it too little room to be readable.
+    r.removeFromLeft (8);
+    masterScope.setVisible (r.getWidth() >= MasterScope::minimumWidth);
+    if (masterScope.isVisible())
+        masterScope.setBounds (r.removeFromRight (juce::jmin (MasterScope::preferredWidth, r.getWidth())));
+
     refreshPanelButtons();
 }
 

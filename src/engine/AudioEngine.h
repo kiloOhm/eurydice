@@ -63,6 +63,13 @@ public:
     double getPositionTicks() const noexcept { return publishedTickPos.load(); }
     double getPositionBeats() const noexcept { return publishedTickPos.load() / 960.0; }
     float  getMasterPeak (int channel) const noexcept { return masterPeak[channel & 1].load(); }
+
+    // Master-bus tap for the header scope. The audio thread pushes each block
+    // into a lock-free FIFO; the message thread drains it at UI rate. When
+    // nothing drains (scope hidden, offline render), writes drop once full.
+    // Returns the number of frames written to left/right.
+    int popScopeSamples (float* left, float* right, int maxFrames);
+
     float  getInsertPeak (int insertIndex, int channel) const noexcept
     {
         return insertPeaks[(size_t) juce::jlimit (0, maxInserts - 1, insertIndex) * 2
@@ -188,6 +195,12 @@ private:
     struct PreviewActive { int channelIndex = -1; int channelId = 0; int key = 0; int samplesLeft = 0; };
     std::array<PreviewActive, 32> previewActive;
     void processPreviewEvents (const EngineSnapshot&, int numSamples);
+
+    // --- master scope tap (single producer: audio thread; single consumer: UI) ---
+    static constexpr int scopeCapacity = 16384;
+    juce::AbstractFifo scopeFifo { scopeCapacity };
+    std::array<float, scopeCapacity> scopeTapL {}, scopeTapR {};
+    void pushScopeSamples (const juce::AudioBuffer<float>& master, int numSamples);
 
     std::atomic<float> masterPeak[2] { 0.0f, 0.0f };
     std::array<std::atomic<float>, (size_t) maxInserts * 2> insertPeaks {};

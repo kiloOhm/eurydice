@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Commands.h"
+#include "MasterScope.h"
 #include "ui/common/IconButton.h"
 
 // Top strip: play/stop/record, pattern/song mode, BPM, position readout.
@@ -39,6 +40,9 @@ public:
     // without this bar needing to know about the project model.
     juce::Slider& getTempoSlider() { return tempoSlider; }
 
+    // Exposed for wiring its engine hooks and persisting its options.
+    MasterScope& getMasterScope() { return masterScope; }
+
     void setTempoDisplay (double bpm);
     void setSongMode (bool songMode);
     void setRecordArmed (bool armed);
@@ -58,6 +62,7 @@ private:
     juce::Slider metronomeSlider;
     juce::Slider tempoSlider;
     juce::Label positionLabel;
+    MasterScope masterScope;
 
     struct PanelButton
     {

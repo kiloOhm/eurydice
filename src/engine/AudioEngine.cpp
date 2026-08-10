@@ -468,8 +468,49 @@ void AudioEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
         juce::FloatVectorOperations::copy (outputChannelData[ch], master.getReadPointer (ch), numSamples);
         masterPeak[ch].store (master.getMagnitude (ch, 0, numSamples), std::memory_order_relaxed);
     }
+    pushScopeSamples (master, numSamples);
 
     renderMetronome (outputChannelData, numOutputChannels, numSamples);
+}
+
+void AudioEngine::pushScopeSamples (const juce::AudioBuffer<float>& master, int numSamples)
+{
+    const float* l = master.getReadPointer (0);
+    const float* r = master.getReadPointer (1);
+
+    int start1, size1, start2, size2;
+    scopeFifo.prepareToWrite (juce::jmin (numSamples, scopeFifo.getFreeSpace()),
+                              start1, size1, start2, size2);
+    if (size1 > 0)
+    {
+        juce::FloatVectorOperations::copy (scopeTapL.data() + start1, l, size1);
+        juce::FloatVectorOperations::copy (scopeTapR.data() + start1, r, size1);
+    }
+    if (size2 > 0)
+    {
+        juce::FloatVectorOperations::copy (scopeTapL.data() + start2, l + size1, size2);
+        juce::FloatVectorOperations::copy (scopeTapR.data() + start2, r + size1, size2);
+    }
+    scopeFifo.finishedWrite (size1 + size2);
+}
+
+int AudioEngine::popScopeSamples (float* left, float* right, int maxFrames)
+{
+    int start1, size1, start2, size2;
+    scopeFifo.prepareToRead (juce::jmin (maxFrames, scopeFifo.getNumReady()),
+                             start1, size1, start2, size2);
+    if (size1 > 0)
+    {
+        juce::FloatVectorOperations::copy (left,  scopeTapL.data() + start1, size1);
+        juce::FloatVectorOperations::copy (right, scopeTapR.data() + start1, size1);
+    }
+    if (size2 > 0)
+    {
+        juce::FloatVectorOperations::copy (left + size1,  scopeTapL.data() + start2, size2);
+        juce::FloatVectorOperations::copy (right + size1, scopeTapR.data() + start2, size2);
+    }
+    scopeFifo.finishedRead (size1 + size2);
+    return size1 + size2;
 }
 
 void AudioEngine::scheduleClicks (double t0, double t1, double tps, int sampleBase)
