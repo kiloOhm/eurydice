@@ -617,6 +617,7 @@ KickEditor::KickEditor (AppServices& s, juce::ValueTree ch)
     bridge = std::make_unique<KeyboardBridge> (services, channel);
     keyboardState.addListener (bridge.get());
     services.liveNoteListeners.add (this);
+    channel.addListener (this);
 
     refreshEnvelopeButtons();
     startTimerHz (4);
@@ -626,7 +627,21 @@ KickEditor::KickEditor (AppServices& s, juce::ValueTree ch)
 
 KickEditor::~KickEditor()
 {
+    channel.removeListener (this);
     services.liveNoteListeners.remove (this);
+}
+
+// A preset load writes the whole table in one go, and undo, automation and the
+// control API all reach the same tree — so the panel follows the tree rather
+// than only its own knobs.
+void KickEditor::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property)
+{
+    if (tree != channel)
+        return;
+
+    if (channelparams::find ("kick", property.toString()) != nullptr)
+        for (auto& module : modules)
+            module->refreshKnobs();
 }
 
 // Reflects live input on the on-screen keys. The bridge is detached first so
