@@ -5,6 +5,40 @@
     // fail before the debugger starts. Point straight at the binary.
     "cmake.cmakePath": "/opt/homebrew/bin/cmake",
 
+    // build/ is configured by hand (README, tasks.json) as Ninja +
+    // RelWithDebInfo. CMake Tools defaults to no generator (so Unix Makefiles
+    // here) and a Debug variant, and configures on open — which rewrites that
+    // cache, leaves the parent on Makefiles while _deps/*-subbuild stay on
+    // Ninja, and the next build dies with "CMake step for juce failed: 1"
+    // before any launch config's preLaunchTask can run. Match the project
+    // instead, and don't reconfigure behind the terminal's back.
+    "cmake.generator": "Ninja",
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
+    "cmake.defaultVariants": {
+        "buildType": {
+            "default": "reldeb",
+            "description": "The build type",
+            "choices": {
+                "reldeb": {
+                    "short": "RelWithDebInfo",
+                    "long": "Optimised with symbols — the audio engine keeps up with real time",
+                    "buildType": "RelWithDebInfo"
+                },
+                "debug": {
+                    "short": "Debug",
+                    "long": "Unoptimised. Expect audio glitches; use build-debug instead",
+                    "buildType": "Debug"
+                },
+                "release": {
+                    "short": "Release",
+                    "long": "Optimised, no symbols",
+                    "buildType": "Release"
+                }
+            }
+        }
+    },
+
     // Don't surface CMake FetchContent clones (JUCE, googletest, rubberband)
     // in the Source Control panel.
     "git.repositoryScanIgnoredFolders": ["build", "build-cov", "build-*"],
