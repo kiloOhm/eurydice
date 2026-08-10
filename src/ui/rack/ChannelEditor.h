@@ -85,6 +85,9 @@ public:
     SynthModule (juce::String titleText, std::unique_ptr<juce::Component> displayComponent);
 
     void addKnob (std::unique_ptr<LabelledKnob>);
+    // Pulls every knob back from the tree — what a preset load, an undo or an
+    // edit made anywhere else needs before the panel tells the truth again.
+    void refreshKnobs();
     void paint (juce::Graphics&) override;
     void resized() override;
 

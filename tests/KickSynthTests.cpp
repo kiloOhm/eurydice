@@ -783,3 +783,66 @@ TEST (KickEnvelopeEditor, TheEditorBuildsEveryKickKnobExactlyOnce)
     EXPECT_EQ (countKnobs (editor), (int) channelparams::kick().size());
     EXPECT_EQ (editor.getWidth(), KickEditor::preferredWidth);
 }
+
+TEST (KickPresetUi, LoadingAPresetMovesTheKnobs)
+{
+    AppServices services { false };
+    auto channel = services.project.addChannel ("kick", "Kick");
+    const auto* before = kickpresets::find ("TR-808 Boom");
+    const auto* after = kickpresets::find ("Gabber 190");
+    ASSERT_NE (before, nullptr);
+    ASSERT_NE (after, nullptr);
+    kickpresets::apply (channel, *before, nullptr);
+
+    KickEditor editor (services, channel);
+
+    // The rotaries themselves, not the panel around them: every module display
+    // paints straight from the tree, so a whole-panel snapshot would change
+    // even with the knobs left showing the patch before.
+    std::vector<LabelledKnob*> knobs;
+    std::function<void (juce::Component&)> collect = [&] (juce::Component& parent)
+    {
+        for (int i = 0; i < parent.getNumChildComponents(); ++i)
+        {
+            auto* child = parent.getChildComponent (i);
+            if (auto* knob = dynamic_cast<LabelledKnob*> (child))
+                knobs.push_back (knob);
+            else
+                collect (*child);
+        }
+    };
+    collect (editor);
+    ASSERT_FALSE (knobs.empty());
+
+    const auto snapshotAll = [&knobs]
+    {
+        std::vector<juce::Image> images;
+        for (auto* knob : knobs)
+            images.push_back (knob->createComponentSnapshot (knob->getLocalBounds()));
+        return images;
+    };
+    const auto shownBefore = snapshotAll();
+
+    // Writing the channel tree is what the combo box, the control API and an
+    // undo all come down to.
+    kickpresets::apply (channel, *after, nullptr);
+    const auto shownAfter = snapshotAll();
+
+    int moved = 0;
+    for (size_t i = 0; i < knobs.size(); ++i)
+    {
+        const auto& a = shownBefore[i];
+        const auto& b = shownAfter[i];
+        for (int y = 0; y < a.getHeight(); ++y)
+            for (int x = 0; x < a.getWidth(); ++x)
+                if (a.getPixelAt (x, y) != b.getPixelAt (x, y))
+                {
+                    ++moved;
+                    y = a.getHeight();
+                    break;
+                }
+    }
+    // The two patches disagree about far more than one parameter, so a single
+    // knob following along would mean something is only half-wired.
+    EXPECT_GT (moved, 5) << "the knobs did not follow the preset";
+}

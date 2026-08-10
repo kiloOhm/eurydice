@@ -314,6 +314,12 @@ void SynthModule::addKnob (std::unique_ptr<LabelledKnob> knob)
     knobs.push_back (std::move (knob));
 }
 
+void SynthModule::refreshKnobs()
+{
+    for (auto& knob : knobs)
+        knob->refresh();
+}
+
 int SynthModule::preferredWidth() const
 {
     return juce::jmax (2, (int) knobs.size()) * (LabelledKnob::preferredWidth + 2)

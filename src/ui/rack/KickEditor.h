@@ -80,7 +80,8 @@ private:
 class KickEditor : public juce::Component,
                    public juce::FileDragAndDropTarget,
                    private juce::Timer,
-                   private AppServices::LiveNoteListener
+                   private AppServices::LiveNoteListener,
+                   private juce::ValueTree::Listener
 {
 public:
     KickEditor (AppServices&, juce::ValueTree channel);
@@ -101,6 +102,10 @@ private:
     void liveNoteOn (int channelId, int key, float velocity) override;
     void liveNoteOff (int channelId, int key) override;
     void echoLiveNote (int channelId, int key, float velocity, bool on);
+
+    // A preset load, an undo or a control-API edit all land on the channel
+    // tree; the knobs only follow it if something pulls them.
+    void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
 
     SynthModule& addModule (const juce::String& title, std::unique_ptr<juce::Component> display,
                             std::initializer_list<juce::Identifier> params);
