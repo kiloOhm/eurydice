@@ -106,10 +106,12 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthModule)
 };
 
-class SynthEditor : public juce::Component
+class SynthEditor : public juce::Component,
+                    private AppServices::LiveNoteListener
 {
 public:
     SynthEditor (AppServices&, juce::ValueTree channel);
+    ~SynthEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -119,6 +121,11 @@ private:
     SynthModule& addModule (const juce::String& title,
                             std::unique_ptr<juce::Component> display,
                             std::initializer_list<juce::Identifier> params);
+
+    // MIDI / typing-piano input lights the on-screen keys.
+    void liveNoteOn (int channelId, int key, float velocity) override;
+    void liveNoteOff (int channelId, int key) override;
+    void echoLiveNote (int channelId, int key, float velocity, bool on);
 
     AppServices& services;
     juce::ValueTree channel;
@@ -134,16 +141,23 @@ private:
 // the body sweep tracks the note, so auditioning across keys is how the kick
 // gets tuned to the track.
 class KickEditor : public juce::Component,
-                   private juce::Timer
+                   private juce::Timer,
+                   private AppServices::LiveNoteListener
 {
 public:
     KickEditor (AppServices&, juce::ValueTree channel);
+    ~KickEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
     void timerCallback() override;
+
+    // MIDI / typing-piano input lights the on-screen keys.
+    void liveNoteOn (int channelId, int key, float velocity) override;
+    void liveNoteOff (int channelId, int key) override;
+    void echoLiveNote (int channelId, int key, float velocity, bool on);
 
     AppServices& services;
     juce::ValueTree channel;

@@ -123,7 +123,8 @@ void BuiltinEffectEditor::buildPresetChooser()
 
     presetCombo = std::make_unique<juce::ComboBox>();
     presetCombo->setWantsKeyboardFocus (false);
-    presetCombo->setTextWhenNothingSelected ("Preset…");
+    presetCombo->setTextWhenNothingSelected (
+        juce::String (juce::CharPointer_UTF8 ("Preset\xe2\x80\xa6")));
     for (size_t i = 0; i < presets->size(); ++i)
         presetCombo->addItem ((*presets)[i].name, (int) i + 1);
 

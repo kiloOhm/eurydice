@@ -1,6 +1,7 @@
 #include "ChannelRackPanel.h"
 #include "ChannelEditor.h"
 #include "app/Theme.h"
+#include "model/ChannelLinks.h"
 #include "model/DrumPads.h"
 #include "model/UndoGesture.h"
 #include "model/ChannelParams.h"
@@ -11,6 +12,9 @@ namespace
 // Menu id for "New insert" in both routing menus. Far above the per-insert
 // ids (1..128 and 1000..1128), so handle it before the range checks.
 constexpr int newInsertMenuId = 10000;
+// Channel-bundle ids sit above the insert range (1000 + up to maxInserts).
+constexpr int bundleNoneMenuId = 2999;
+constexpr int bundleMenuIdBase = 3000;
 
 // Channel volume is already 0..1; pan is -1..1 folded onto the same range the
 // engine unfolds again when it applies the curve.
@@ -86,8 +90,9 @@ ChannelRackPanel::ChannelRackPanel (AppServices& s)
     swingKnob.setRange (0.0, 1.0, 0.001);
     swingKnob.setWantsKeyboardFocus (false);
     swingKnob.setDoubleClickReturnValue (true, 0.0);
-    swingKnob.setTooltip ("Swing for this pattern — until you turn it, the project swing applies "
-                          "(\"...\" menu to go back)");
+    swingKnob.setTooltip (juce::String (juce::CharPointer_UTF8 (
+        "Swing for this pattern \xe2\x80\x94 until you turn it, the project swing applies "
+        "(\"...\" menu to go back)")));
     swingKnob.onValueChange = [this]
     {
         if (auto pat = activePattern(); pat.isValid())
@@ -527,7 +532,27 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
     menu.addItem (2, "Delete channel");
     menu.addSubMenu ("Colour", colourMenu);
     menu.addSeparator();
+    // Bundling: this channel plays another's part, so the two layer off one
+    // take. Chains are refused, so only valid leaders are offered.
+    const auto channelsTree = services.project.channels();
+    const int thisId = channel[ids::id];
+    juce::PopupMenu bundleMenu;
+    bundleMenu.addItem (bundleNoneMenuId, "Independent", true,
+                        ! channellinks::isFollower (channel));
+    bundleMenu.addSeparator();
+    for (int i = 0; i < services.project.numChannels(); ++i)
+    {
+        const auto other = services.project.getChannel (i);
+        const int otherId = other[ids::id];
+        if (otherId == thisId)
+            continue;
+        bundleMenu.addItem (bundleMenuIdBase + i, other[ids::name].toString(),
+                            channellinks::canLink (channelsTree, thisId, otherId),
+                            channellinks::leaderOf (channel) == otherId);
+    }
+
     menu.addSubMenu ("Route to mixer insert", insertMenu);
+    menu.addSubMenu ("Play the same part as", bundleMenu, services.project.numChannels() > 1);
     menu.addSubMenu ("Create automation clip", automationMenu);
 
     menu.showMenuAsync ({}, [this, channel] (int result) mutable
@@ -623,6 +648,24 @@ void ChannelRackPanel::showChannelMenu (juce::ValueTree channel)
                 channel.setProperty (ids::insertIndex, project.numInserts() - 1,
                                      &project.getUndoManager());
         }
+        else if (result == bundleNoneMenuId)
+        {
+            const undoGesture::Scoped step (project, "Unbundle channel");
+            channel.removeProperty (ids::linkedTo, &project.getUndoManager());
+        }
+        else if (result >= bundleMenuIdBase
+                 && result < bundleMenuIdBase + project.numChannels())
+        {
+            const auto leader = project.getChannel (result - bundleMenuIdBase);
+            if (leader.isValid())
+            {
+                const undoGesture::Scoped step (project, "Bundle channels");
+                channel.setProperty (ids::linkedTo, (int) leader[ids::id],
+                                     &project.getUndoManager());
+            }
+        }
+        // Kept last: the insert range is open-ended, so it would otherwise
+        // swallow the bundle ids above.
         else if (result >= 1000)
         {
             const undoGesture::Scoped step (project, "Route channel");
@@ -650,6 +693,9 @@ void ChannelRackPanel::valueTreePropertyChanged (juce::ValueTree& tree, const ju
     else if (prop == ids::selectedChannel)
     {
         graphLane.setChannel (selectedChannel());
+        // Repoint the MIDI-input indicator: the old and new rows both change.
+        for (auto& row : rows)
+            row->refreshFromModel();
     }
     else if (prop == ids::activePattern || prop == ids::lengthTicks || prop == ids::swing
              || prop == ids::name)

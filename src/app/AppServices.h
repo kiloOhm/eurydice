@@ -129,11 +129,14 @@ public:
     // Live input feed (hardware MIDI + typing piano), broadcast on the message
     // thread by MidiInputManager. Editors subscribe for pad lights and
     // MIDI-learn; the piano roll's key highlight rides the same feed.
+    // Live input from MIDI hardware or the typing piano. channelId is the
+    // channel the note was routed to, so per-channel UI (editor keyboards)
+    // can ignore notes that went somewhere else.
     struct LiveNoteListener
     {
         virtual ~LiveNoteListener() = default;
-        virtual void liveNoteOn (int key, float velocity) = 0;
-        virtual void liveNoteOff (int key) = 0;
+        virtual void liveNoteOn (int channelId, int key, float velocity) = 0;
+        virtual void liveNoteOff (int channelId, int key) = 0;
     };
     juce::ListenerList<LiveNoteListener> liveNoteListeners;
 

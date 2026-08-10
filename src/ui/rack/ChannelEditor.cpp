@@ -424,15 +424,17 @@ SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
     // Row 1: sound sources.
     addModule ("OSC   -2 SIN  -1 TRI  0 SAW  1 SQR", std::make_unique<OscDisplay> (channel),
                { ids::oscShape, ids::oscWarp, ids::osc2Semi, ids::osc2Detune, ids::osc2Mix });
-    addModule ("UNISON", nullptr, { ids::unisonVoices, ids::unisonDetune, ids::unisonWidth });
-    addModule ("LAYERS", nullptr, { ids::subLevel, ids::noiseLevel });
+    addModule ("UNISON", std::make_unique<UnisonDisplay> (channel),
+               { ids::unisonVoices, ids::unisonDetune, ids::unisonWidth });
+    addModule ("LAYERS", std::make_unique<LayersDisplay> (channel),
+               { ids::subLevel, ids::noiseLevel });
 
     // Row 2: filter and modulation.
     addModule ("FILTER   0 LP  1 BP  2 HP", std::make_unique<FilterResponseDisplay> (channel),
                { ids::filterType, ids::cutoff, ids::resonance, ids::filterKey, ids::filterEnvAmt });
     addModule ("LFO", std::make_unique<LfoDisplay> (channel),
                { ids::lfoRate, ids::lfoAmount, ids::lfoTarget });
-    addModule ("VOICE", nullptr, { ids::glide });
+    addModule ("VOICE", std::make_unique<GlideDisplay> (channel), { ids::glide });
 
     // Row 3: envelopes.
     addModule ("FILTER ENV", std::make_unique<EnvelopeDisplay> (channel,
@@ -450,8 +452,41 @@ SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
 
     bridge = std::make_unique<KeyboardBridge> (services, channel);
     keyboardState.addListener (bridge.get());
+    services.liveNoteListeners.add (this);
 
     setSize (700, 3 * (SynthModule::preferredHeight() + 8) + 56 + 28);
+}
+
+SynthEditor::~SynthEditor()
+{
+    services.liveNoteListeners.remove (this);
+}
+
+// Reflects live input on the on-screen keys. The bridge is detached first so
+// the echo doesn't route the note straight back into the engine, which has
+// already played it; the keyboard component keeps its own subscription and
+// repaints.
+void SynthEditor::echoLiveNote (int channelId, int key, float velocity, bool on)
+{
+    if (channelId != (int) channel[ids::id])
+        return;
+
+    keyboardState.removeListener (bridge.get());
+    if (on)
+        keyboardState.noteOn (1, key, velocity);
+    else
+        keyboardState.noteOff (1, key, 0.0f);
+    keyboardState.addListener (bridge.get());
+}
+
+void SynthEditor::liveNoteOn (int channelId, int key, float velocity)
+{
+    echoLiveNote (channelId, key, velocity, true);
+}
+
+void SynthEditor::liveNoteOff (int channelId, int key)
+{
+    echoLiveNote (channelId, key, 0.0f, false);
 }
 
 SynthModule& SynthEditor::addModule (const juce::String& title,
@@ -555,9 +590,39 @@ KickEditor::KickEditor (AppServices& s, juce::ValueTree ch)
 
     bridge = std::make_unique<KeyboardBridge> (services, channel);
     keyboardState.addListener (bridge.get());
+    services.liveNoteListeners.add (this);
 
     startTimerHz (4);
     setSize (700, 340);
+}
+
+KickEditor::~KickEditor()
+{
+    services.liveNoteListeners.remove (this);
+}
+
+// See SynthEditor::echoLiveNote — same detach-echo-reattach.
+void KickEditor::echoLiveNote (int channelId, int key, float velocity, bool on)
+{
+    if (channelId != (int) channel[ids::id])
+        return;
+
+    keyboardState.removeListener (bridge.get());
+    if (on)
+        keyboardState.noteOn (1, key, velocity);
+    else
+        keyboardState.noteOff (1, key, 0.0f);
+    keyboardState.addListener (bridge.get());
+}
+
+void KickEditor::liveNoteOn (int channelId, int key, float velocity)
+{
+    echoLiveNote (channelId, key, velocity, true);
+}
+
+void KickEditor::liveNoteOff (int channelId, int key)
+{
+    echoLiveNote (channelId, key, 0.0f, false);
 }
 
 void KickEditor::timerCallback()
@@ -665,7 +730,7 @@ void ChannelEditorManager::show (AppServices& services, juce::ValueTree channel)
                     [&services, channelId] (int note)
                     { services.engine.previewNoteOff (channelId, note); } };
                 services.pluginWindows.showEditorFor (hosted,
-                    name + " / " + hosted->getDescription().name, std::move (notes));
+                    name + " / " + hosted->getDescription().name, std::move (notes), channelId);
             }
             else
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,

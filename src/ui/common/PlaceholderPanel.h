@@ -14,7 +14,8 @@ public:
         g.fillAll (theme::panelBg);
         g.setColour (theme::textFaint);
         g.setFont (theme::uiFont (16.0f, true));
-        g.drawText (label + " — coming up", getLocalBounds(), juce::Justification::centred);
+        g.drawText (label + juce::String (juce::CharPointer_UTF8 (" \xe2\x80\x94 coming up")),
+                    getLocalBounds(), juce::Justification::centred);
     }
 
 private:

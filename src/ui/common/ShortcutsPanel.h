@@ -144,26 +144,34 @@ private:
             list.rows.push_back ({ keys, action, Row::Kind::shortcut });
         };
 
+        // juce::String's const char* constructor is ASCII-only, so the key
+        // glyphs have to be spelled out as UTF-8.
+        const juce::String enDash (juce::CharPointer_UTF8 ("\xe2\x80\x93"));
+        const juce::String cmdKey (juce::CharPointer_UTF8 ("\xe2\x8c\x98"));
+        const juce::String backspaceKey (juce::CharPointer_UTF8 ("\xe2\x8c\xab"));
+
         section ("Typing Piano");
-        row ("Z – M", "Play notes, lower octave (S D G H J are the black keys)");
-        row ("Q – P", "Play notes, upper octave (number row fills in the black keys)");
+        row ("Z " + enDash + " M", "Play notes, lower octave (S D G H J are the black keys)");
+        row ("Q " + enDash + " P", "Play notes, upper octave (number row fills in the black keys)");
         row (",  /  .", "Octave down / up");
         list.rows.push_back ({ {}, "QWERTZ layouts are detected automatically and mapped "
                                    "by physical key.", Row::Kind::note });
 
         section ("Piano Roll");
-        row ("Delete / ⌫", "Delete the selected notes");
-        row ("⌘A", "Select all notes in the current channel");
+        row ("Delete / " + backspaceKey, "Delete the selected notes");
+        row (cmdKey + "A", "Select all notes in the current channel");
         row ("Right-click", "Tool menu on a selection; erase elsewhere (drag to keep erasing)");
-        row ("⌘-drag", "Marquee select");
+        row (cmdKey + "-drag", "Marquee select");
         row ("Shift-click", "Add a note to the selection");
-        row ("⌘-wheel", "Zoom horizontally");
+        row (cmdKey + "-wheel", "Zoom horizontally (around the pointer)");
+        row (cmdKey + "+  /  " + cmdKey + "-", "Zoom in / out horizontally");
+        row (cmdKey + "0", "Fit the whole pattern in the window");
         row ("Shift-wheel", "Scroll horizontally");
 
         section ("Playlist");
         row ("Right-click", "Delete a clip; rename on a track header");
         row ("Alt-resize", "Time-stretch an audio clip to fit its new length");
-        row ("⌘-wheel", "Zoom horizontally");
+        row (cmdKey + "-wheel", "Zoom horizontally");
         row ("Shift-wheel", "Scroll horizontally");
 
         section ("Channel Rack");

@@ -122,7 +122,8 @@ OfflineRenderer::Result OfflineRenderer::render (AudioEngine& engine, ProjectMod
         endTick   = (double) project.getLoopEnd();
         if (endTick <= startTick)
         {
-            result.error = "Loop range is empty — mark one in the playlist ruler first.";
+            result.error = juce::String (juce::CharPointer_UTF8 (
+            "Loop range is empty \xe2\x80\x94 mark one in the playlist ruler first."));
             return result;
         }
     }

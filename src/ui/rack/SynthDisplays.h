@@ -51,6 +51,83 @@ inline std::vector<float> filterResponseDb (int type, float cutoffHz, float reso
     return out;
 }
 
+// Where the unison voices sit, exactly as SynthGenerator lays them out: an
+// even -1..1 spread, scaled to cents by DETUNE and to a pan position by WIDTH.
+struct UnisonVoice
+{
+    float cents;   // detune offset from the played note
+    float pan;     // -1 hard left .. 1 hard right
+};
+
+inline std::vector<UnisonVoice> unisonVoices (int voices, float detuneCents, float width)
+{
+    const int n = juce::jlimit (1, 7, voices);
+    std::vector<UnisonVoice> out;
+    out.reserve ((size_t) n);
+    for (int u = 0; u < n; ++u)
+    {
+        const float pos = n == 1 ? 0.0f : 2.0f * (float) u / (float) (n - 1) - 1.0f;
+        out.push_back ({ pos * detuneCents, juce::jlimit (-1.0f, 1.0f, pos * width) });
+    }
+    return out;
+}
+
+// The pitch a glide actually traces, stepping the engine's one-pole at the
+// same 64-sample chunk rate, over a fixed window so longer glides read as
+// visibly slower. Returns 0..1 from the starting note to the target.
+inline std::vector<float> glideShape (float glideSeconds, int points,
+                                      double windowSeconds = 1.2,
+                                      double sampleRate = 44100.0)
+{
+    constexpr int glideChunk = 64;
+    const double chunksPerPoint = juce::jmax (1.0, windowSeconds * sampleRate
+                                                       / (glideChunk * (double) points));
+    double current = 0.0;
+    const double target = 1.0;
+
+    std::vector<float> out;
+    out.reserve ((size_t) points);
+    for (int i = 0; i < points; ++i)
+    {
+        for (int c = 0; c < (int) chunksPerPoint; ++c)
+        {
+            const double coef = glideSeconds > 0.001f
+                ? 1.0 - std::exp (-(double) glideChunk / ((double) glideSeconds * sampleRate))
+                : 1.0;
+            current += (target - current) * coef;
+        }
+        out.push_back ((float) current);
+    }
+    return out;
+}
+
+// One period of the layered sound: oscillator 1 plus the sub an octave down
+// and the noise bed, summed the way the voice loop sums them. Normalised by
+// the layer gains so the picture shows the balance rather than clipping.
+inline std::vector<float> layerShape (float morph, float warp, float sub, float noise,
+                                      int points, int cycles = 2)
+{
+    const double dt = (double) cycles / points;
+    juce::uint32 noiseState = 22222u;   // fixed seed: a still picture, not a flicker
+
+    std::vector<float> out;
+    out.reserve ((size_t) points);
+    for (int i = 0; i < points; ++i)
+    {
+        const double phase = std::fmod ((double) i * dt, 1.0);
+        float s = synthosc::sample (morph, warp, phase, dt);
+        if (sub > 0.0f)
+            s += synthosc::sine (std::fmod (0.5 * (double) i * dt, 1.0)) * sub;
+        if (noise > 0.0f)
+        {
+            noiseState = noiseState * 1664525u + 1013904223u;
+            s += ((float) (noiseState >> 8) * (1.0f / 8388608.0f) - 1.0f) * noise;
+        }
+        out.push_back (s / (1.0f + sub + noise));
+    }
+    return out;
+}
+
 // The envelope a note actually gets: a real juce::ADSR run through attack and
 // decay, a sustain hold, then release, resampled to `points` values 0..1.
 inline std::vector<float> envelopeShape (float attack, float decay, float sustain,
@@ -240,6 +317,110 @@ private:
     juce::Identifier aId, dId, sId, rId;
     juce::Colour colour;
     double sustainDefault;
+};
+
+// The unison stack as a detune/stereo field: one dot per voice, spread left
+// to right by DETUNE (cents) and top to bottom by WIDTH (left..right). One
+// voice sits alone in the middle; widening pulls the outer pairs apart.
+class UnisonDisplay : public TreeDisplay
+{
+public:
+    explicit UnisonDisplay (juce::ValueTree channelTree)
+        : TreeDisplay (std::move (channelTree),
+                       { ids::unisonVoices, ids::unisonDetune, ids::unisonWidth }) {}
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto area = getLocalBounds();
+        paintDisplayFrame (g, area);
+
+        const auto inner = area.reduced (6, 5);
+        const float midX = (float) inner.getCentreX();
+        const float midY = (float) inner.getCentreY();
+
+        // Centre crosshair: the played pitch, dead centre in the image.
+        g.setColour (theme::outlineLight.withAlpha (0.35f));
+        g.drawVerticalLine ((int) midX, (float) inner.getY(), (float) inner.getBottom());
+        g.drawHorizontalLine ((int) midY, (float) inner.getX(), (float) inner.getRight());
+
+        const auto voices = unisonVoices (juce::roundToInt (prop (ids::unisonVoices, 1.0)),
+                                          (float) prop (ids::unisonDetune, 18.0),
+                                          (float) prop (ids::unisonWidth, 0.7));
+
+        // Cents axis is fixed at the parameter's full range, so turning DETUNE
+        // visibly widens the stack instead of rescaling the picture.
+        constexpr float centsSpan = 50.0f;
+        for (const auto& voice : voices)
+        {
+            const float x = midX + juce::jlimit (-1.0f, 1.0f, voice.cents / centsSpan)
+                                       * (float) inner.getWidth() * 0.5f;
+            const float y = midY + voice.pan * (float) inner.getHeight() * 0.5f;
+
+            g.setColour (theme::accent.withAlpha (0.35f));
+            g.drawLine (x, midY, x, y, 1.0f);
+            g.setColour (theme::accent);
+            g.fillEllipse (x - 2.5f, y - 2.5f, 5.0f, 5.0f);
+        }
+
+        // The vertical axis is the stereo field, so label which end is which.
+        g.setColour (theme::textFaint);
+        g.setFont (theme::uiFont (9.0f, true));
+        g.drawText ("L", area.reduced (4, 3), juce::Justification::topLeft);
+        g.drawText ("R", area.reduced (4, 3), juce::Justification::bottomLeft);
+        g.drawText (juce::String ((int) voices.size()) + " V", area.reduced (6, 3),
+                    juce::Justification::topRight);
+    }
+};
+
+// Oscillator plus sub and noise, summed as the voice loop sums them: the sub
+// shows up as the slower swell underneath, noise as the fuzz on the line.
+class LayersDisplay : public TreeDisplay
+{
+public:
+    explicit LayersDisplay (juce::ValueTree channelTree)
+        : TreeDisplay (std::move (channelTree),
+                       { ids::subLevel, ids::noiseLevel, ids::oscShape, ids::oscWarp }) {}
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto area = getLocalBounds();
+        paintDisplayFrame (g, area);
+
+        constexpr int points = 256;
+        const auto wave = layerShape ((float) prop (ids::oscShape, 0.0),
+                                      (float) prop (ids::oscWarp, 0.0),
+                                      (float) prop (ids::subLevel, 0.0),
+                                      (float) prop (ids::noiseLevel, 0.0), points);
+        std::vector<float> curve;
+        curve.reserve (wave.size());
+        for (const float s : wave)
+            curve.push_back (0.5f + 0.45f * s);
+
+        strokeCurve (g, area, curve, theme::accent);
+    }
+};
+
+// Glide: the pitch ramp from the previous note to the new one, over a fixed
+// window, so a longer GLIDE reads as a visibly lazier approach to the target.
+class GlideDisplay : public TreeDisplay
+{
+public:
+    explicit GlideDisplay (juce::ValueTree channelTree)
+        : TreeDisplay (std::move (channelTree), { ids::glide }) {}
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto area = getLocalBounds();
+        paintDisplayFrame (g, area);
+
+        // The target pitch: how close the curve gets to it is the whole story.
+        const auto inner = area.reduced (2);
+        g.setColour (theme::outlineLight.withAlpha (0.4f));
+        g.drawHorizontalLine (inner.getY(), (float) inner.getX(), (float) inner.getRight());
+
+        strokeCurve (g, area, glideShape ((float) prop (ids::glide, 0.0), 160),
+                     theme::secondary);
+    }
 };
 
 // Two cycles of the LFO at its current depth, plus the destination readout.

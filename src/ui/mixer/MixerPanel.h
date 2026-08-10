@@ -17,6 +17,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
 
 
 private:
@@ -45,7 +46,9 @@ private:
     void rebuildDetail();
     void showSendMenu();
     void showEffectSlotMenu (int slotIndex);
-    void showEditorForSlot (int slotIndex);
+    // Returns false when the slot has no editor to show (empty, missing or
+    // crashed), so callers can fall back to the slot menu.
+    bool showEditorForSlot (int slotIndex);
     void clearSlot (int slotIndex);
     void showStripMenu (int insertIndex);
     void showKnobMenu (int insertIndex, const juce::Identifier& prop);
@@ -75,6 +78,9 @@ private:
     int healthTick = 0;
     juce::Label detailName;
     std::array<juce::TextButton, 10> effectSlots;
+    // Set while a right-click on a slot is being handled: juce::Button fires
+    // onClick for any mouse button, so the editor must not open behind the menu.
+    bool slotMenuClick = false;
     juce::TextButton addSendButton { "+ Send" };
     struct SendRow { juce::Label label; juce::Slider level; juce::TextButton remove { "x" }; juce::ValueTree send; };
     std::vector<std::unique_ptr<SendRow>> sendRows;

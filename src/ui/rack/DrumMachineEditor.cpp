@@ -531,8 +531,9 @@ void DrumMachineEditor::refreshPadStrip()
     const auto source = path.isNotEmpty() ? juce::File (path).getFileName()
                       : synth.isNotEmpty() ? "built-in " + synth
                       : juce::String ("empty");
-    padNoteLabel.setText (drumpads::noteName (key) + " · note " + juce::String (key)
-                              + "  ·  " + source,
+    const juce::String dot (juce::CharPointer_UTF8 ("\xc2\xb7"));
+    padNoteLabel.setText (drumpads::noteName (key) + " " + dot + " note " + juce::String (key)
+                              + "  " + dot + "  " + source,
                           juce::dontSendNotification);
 
     chokeBox.setSelectedId (1 + juce::jlimit (0, 8, (int) pad.getProperty (ids::choke, 0)),
@@ -541,9 +542,9 @@ void DrumMachineEditor::refreshPadStrip()
         knob->refresh();
 }
 
-void DrumMachineEditor::liveNoteOn (int key, float velocity)
+void DrumMachineEditor::liveNoteOn (int channelId, int key, float velocity)
 {
-    juce::ignoreUnused (velocity);
+    juce::ignoreUnused (channelId, velocity);
     if (! learnButton.getToggleState())
         return;
 

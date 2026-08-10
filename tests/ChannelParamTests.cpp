@@ -157,7 +157,8 @@ TEST (ProjectFileState, StartsCleanAndUntitled)
     EXPECT_FALSE (state.isDirty());
     EXPECT_EQ (state.getDisplayName(), "Untitled");
     EXPECT_TRUE (state.getWindowTitle().contains ("Untitled"));
-    EXPECT_FALSE (state.getWindowTitle().contains ("Eurydice —  •"));
+    EXPECT_FALSE (state.getWindowTitle().contains (
+        juce::String (juce::CharPointer_UTF8 ("Eurydice \xe2\x80\x94  \xe2\x80\xa2"))));
 }
 
 TEST (ProjectFileState, EditsMarkDirty)

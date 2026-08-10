@@ -219,6 +219,7 @@ MainComponent::MainComponent()
         keyboardlayout::detect());
     channelEditors.typingKeys = typingPiano.get();
     services.pluginWindows.typingKeys = typingPiano.get();
+    services.liveNoteListeners.add (this);
     recorder = std::make_unique<AudioRecorder> (services);
 
     fileState.addChangeListener (this);
@@ -630,6 +631,7 @@ MainComponent::~MainComponent()
     services.onCloseChannelEditors = nullptr;
     services.onShowPanelRequested = nullptr;
     services.onRecordArmRequested = nullptr;
+    services.liveNoteListeners.remove (this);
     midiInput->onLiveNote = nullptr;
     fileState.removeChangeListener (this);
     removeKeyListener (commandManager.getKeyMappings());

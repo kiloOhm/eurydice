@@ -4,6 +4,8 @@
 #include "ui/automation/AutomationMenu.h"
 #include "effects/CompressorEffect.h"
 
+#include <utility>
+
 namespace
 {
 // Insert volume runs 0..1.25 and pan -1..1; both fold onto the 0..1 the
@@ -175,8 +177,21 @@ MixerPanel::MixerPanel (AppServices& s)
         auto& b = effectSlots[(size_t) slot];
         b.setButtonText ("---");
         b.setWantsKeyboardFocus (false);
-        b.setTooltip ("Effect slot: click to load, edit, bypass or remove");
-        b.onClick = [this, slot] { showEffectSlotMenu (slot); };
+        b.setTooltip ("Effect slot: click to open the editor, right-click to load, "
+                      "bypass or remove");
+        // Left-click opens the effect's own window, the way a rack channel does.
+        // A slot with nothing to show falls back to the menu, so an empty slot
+        // still loads an effect in one click.
+        b.onClick = [this, slot]
+        {
+            if (std::exchange (slotMenuClick, false))
+                return;   // right-click: mouseDown already opened the menu
+            if (! showEditorForSlot (slot))
+                showEffectSlotMenu (slot);
+        };
+        // The button would otherwise swallow right-clicks, so route its mouse
+        // events here too and open the slot menu ourselves.
+        b.addMouseListener (this, false);
         addAndMakeVisible (b);
     }
 
@@ -241,7 +256,8 @@ void MixerPanel::rebuildDetail()
         else
         {
             effectSlots[(size_t) slot].setTooltip (
-                "Effect slot: click to load, edit, bypass or remove");
+                "Effect slot: click to open the editor, right-click to load, "
+                "bypass or remove");
         }
     }
 
@@ -254,7 +270,8 @@ void MixerPanel::rebuildDetail()
         row->send = send;
 
         const int dest = send[ids::destInsert];
-        row->label.setText ("→ " + insertTree (dest)[ids::name].toString(),
+        row->label.setText (juce::String (juce::CharPointer_UTF8 ("\xe2\x86\x92 "))
+                                + insertTree (dest)[ids::name].toString(),
                             juce::dontSendNotification);
         row->label.setFont (theme::uiFont (11.0f));
         addAndMakeVisible (row->label);
@@ -655,11 +672,15 @@ void MixerPanel::clearSlot (int slotIndex)
     services.builtinEffects.remove (selectedInsert, slotIndex);
 }
 
-void MixerPanel::showEditorForSlot (int slotIndex)
+bool MixerPanel::showEditorForSlot (int slotIndex)
 {
     auto slot = getSlotTree (selectedInsert, slotIndex, false);
     if (! slot.isValid())
-        return;
+        return false;
+
+    // A crashed plugin has no editor to show — the slot menu offers the restart.
+    if (services.effects.isCrashed (selectedInsert, slotIndex))
+        return false;
 
     const auto insertName = insertTree (selectedInsert)[ids::name].toString();
     const auto pluginId = slot[ids::pluginId].toString();
@@ -669,19 +690,43 @@ void MixerPanel::showEditorForSlot (int slotIndex)
         services.builtinEditors.show (services.project, slot, *builtin, selectedInsert, slotIndex,
                                       insertName + " / " + builtin->name,
                                       services.builtinEffects.peek (selectedInsert, slotIndex));
-        return;
+        return true;
     }
 
     if (auto plugin = services.effects.peek (selectedInsert, slotIndex))
     {
         services.pluginWindows.showEditorFor (plugin, insertName + " / "
                                                           + plugin->getDescription().name);
-        return;
+        return true;
     }
 
     // Sandboxed: the editor lives in the helper's own window.
     if (auto sandboxed = services.effects.peekSandboxed (selectedInsert, slotIndex))
+    {
         sandboxed->showEditor (insertName + " / " + sandboxed->getName());
+        return true;
+    }
+
+    return false;
+}
+
+// The slot buttons forward their mouse events here (see the constructor) so a
+// right-click reaches the slot menu instead of being eaten by the button.
+void MixerPanel::mouseDown (const juce::MouseEvent& e)
+{
+    slotMenuClick = false;
+    if (! e.mods.isPopupMenu())
+        return;
+
+    for (int slot = 0; slot < (int) effectSlots.size(); ++slot)
+    {
+        if (e.eventComponent == &effectSlots[(size_t) slot])
+        {
+            slotMenuClick = true;
+            showEffectSlotMenu (slot);
+            return;
+        }
+    }
 }
 
 void MixerPanel::showSendMenu()

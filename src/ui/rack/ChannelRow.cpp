@@ -1,11 +1,24 @@
 #include "ChannelRow.h"
 #include "app/Theme.h"
+#include "model/ChannelLinks.h"
 #include "model/LaneUtils.h"
 #include "model/UndoGesture.h"
 
 ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
     : model (m), channel (ch)
 {
+    // Exactly one channel takes MIDI input, so this only ever selects: there
+    // is no "off" to click into. It stays lit whatever window has focus.
+    midiTargetLed.setTooltip ("MIDI input plays this channel - click to aim the "
+                              "keyboard and controller here");
+    midiTargetLed.setWantsKeyboardFocus (false);
+    midiTargetLed.onClick = [this]
+    {
+        model.getRoot().setProperty (ids::selectedChannel, getChannelId(), nullptr);
+        if (onSelected) onSelected (getChannelId());
+    };
+    addAndMakeVisible (midiTargetLed);
+
     muteLed.setTooltip ("Channel on/off");
     muteLed.setClickingTogglesState (true);
     muteLed.setWantsKeyboardFocus (false);
@@ -15,7 +28,8 @@ ChannelRow::ChannelRow (ProjectModel& m, juce::ValueTree ch)
         channel.setProperty (ids::mute, ! muteLed.getToggleState(), &model.getUndoManager());
     };
 
-    nameButton.setTooltip ("Open the channel editor — drag to reorder, right-click for channel options");
+    nameButton.setTooltip (juce::String (juce::CharPointer_UTF8 (
+        "Open the channel editor \xe2\x80\x94 drag to reorder, right-click for channel options")));
     nameButton.setWantsKeyboardFocus (false);
     nameButton.onClick = [this]
     {
@@ -87,6 +101,20 @@ void ChannelRow::refreshFromModel()
 {
     nameButton.setButtonText (channel[ids::name].toString());
 
+    const auto targetColour = isMidiTarget() ? theme::accent : theme::sunken;
+    midiTargetLed.setColour (juce::TextButton::buttonColourId, targetColour);
+    midiTargetLed.setColour (juce::TextButton::buttonOnColourId, targetColour);
+
+    // Bundled rows share the leader's part, so say whose it is.
+    if (const int leader = laneChannelId(); leader != getChannelId())
+        nameButton.setTooltip ("Plays the same part as "
+                               + model.getChannelById (leader)[ids::name].toString()
+                               + juce::String (juce::CharPointer_UTF8 (
+                                     " \xe2\x80\x94 editing either edits both")));
+    else
+        nameButton.setTooltip (juce::String (juce::CharPointer_UTF8 (
+            "Open the channel editor \xe2\x80\x94 drag to reorder, right-click for channel options")));
+
     const int insertIndex = channel[ids::insertIndex];
     insertButton.setButtonText (insertIndex == 0 ? "MST" : juce::String (insertIndex));
     insertButton.setColour (juce::TextButton::textColourOffId,
@@ -98,6 +126,17 @@ void ChannelRow::refreshFromModel()
     panKnob.setValue ((double) channel[ids::pan], juce::dontSendNotification);
     volKnob.setValue ((double) channel[ids::volume], juce::dontSendNotification);
     repaint();
+}
+
+bool ChannelRow::isMidiTarget() const
+{
+    return model.midiTargetChannelId() == getChannelId();
+}
+
+int ChannelRow::laneChannelId() const
+{
+    const int leader = channellinks::leaderOf (channel);
+    return leader != 0 && model.getChannelById (leader).isValid() ? leader : getChannelId();
 }
 
 int ChannelRow::numSteps() const
@@ -122,7 +161,7 @@ int ChannelRow::stepAt (juce::Point<int> pos) const
 
 bool ChannelRow::isStepOn (int step) const
 {
-    const auto lane = model.getLane (pattern, getChannelId());
+    const auto lane = model.getLane (pattern, laneChannelId());
     if (! lane.isValid())
         return false;
     const int tick = step * ids::ticksPerStep;
@@ -134,7 +173,7 @@ bool ChannelRow::isStepOn (int step) const
 
 void ChannelRow::setStep (int step, bool on)
 {
-    auto lane = model.getOrCreateLane (pattern, getChannelId());
+    auto lane = model.getOrCreateLane (pattern, laneChannelId());
     lanes::markEditedWithSteps (lane);
     const int tick = step * ids::ticksPerStep;
 
@@ -155,13 +194,13 @@ void ChannelRow::setStep (int step, bool on)
 
 bool ChannelRow::usesPianoRoll() const
 {
-    return laneUsesPianoRoll (model.getLane (pattern, getChannelId()),
+    return laneUsesPianoRoll (model.getLane (pattern, laneChannelId()),
                               (int) channel.getProperty (ids::rootNote, 60));
 }
 
 void ChannelRow::paintNoteGraph (juce::Graphics& g, juce::Rectangle<int> area) const
 {
-    const auto lane = model.getLane (pattern, getChannelId());
+    const auto lane = model.getLane (pattern, laneChannelId());
     const double patternTicks = juce::jmax (1, (int) pattern[ids::lengthTicks]);
 
     int lowKey = 127, highKey = 0;
@@ -308,6 +347,8 @@ void ChannelRow::paintPianoRollStrip (juce::Graphics& g, juce::Rectangle<int> ar
 void ChannelRow::resized()
 {
     auto r = getLocalBounds();
+    midiTargetLed.setBounds (r.removeFromLeft (midiTargetW).reduced (1, 4));
+    r.removeFromLeft (3);
     muteLed.setBounds (r.removeFromLeft (18).reduced (3, 9));
     r.removeFromLeft (4);
     nameButton.setBounds (r.removeFromLeft (118).reduced (0, 3));

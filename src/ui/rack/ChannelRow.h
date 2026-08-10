@@ -26,6 +26,11 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
 
     int getChannelId() const { return channel[ids::id]; }
+
+    // The channel whose lane this row edits and draws. A bundled channel
+    // shares its leader's part, so both rows show the same steps and either
+    // one can edit them.
+    int laneChannelId() const;
     juce::ValueTree getChannelTree() const { return channel; }
 
     std::function<void (int channelId)> onSelected;
@@ -46,7 +51,12 @@ public:
 
     static constexpr int rowHeight   = 30;
     static constexpr int stepWidth   = 26;
-    static constexpr int fixedLeftWidth = 18 + 4 + 118 + 4 + 26 + 26 + 4 + 40 + 8;
+    // A narrow strip at the very left marks the channel MIDI input plays.
+    static constexpr int midiTargetW = 7;
+    static constexpr int fixedLeftWidth = midiTargetW + 3 + 18 + 4 + 118 + 4 + 26 + 26 + 4 + 40 + 8;
+
+    // True when this row is the one live MIDI / typing keys play.
+    bool isMidiTarget() const;
 
     int numSteps() const;
 
@@ -66,6 +76,7 @@ private:
     juce::ValueTree channel;
     juce::ValueTree pattern;
 
+    juce::TextButton midiTargetLed;   // far-left strip: the MIDI input target
     juce::TextButton muteLed;
     juce::TextButton nameButton;
     AutomatableSlider panKnob, volKnob;

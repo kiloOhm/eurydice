@@ -112,8 +112,19 @@ PianoRollPanel::PianoRollPanel (AppServices& s)
     strumForwardButton.setTooltip ("Strum later");
     strumForwardButton.onClick = [this] { applyStrum (strumOffsetTicks()); };
 
-    for (auto* button : { &rollButton, &chopButton, &glueButton, &strumBackButton, &strumForwardButton })
+    zoomOutButton.setTooltip ("Zoom out horizontally (Cmd -, or Cmd-wheel over the grid)");
+    zoomOutButton.onClick = [this] { zoomHorizontally (1.0 / 1.3, gridArea().getCentreX()); };
+    zoomInButton.setTooltip ("Zoom in horizontally (Cmd +, or Cmd-wheel over the grid)");
+    zoomInButton.onClick = [this] { zoomHorizontally (1.3, gridArea().getCentreX()); };
+    zoomFitButton.setTooltip ("Fit the whole pattern in the window (Cmd 0)");
+    zoomFitButton.onClick = [this] { zoomToFitPattern(); };
+
+    for (auto* button : { &rollButton, &chopButton, &glueButton, &strumBackButton, &strumForwardButton,
+                          &zoomOutButton, &zoomInButton, &zoomFitButton })
+    {
+        button->setWantsKeyboardFocus (false);
         addAndMakeVisible (button);
+    }
 
     scrollKeysY = (127 - 72) * keyHeight;   // start around C5 at the top
     startTimerHz (30);
@@ -223,6 +234,34 @@ void PianoRollPanel::preview (int key)
     const int chId = selectedChannelId();
     if (chId >= 0)
         services.engine.previewNote (chId, key, 0.8f, 250);
+}
+
+// Drawing or dragging a note past the end of the pattern extends the pattern
+// to cover it, rounded up to a whole bar. Shrinking stays manual: deleting the
+// last note should not silently retune the loop length.
+void PianoRollPanel::growPatternToFitNotes()
+{
+    auto pattern = activePattern();
+    if (! pattern.isValid())
+        return;
+
+    double lastEnd = 0.0;
+    for (auto lane : pattern)
+    {
+        if (! lane.hasType (ids::LANE))
+            continue;
+        for (auto note : lane)
+            lastEnd = juce::jmax (lastEnd, (double) note[ids::startTicks]
+                                               + (double) note[ids::lengthTicks]);
+    }
+
+    const int current = juce::jmax (1, (int) pattern[ids::lengthTicks]);
+    if (lastEnd <= (double) current)
+        return;
+
+    const int bars = juce::jmax (1, (int) std::ceil (lastEnd / (double) ids::ticksPerBar));
+    pattern.setProperty (ids::lengthTicks, bars * ids::ticksPerBar,
+                         &services.project.getUndoManager());
 }
 
 void PianoRollPanel::addNoteAt (juce::Point<int> pos)
@@ -342,6 +381,9 @@ void PianoRollPanel::replaceSelection (const std::vector<notetools::Note>& notes
     for (const auto& note : notes)
         selection.add (model.addNote (lane, note.key, note.startTicks, note.lengthTicks,
                                       note.velocity, note.pan));
+
+    // Rolls and strums can push notes past the loop; take the pattern with it.
+    growPatternToFitNotes();
 
     // Close the batch so the next edit cannot merge into this undo step.
     undoGesture::end (services.project);
@@ -863,6 +905,12 @@ void PianoRollPanel::mouseUp (const juce::MouseEvent&)
 {
     if (drag == Drag::create && dragNote.isValid())
         lastNoteLength = dragNote[ids::lengthTicks];
+
+    // Grow on release rather than mid-drag, so overshooting while dragging
+    // does not leave the pattern permanently stretched.
+    if (drag == Drag::create || drag == Drag::move || drag == Drag::resize)
+        growPatternToFitNotes();
+
     // Harmless when the gesture never wrote anything: an empty transaction is
     // never recorded.
     undoGesture::end (services.project);
@@ -918,14 +966,37 @@ void PianoRollPanel::setVelocityAt (juce::Point<int> pos)
     repaint();
 }
 
+// Zooms about anchorX: the tick under that pixel stays put, so wheel zoom
+// follows the pointer and the buttons hold the middle of the view.
+void PianoRollPanel::zoomHorizontally (double factor, int anchorX)
+{
+    const double anchorTicks = xToTicks (anchorX);
+    pxPerTick = juce::jlimit (0.01, 2.0, pxPerTick * factor);
+    scrollTicks = juce::jmax (0.0, anchorTicks - (anchorX - keyboardW) / pxPerTick);
+    repaint();
+}
+
+void PianoRollPanel::zoomToFitPattern()
+{
+    const auto pattern = activePattern();
+    const double lengthTicks = pattern.isValid()
+        ? (double) juce::jmax (1, (int) pattern[ids::lengthTicks]) : (double) ids::ticksPerBar;
+    const int gridW = gridArea().getWidth();
+    if (gridW <= 0 || lengthTicks <= 0.0)
+        return;
+
+    // A little air on the right so the pattern end is not flush with the edge.
+    pxPerTick = juce::jlimit (0.01, 2.0, gridW / (lengthTicks * 1.02));
+    scrollTicks = 0.0;
+    repaint();
+}
+
 void PianoRollPanel::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
     if (e.mods.isCommandDown())
     {
-        const double factor = wheel.deltaY > 0 ? 1.15 : 1.0 / 1.15;
-        const double mouseTicks = xToTicks (e.getPosition().x);
-        pxPerTick = juce::jlimit (0.01, 2.0, pxPerTick * factor);
-        scrollTicks = juce::jmax (0.0, mouseTicks - (e.getPosition().x - keyboardW) / pxPerTick);
+        zoomHorizontally (wheel.deltaY > 0 ? 1.15 : 1.0 / 1.15, e.getPosition().x);
+        return;
     }
     else if (e.mods.isShiftDown())
     {
@@ -954,6 +1025,24 @@ bool PianoRollPanel::keyPressed (const juce::KeyPress& key)
             for (auto note : lane)
                 selection.add (note);
         repaint();
+        return true;
+    }
+
+    // Horizontal zoom. '=' is the unshifted '+' key, so accept both.
+    const auto cmd = juce::ModifierKeys::commandModifier;
+    if (key == juce::KeyPress ('+', cmd, 0) || key == juce::KeyPress ('=', cmd, 0))
+    {
+        zoomHorizontally (1.3, gridArea().getCentreX());
+        return true;
+    }
+    if (key == juce::KeyPress ('-', cmd, 0))
+    {
+        zoomHorizontally (1.0 / 1.3, gridArea().getCentreX());
+        return true;
+    }
+    if (key == juce::KeyPress ('0', cmd, 0))
+    {
+        zoomToFitPattern();
         return true;
     }
     return false;
@@ -1026,6 +1115,15 @@ void PianoRollPanel::resized()
     viewRow.removeFromLeft (4);
     scaleTypeBox.setBounds (viewRow.removeFromLeft (100));
     viewRow.removeFromLeft (10);
+
+    // Zoom sits at the far right of the view row, always reachable.
+    zoomFitButton.setBounds (viewRow.removeFromRight (36));
+    viewRow.removeFromRight (2);
+    zoomInButton.setBounds (viewRow.removeFromRight (26));
+    viewRow.removeFromRight (2);
+    zoomOutButton.setBounds (viewRow.removeFromRight (26));
+    viewRow.removeFromRight (8);
+
     targetLabel.setBounds (viewRow);
 
     header.removeFromTop (6);

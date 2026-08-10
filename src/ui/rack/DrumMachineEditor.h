@@ -78,8 +78,9 @@ private:
     void refreshPadStrip();
     void updateWindowSize();
 
-    void liveNoteOn (int key, float velocity) override;
-    void liveNoteOff (int key) override { juce::ignoreUnused (key); }
+    // Note learn takes whatever arrives, whichever channel it was routed to.
+    void liveNoteOn (int channelId, int key, float velocity) override;
+    void liveNoteOff (int channelId, int key) override { juce::ignoreUnused (channelId, key); }
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
     void valueTreeChildAdded (juce::ValueTree&, juce::ValueTree&) override;
 

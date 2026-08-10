@@ -113,6 +113,23 @@ public:
 
     bool isPianoVisible() const { return keyboard != nullptr && keyboard->isVisible(); }
 
+    // Lights a key for input that arrived from MIDI hardware or the typing
+    // piano. We unsubscribe first so the echo isn't pushed back through the
+    // note sink — the caller has already played it. The keyboard component
+    // keeps its own subscription, so it still repaints.
+    void reflectExternalNote (int note, bool on, float velocity)
+    {
+        if (keyboard == nullptr)
+            return;
+
+        keyboardState.removeListener (this);
+        if (on)
+            keyboardState.noteOn (1, note, velocity);
+        else
+            keyboardState.noteOff (1, note, 0.0f);
+        keyboardState.addListener (this);
+    }
+
 private:
     int heightAround (int editorHeight) const
     {

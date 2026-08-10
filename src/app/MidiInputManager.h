@@ -2,6 +2,7 @@
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "AppServices.h"
+#include "model/ChannelLinks.h"
 
 // Routes hardware MIDI (all enabled inputs) to the selected channel for live
 // play, and records notes into the active pattern while playing + armed.
@@ -35,11 +36,13 @@ public:
         const int chId = selectedChannelId();
         if (chId < 0)
             return;
-        services.engine.previewNote (chId, key, velocity, 0);
+        // Bundled channels layer off one part, live playing included.
+        for (const int target : channellinks::playbackTargets (services.project.channels(), chId))
+            services.engine.previewNote (target, key, velocity, 0);
         if (onLiveNote)
             onLiveNote (key, true);
-        services.liveNoteListeners.call ([key, velocity] (AppServices::LiveNoteListener& l)
-                                         { l.liveNoteOn (key, velocity); });
+        services.liveNoteListeners.call ([chId, key, velocity] (AppServices::LiveNoteListener& l)
+                                         { l.liveNoteOn (chId, key, velocity); });
 
         if (recordArmed.load() && services.engine.isPlaying())
         {
@@ -57,11 +60,12 @@ public:
         const int chId = selectedChannelId();
         if (chId < 0)
             return;
-        services.engine.previewNoteOff (chId, key);
+        for (const int target : channellinks::playbackTargets (services.project.channels(), chId))
+            services.engine.previewNoteOff (target, key);
         if (onLiveNote)
             onLiveNote (key, false);
-        services.liveNoteListeners.call ([key] (AppServices::LiveNoteListener& l)
-                                         { l.liveNoteOff (key); });
+        services.liveNoteListeners.call ([chId, key] (AppServices::LiveNoteListener& l)
+                                         { l.liveNoteOff (chId, key); });
 
         if (auto it = heldNotes.find (key); it != heldNotes.end())
         {
@@ -111,15 +115,7 @@ private:
                 dm.setMidiInputDeviceEnabled (device.identifier, true);
     }
 
-    int selectedChannelId() const
-    {
-        const int id = services.project.getRoot()[ids::selectedChannel];
-        if (services.project.getChannelById (id).isValid())
-            return id;
-        if (services.project.numChannels() > 0)
-            return services.project.getChannel (0)[ids::id];
-        return -1;
-    }
+    int selectedChannelId() const { return services.project.midiTargetChannelId(); }
 
     juce::ValueTree activePattern() const
     {

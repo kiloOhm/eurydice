@@ -50,6 +50,7 @@ DECLARE_ID (pan)           // -1..1
 DECLARE_ID (mute)
 DECLARE_ID (solo)
 DECLARE_ID (insertIndex)   // target mixer insert (0 = master)
+DECLARE_ID (linkedTo)      // channel: plays this other channel's lane (layering)
 DECLARE_ID (samplePath)
 DECLARE_ID (rootNote)
 DECLARE_ID (pluginId)      // plugin identifier string from scan DB

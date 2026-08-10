@@ -14,9 +14,10 @@ public:
     ~PluginWindowManager() { windows.clear(); }
 
     // Pass a NoteSink for instruments so the shell can offer its piano;
-    // effects leave it empty.
+    // effects leave it empty. channelId names the channel an instrument plays,
+    // so live input can light the right window's keys (-1 for effects).
     void showEditorFor (const std::shared_ptr<HostedPlugin>& plugin, const juce::String& title,
-                        PluginEditorShell::NoteSink notes = {})
+                        PluginEditorShell::NoteSink notes = {}, int channelId = -1)
     {
         if (plugin == nullptr || plugin->getInstance() == nullptr)
             return;
@@ -28,9 +29,22 @@ public:
                 return;
             }
 
-        windows.push_back (std::make_unique<Window> (*this, plugin, title, std::move (notes)));
+        windows.push_back (std::make_unique<Window> (*this, plugin, title, std::move (notes),
+                                                     channelId));
         if (typingKeys != nullptr)
             windows.back()->addKeyListener (typingKeys);
+    }
+
+    // Live MIDI / typing-piano input: light the keys of the instrument windows
+    // playing that channel.
+    void reflectLiveNote (int channelId, int note, bool on, float velocity)
+    {
+        if (channelId < 0)
+            return;
+
+        for (auto& w : windows)
+            if (w->channelId == channelId && w->shell != nullptr)
+                w->shell->reflectExternalNote (note, on, velocity);
     }
 
     void closeAll() { windows.clear(); }
@@ -51,18 +65,19 @@ private:
     struct Window : juce::DocumentWindow
     {
         Window (PluginWindowManager& ownerRef, std::shared_ptr<HostedPlugin> p, const juce::String& title,
-                PluginEditorShell::NoteSink notes)
+                PluginEditorShell::NoteSink notes, int channel)
             : juce::DocumentWindow (title, theme::panelHeader, closeButton),
-              owner (ownerRef), plugin (std::move (p))
+              owner (ownerRef), plugin (std::move (p)), channelId (channel)
         {
             setUsingNativeTitleBar (true);
 
             // The editor sits inside a JUCE shell (header strip + native
             // view), so we have somewhere to put custom UI around plugins.
-            auto shell = std::make_unique<PluginEditorShell> (*plugin->getInstance(), title,
-                                                              std::move (notes));
-            const auto w = shell->getWidth(), h = shell->getHeight();
-            setContentOwned (shell.release(), true);
+            auto ownedShell = std::make_unique<PluginEditorShell> (*plugin->getInstance(), title,
+                                                                   std::move (notes));
+            const auto w = ownedShell->getWidth(), h = ownedShell->getHeight();
+            shell = ownedShell.get();
+            setContentOwned (ownedShell.release(), true);
             setResizable (true, false);
             centreWithSize (w, h);
             setVisible (true);
@@ -77,6 +92,8 @@ private:
 
         PluginWindowManager& owner;
         std::shared_ptr<HostedPlugin> plugin;   // keeps the instance alive while open
+        int channelId = -1;                     // instrument channel, -1 for effects
+        PluginEditorShell* shell = nullptr;     // owned by the window's content
     };
 
     std::vector<std::unique_ptr<Window>> windows;

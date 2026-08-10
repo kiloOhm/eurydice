@@ -1,11 +1,13 @@
 #include "EngineSync.h"
 #include "model/ChannelParams.h"
+#include "model/ChannelLinks.h"
 
 static_assert (ProjectModel::maxInserts == AudioEngine::maxInserts,
                "the model's insert cap must match the engine's preallocated buses");
 #include "plugins/PluginGenerator.h"
 #include "sandbox/SandboxedGenerator.h"
 #include <map>
+#include <set>
 
 EngineSync::EngineSync (ProjectModel& m, GeneratorPool& g, EffectPool& fx,
                         BuiltinEffectPool& builtinFx, AudioClipCache& ac, AudioEngine& e)
@@ -69,6 +71,26 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
         snap->channels.push_back (std::move (cs));
     }
 
+    // Bundled channels: a follower plays its leader's lane, so work out the
+    // extra channel indices every lane has to feed before walking the notes.
+    std::map<int, std::vector<int>> bundledWith;   // leader channel id -> follower indices
+    std::set<int> followerIds;
+    for (const auto ch : channelsTree)
+    {
+        if (! ch.hasType (ids::CHANNEL) || ! channellinks::isFollower (ch))
+            continue;
+        const int leader = channellinks::leaderOf (ch);
+        // A link left dangling by a deleted leader falls back to independent,
+        // rather than silencing the channel.
+        if (channelIdToIndex.find (leader) == channelIdToIndex.end())
+            continue;
+
+        const int id = (int) ch[ids::id];
+        followerIds.insert (id);
+        if (const auto it = channelIdToIndex.find (id); it != channelIdToIndex.end())
+            bundledWith[leader].push_back (it->second);
+    }
+
     // --- patterns ---
     const auto patternsTree = model.patterns();
     std::map<int, int> patternIdToIndex;
@@ -86,22 +108,34 @@ std::shared_ptr<const EngineSnapshot> EngineSync::build() const
         {
             if (! lane.hasType (ids::LANE))
                 continue;
-            const auto chIt = channelIdToIndex.find ((int) lane[ids::channelId]);
+            const int laneChannelId = (int) lane[ids::channelId];
+            // A follower's own lane is dormant: its notes come from the leader.
+            if (followerIds.count (laneChannelId) != 0)
+                continue;
+            const auto chIt = channelIdToIndex.find (laneChannelId);
             if (chIt == channelIdToIndex.end())
                 continue;
+
+            std::vector<int> targets { chIt->second };
+            if (const auto it = bundledWith.find (laneChannelId); it != bundledWith.end())
+                targets.insert (targets.end(), it->second.begin(), it->second.end());
 
             for (const auto note : lane)
             {
                 if (! note.hasType (ids::NOTE))
                     continue;
                 SeqNote n;
-                n.channelIndex = chIt->second;
                 n.key          = note[ids::key];
                 n.startTicks   = note[ids::startTicks];
                 n.lengthTicks  = note[ids::lengthTicks];
                 n.velocity     = (float) (double) note[ids::velocity];
                 n.pan          = (float) (double) note[ids::notePan];
-                ps.notes.push_back (n);
+                // One note per bundled channel: same part, layered sounds.
+                for (const int target : targets)
+                {
+                    n.channelIndex = target;
+                    ps.notes.push_back (n);
+                }
             }
         }
         std::sort (ps.notes.begin(), ps.notes.end(),

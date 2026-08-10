@@ -82,7 +82,9 @@ TransportBar::TransportBar()
     {
         auto entry = std::make_unique<PanelButton> (spec.name, spec.icon);
         entry->command = spec.command;
-        entry->button.setTooltip (juce::String (spec.tip) + " — right-click for window options");
+        entry->button.setTooltip (juce::String (spec.tip)
+                                  + juce::String (juce::CharPointer_UTF8 (
+                                      " \xe2\x80\x94 right-click for window options")));
         entry->button.setClickingTogglesState (false);
         entry->button.onClick = [this, command = spec.command]
         {

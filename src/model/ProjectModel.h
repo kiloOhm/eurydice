@@ -66,6 +66,18 @@ public:
     int numChannels() const                   { return channels().getNumChildren(); }
     juce::ValueTree getChannel (int index) const { return channels().getChild (index); }
 
+    // The channel live MIDI and the typing piano play. Falls back to the first
+    // channel, so while any channel exists exactly one is always the target —
+    // the router and the rack's indicator both resolve it through here so they
+    // cannot disagree. -1 only when the project has no channels at all.
+    int midiTargetChannelId() const
+    {
+        const int id = root[ids::selectedChannel];
+        if (getChannelById (id).isValid())
+            return id;
+        return numChannels() > 0 ? (int) getChannel (0)[ids::id] : -1;
+    }
+
     // Names of the channels routed to an insert. The mixer uses this for
     // "name insert after channel", which only makes sense for exactly one.
     juce::StringArray channelsRoutedTo (int insertIndex) const

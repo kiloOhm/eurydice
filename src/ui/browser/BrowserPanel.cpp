@@ -197,8 +197,9 @@ void BrowserPanel::PluginListModel::paintListBoxItem (int row, juce::Graphics& g
     g.drawText (d.name, 8, 2, w - 12, 16, juce::Justification::centredLeft);
     g.setColour (theme::textFaint);
     g.setFont (theme::uiFont (10.0f));
-    g.drawText ((d.isInstrument ? "instrument · " : "effect · ") + d.pluginFormatName
-                    + " · " + d.manufacturerName,
+    const juce::String sep (juce::CharPointer_UTF8 (" \xc2\xb7 "));
+    g.drawText ((d.isInstrument ? "instrument" : "effect") + sep + d.pluginFormatName
+                    + sep + d.manufacturerName,
                 8, 17, w - 12, 14, juce::Justification::centredLeft);
 }
 

@@ -54,6 +54,10 @@ private:
     int selectedChannelId() const;
     juce::ValueTree noteAt (juce::Point<int> gridPos, bool& overRightEdge);
 
+    // Grows the pattern (whole bars) when a note runs past its end, so the
+    // loop covers the note instead of cutting it off. Never shrinks.
+    void growPatternToFitNotes();
+
     void addNoteAt (juce::Point<int> gridPos);
     void deleteNoteAt (juce::Point<int> gridPos);
     void deleteSelected();
@@ -91,9 +95,15 @@ private:
     AppServices& services;
     juce::ValueTree observedRoot;
 
+    // Horizontal zoom, keeping the tick under anchorX where it is.
+    void zoomHorizontally (double factor, int anchorX);
+    // Scales the view so the whole pattern spans the grid.
+    void zoomToFitPattern();
+
     // header widgets
     juce::ComboBox snapBox, chordBox, scaleRootBox, scaleTypeBox;
     juce::Label targetLabel;
+    juce::TextButton zoomOutButton { "-" }, zoomInButton { "+" }, zoomFitButton { "Fit" };
 
     // tool row
     juce::ComboBox rollDivBox, rampBox, strumBox;

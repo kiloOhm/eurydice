@@ -20,7 +20,8 @@ class MainComponent : public juce::Component,
                       public juce::DragAndDropContainer,
                       public juce::ApplicationCommandTarget,
                       public juce::MenuBarModel,
-                      private juce::ChangeListener
+                      private juce::ChangeListener,
+                      private AppServices::LiveNoteListener
 {
 public:
     MainComponent();
@@ -72,6 +73,17 @@ private:
     void openAutomationEditor (int index);
     void updateWindowTitle();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
+
+    // Live input lights the keys of any open plugin window for that channel.
+    // (Built-in editors listen for themselves.)
+    void liveNoteOn (int channelId, int key, float velocity) override
+    {
+        services.pluginWindows.reflectLiveNote (channelId, key, true, velocity);
+    }
+    void liveNoteOff (int channelId, int key) override
+    {
+        services.pluginWindows.reflectLiveNote (channelId, key, false, 0.0f);
+    }
 
     FloatingPanel* panelForCommand (juce::CommandID) const;
 
