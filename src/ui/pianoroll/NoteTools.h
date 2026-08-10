@@ -19,6 +19,18 @@ struct Note
     double pan = 0.0;
 };
 
+// Notes lifted out of a roll, waiting to be dropped somewhere else. Starts are
+// relative to the earliest note, so pasting only has to decide where the block
+// lands — in any lane, in any pattern.
+struct Clipboard
+{
+    std::vector<Note> notes;
+    int spanTicks = 0;     // earliest start -> latest end
+    int originTicks = 0;   // where the block last sat, for keyboard pastes
+
+    bool isEmpty() const { return notes.empty(); }
+};
+
 // Velocity shape across a roll. Ratchets need the ramp to read as one gesture.
 enum class Ramp { flat, rising, falling };
 

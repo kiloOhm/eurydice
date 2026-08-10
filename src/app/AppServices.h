@@ -13,6 +13,7 @@
 #include "sandbox/SandboxedGenerator.h"
 #include "plugins/PluginWindowManager.h"
 #include "ui/mixer/BuiltinEffectEditor.h"
+#include "ui/pianoroll/NoteTools.h"
 
 // Owns the long-lived application services and wires them together.
 // Constructed once by MainComponent and passed by reference to panels.
@@ -192,6 +193,11 @@ public:
     PluginWindowManager pluginWindows;
     AutomationWriter    automationWriter { project, engine };
     BuiltinEffectWindows builtinEditors;
+
+    // Piano-roll copy/paste. It lives here rather than in the panel because a
+    // panel is rebuilt whenever the layout changes, and a copy has to survive
+    // that — as it does a change of channel or pattern, which is the point.
+    notetools::Clipboard noteClipboard;
 
 private:
     void updateAudioSpec()
