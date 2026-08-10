@@ -5,6 +5,7 @@
 #include "EditorParts.h"
 #include "KickEditor.h"
 #include "SynthDisplays.h"
+#include "model/SynthPresets.h"
 #include "model/UndoGesture.h"
 #include "plugins/PluginGenerator.h"
 #include "sandbox/SandboxedGenerator.h"
@@ -370,6 +371,8 @@ SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
 {
     using namespace synthdisplays;
 
+    buildPresetBar();
+
     // Row 1: sound sources.
     addModule ("OSC   -2 SIN  -1 TRI  0 SAW  1 SQR", std::make_unique<OscDisplay> (channel),
                { ids::oscShape, ids::oscWarp, ids::osc2Semi, ids::osc2Detune, ids::osc2Mix });
@@ -402,13 +405,196 @@ SynthEditor::SynthEditor (AppServices& s, juce::ValueTree ch)
     bridge = std::make_unique<KeyboardBridge> (services, channel);
     keyboardState.addListener (bridge.get());
     services.liveNoteListeners.add (this);
+    channel.addListener (this);
 
-    setSize (700, 3 * (SynthModule::preferredHeight() + 8) + 56 + 28);
+    setSize (preferredWidth, 26 + 6 + 3 * (SynthModule::preferredHeight() + 8) + 56 + 28);
 }
 
 SynthEditor::~SynthEditor()
 {
+    channel.removeListener (this);
     services.liveNoteListeners.remove (this);
+}
+
+// ---------------------------------------------------------------------------
+// presets
+// ---------------------------------------------------------------------------
+
+void SynthEditor::buildPresetBar()
+{
+    for (auto* button : { &prevButton, &nextButton })
+    {
+        button->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*button);
+    }
+    prevButton.setTooltip ("Previous preset in this category");
+    nextButton.setTooltip ("Next preset in this category");
+    prevButton.onClick = [this] { stepPreset (-1); };
+    nextButton.onClick = [this] { stepPreset (1); };
+
+    categoryBox.setWantsKeyboardFocus (false);
+    categoryBox.onChange = [this] { refreshPresetLists (false); };
+    addAndMakeVisible (categoryBox);
+
+    presetBox.setWantsKeyboardFocus (false);
+    presetBox.setTextWhenNothingSelected ("Preset...");
+    presetBox.onChange = [this]
+    {
+        if (presetBox.getSelectedId() > 0)
+            applyPreset (presetBox.getText());
+    };
+    addAndMakeVisible (presetBox);
+
+    saveButton.setWantsKeyboardFocus (false);
+    saveButton.setTooltip ("Save these settings as your own patch in "
+                           + synthpresets::userDirectory().getFullPathName());
+    saveButton.onClick = [this] { savePreset(); };
+    addAndMakeVisible (saveButton);
+
+    descriptionLabel.setFont (theme::uiFont (10.5f));
+    descriptionLabel.setColour (juce::Label::textColourId, theme::textDim);
+    descriptionLabel.setJustificationType (juce::Justification::centredRight);
+    addAndMakeVisible (descriptionLabel);
+
+    refreshPresetLists (true);
+}
+
+// Saving asks for a name rather than opening a file browser: user patches all
+// live in one folder, so the name is the only real choice.
+void SynthEditor::savePreset()
+{
+    auto* window = new juce::AlertWindow ("Save synth preset", {},
+                                          juce::MessageBoxIconType::NoIcon);
+    window->addTextEditor ("name", channel[ids::presetName].toString().isNotEmpty()
+                                       ? channel[ids::presetName].toString()
+                                       : channel[ids::name].toString());
+    window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    // The editor can be closed while the dialog is up, so the callback works
+    // through the model and only touches the panel if it is still there. The
+    // early exits are why the window is owned rather than deleted at the end.
+    juce::Component::SafePointer<SynthEditor> editor (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create (
+        [window, editor, target = channel, &model = services.project] (int result) mutable
+        {
+            std::unique_ptr<juce::AlertWindow> owned (window);
+            if (result != 1)
+                return;
+
+            const auto name = window->getTextEditorContents ("name").trim();
+            if (name.isEmpty())
+                return;
+
+            if (synthpresets::isFactoryName (name))
+            {
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                    "Save synth preset",
+                    "\"" + name + "\" is a factory patch. Pick another name.");
+                return;
+            }
+
+            if (synthpresets::save (target, name) == juce::File())
+            {
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                    "Save synth preset",
+                    "Could not write to " + synthpresets::userDirectory().getFullPathName());
+                return;
+            }
+
+            {
+                const undoGesture::Scoped step (model, "Save synth preset");
+                target.setProperty (ids::presetName, name, &model.getUndoManager());
+            }
+
+            // Saving again under the same name changes no property, so the
+            // tree listener may not fire: show the new patch either way.
+            if (editor != nullptr)
+            {
+                editor->categoryBox.setSelectedId (1, juce::dontSendNotification);
+                editor->refreshPresetLists (true);
+            }
+        }));
+}
+
+// Both boxes are rebuilt from the bank every time, because the bank itself can
+// change under the editor: saving a patch adds one, and the User category only
+// exists once there is something in it.
+void SynthEditor::refreshPresetLists (bool keepSelection)
+{
+    const auto wanted = keepSelection ? channel[ids::presetName].toString() : juce::String();
+    const auto category = categoryBox.getSelectedId() <= 1 ? juce::String()
+                                                           : categoryBox.getText();
+
+    categoryBox.clear (juce::dontSendNotification);
+    categoryBox.addItem ("All categories", 1);
+    int categoryId = 2;
+    for (const auto& name : synthpresets::categories())
+        categoryBox.addItem (name, categoryId++);
+    categoryBox.setSelectedId (1, juce::dontSendNotification);
+    for (int i = 0; i < categoryBox.getNumItems(); ++i)
+        if (categoryBox.getItemText (i) == category)
+            categoryBox.setSelectedItemIndex (i, juce::dontSendNotification);
+
+    const auto stillFiltering = categoryBox.getSelectedId() <= 1 ? juce::String() : category;
+
+    presetBox.clear (juce::dontSendNotification);
+    int id = 1;
+    for (const auto& preset : synthpresets::all())
+        if (stillFiltering.isEmpty() || preset.category == stillFiltering)
+            presetBox.addItem (preset.name, id++);
+
+    if (wanted.isNotEmpty())
+        for (int i = 0; i < presetBox.getNumItems(); ++i)
+            if (presetBox.getItemText (i) == wanted)
+            {
+                presetBox.setSelectedItemIndex (i, juce::dontSendNotification);
+                break;
+            }
+
+    const auto selected = synthpresets::find (presetBox.getText());
+    descriptionLabel.setText (selected.has_value() ? selected->description : juce::String(),
+                              juce::dontSendNotification);
+}
+
+void SynthEditor::applyPreset (const juce::String& name)
+{
+    const auto preset = synthpresets::find (name);
+    if (! preset.has_value())
+        return;
+
+    const undoGesture::Scoped step (services.project, "Load synth preset");
+    synthpresets::apply (channel, *preset, &services.project.getUndoManager());
+}
+
+void SynthEditor::stepPreset (int delta)
+{
+    if (presetBox.getNumItems() == 0)
+        return;
+    const int current = presetBox.getSelectedItemIndex();
+    const int next = juce::jlimit (0, presetBox.getNumItems() - 1,
+                                   current < 0 ? (delta > 0 ? 0 : presetBox.getNumItems() - 1)
+                                               : current + delta);
+    presetBox.setSelectedItemIndex (next, juce::sendNotificationSync);
+}
+
+// A preset load writes the whole table in one go, and undo, automation and the
+// control API all reach the same tree — so the panel follows the tree rather
+// than only its own knobs.
+void SynthEditor::valueTreePropertyChanged (juce::ValueTree& tree, const juce::Identifier& property)
+{
+    if (tree != channel)
+        return;
+
+    if (property == ids::presetName)
+    {
+        refreshPresetLists (true);
+        return;
+    }
+
+    if (channelparams::find ("synth", property.toString()) != nullptr)
+        for (auto& module : modules)
+            module->refreshKnobs();
 }
 
 // Reflects live input on the on-screen keys. The bridge is detached first so
@@ -460,6 +646,21 @@ void SynthEditor::paint (juce::Graphics& g)
 void SynthEditor::resized()
 {
     auto r = getLocalBounds().reduced (10);
+
+    // --- preset bar ---
+    auto bar = r.removeFromTop (26);
+    prevButton.setBounds (bar.removeFromLeft (26));
+    bar.removeFromLeft (2);
+    nextButton.setBounds (bar.removeFromLeft (26));
+    bar.removeFromLeft (8);
+    categoryBox.setBounds (bar.removeFromLeft (140));
+    bar.removeFromLeft (6);
+    presetBox.setBounds (bar.removeFromLeft (190));
+    bar.removeFromLeft (6);
+    saveButton.setBounds (bar.removeFromLeft (74));
+    bar.removeFromLeft (10);
+    descriptionLabel.setBounds (bar);
+    r.removeFromTop (6);
 
     auto keyboardArea = r.removeFromBottom (56);
     // Size the keys so the range exactly fills the width (36..96 spans 36 white keys).

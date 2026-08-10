@@ -235,12 +235,26 @@ Hot shared files: `Ids.h`, `ChannelParams.h`, `GeneratorPool.cpp`,
 
 ## Stage 3 — ecosystem (parallel, independent subsystems)
 
-### WP12 Synth patch presets
-- Save/load all synth CHANNEL props + MODS children as `.eurypreset` XML;
-  right-click menu in ChannelEditor: Save preset / Load / factory list.
-- 10–15 factory patches (bass, lead, pad, pluck, keys) proving the engine.
-  Author them AFTER Stages 1–2 land.
-- Generic enough to work for kick/sampler channels for free if trivial.
+### WP12 Synth patch presets — ~~shipped ahead of the rest~~
+Landed against today's engine (see `src/model/SynthPresets.h/.cpp`), not the
+Stage 1–2 one:
+- Factory bank of 35 patches by genre — Schranz and Drum & Bass deepest, then
+  Techno / Trance / House / Hardstyle / Dubstep — plus user patches saved as
+  `.eurypreset` XML in `~/Music/Eurydice/Presets/Synth`, one attribute per
+  parameter.
+- Preset bar in the synth editor (category / preset / `Save...` / description),
+  `synth.presets` / `synth.loadPreset` / `synth.savePreset` over the control
+  API, `SynthPresetTests.cpp` pinning the bank (every patch audible, finite,
+  within headroom, and distinguishable).
+- **Forward compatible by construction**: `apply()` walks
+  `channelparams::synth()` and defaults anything the preset does not name, so a
+  parameter added by a later WP lands at its default in every existing patch —
+  no migration, no bank edit. Non-scalar state (MODS children) will need its
+  own hook here when WP0.3 lands.
+- Still open: revisit the bank once wavetables (WP1) and the matrix (WP8) are
+  in — the patches are built from what the engine has today, and the hoovers in
+  particular want a real pitch envelope. Nothing here works for kick/sampler
+  channels; the kick has its own bank.
 
 ### WP13 Mixer FX gap: chorus, phaser, distortion
 - Three new builtin effects following the existing pattern

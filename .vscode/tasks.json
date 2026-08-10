@@ -43,6 +43,16 @@
             "presentation": { "reveal": "silent", "clear": true }
         },
         {
+            // What the "Eurydice (no debugger)" launch config runs, as a task:
+            // for a keybinding, or for chaining. Ctrl-C in the terminal ends it.
+            "label": "run",
+            "type": "shell",
+            "command": "./build/Eurydice_artefacts/RelWithDebInfo/Eurydice.app/Contents/MacOS/Eurydice",
+            "dependsOn": "build",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "clear": true }
+        },
+        {
             "label": "run tests",
             "type": "shell",
             "command": "./build/EurydiceTests_artefacts/RelWithDebInfo/EurydiceTests",

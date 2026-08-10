@@ -115,7 +115,15 @@ tool("daw_channel_set",
   + "(0 tick, 1 noise, 2 pulse, 3 the WAV at samplePath), kickNoiseLevel/kickNoiseDecay/kickNoiseTone (0 dark .. 1 bright). "
   + "Output chain: drive + driveCurve, kickEqLowFreq/kickEqLowGain (shelf, dB), kickEqMidFreq/kickEqMidGain (bell), "
   + "kickEqHighFreq/kickEqHighGain (shelf), kickComp (0..1), kickLimit (0..1), kickOutput (dB). "
-  + "For a whole sound at once, prefer daw_kick_preset.",
+  + "For a whole sound at once, prefer daw_kick_preset. "
+  + "Amp envelope (sampler + synth): attack/decay/release (s), sustain (0..1). "
+  + "Synth oscillators: oscShape (morph: -2 sine, -1 triangle, 0 saw, 1 square), oscWarp (0..1 phase bend / pulse width), "
+  + "osc2Semi (-24..24 st), osc2Detune (-50..50 cents), osc2Mix (0..1 crossfade to osc 2). "
+  + "Unison: unisonVoices (1..7), unisonDetune (0..50 cents), unisonWidth (0..1). Layers: subLevel, noiseLevel. "
+  + "Filter: filterType (0 LP, 1 BP, 2 HP), cutoff (Hz), resonance (0..1), filterKey (0..1 keytracking), "
+  + "filterEnvAmt (-1..1), fenvAttack/fenvDecay/fenvRelease (s), fenvSustain (0..1). "
+  + "LFO: lfoRate (Hz), lfoAmount (0..1), lfoTarget (0 cutoff, 1 pitch, 2 warp, 3 pan). Voice: glide (s). "
+  + "For a whole synth patch at once, prefer daw_synth_preset.",
   {
     channelId: z.number(),
     volume: z.number().optional(), pan: z.number().optional(), mute: z.boolean().optional(),
@@ -142,6 +150,21 @@ tool("daw_channel_set",
     kickEqHighFreq: z.number().optional(), kickEqHighGain: z.number().optional(),
     kickComp: z.number().optional(), kickLimit: z.number().optional(),
     kickOutput: z.number().optional(),
+    attack: z.number().optional(), decay: z.number().optional(),
+    sustain: z.number().optional(), release: z.number().optional(),
+    oscShape: z.number().optional(), oscWarp: z.number().optional(),
+    osc2Semi: z.number().optional(), osc2Detune: z.number().optional(),
+    osc2Mix: z.number().optional(),
+    unisonVoices: z.number().optional(), unisonDetune: z.number().optional(),
+    unisonWidth: z.number().optional(),
+    subLevel: z.number().optional(), noiseLevel: z.number().optional(),
+    filterType: z.number().optional(), cutoff: z.number().optional(),
+    resonance: z.number().optional(), filterKey: z.number().optional(),
+    filterEnvAmt: z.number().optional(),
+    fenvAttack: z.number().optional(), fenvDecay: z.number().optional(),
+    fenvSustain: z.number().optional(), fenvRelease: z.number().optional(),
+    lfoRate: z.number().optional(), lfoAmount: z.number().optional(),
+    lfoTarget: z.number().optional(), glide: z.number().optional(),
   }, "channel.set");
 
 tool("daw_channel_remove", "Delete a channel and its notes.", { channelId: z.number() }, "channel.remove");
@@ -153,6 +176,18 @@ tool("daw_kick_presets",
 tool("daw_kick_preset",
   "Load a factory preset onto a kick channel. Writes every kick parameter and both envelopes; leaves the channel's rootNote alone so the kick stays tuned to the track.",
   { channelId: z.number(), preset: z.string() }, "kick.loadPreset");
+
+tool("daw_synth_presets",
+  "List the built-in synth's factory patches with their categories (Basics, Schranz, Drum & Bass, Techno, Trance, House, Hardstyle, Dubstep) and a one-line description of what each is for.",
+  {}, "synth.presets");
+
+tool("daw_synth_preset",
+  "Load a factory or user patch onto a synth channel. Writes every synth parameter, resetting anything the patch does not name to its default, and leaves the channel's name, volume, pan and routing alone. Tweak afterwards with daw_channel_set.",
+  { channelId: z.number(), preset: z.string() }, "synth.loadPreset");
+
+tool("daw_synth_save_preset",
+  "Save a synth channel's current settings as a user patch in ~/Music/Eurydice/Presets/Synth, where it joins the factory bank under the User category. Fails if the name belongs to a factory patch.",
+  { channelId: z.number(), preset: z.string() }, "synth.savePreset");
 
 tool("daw_pattern_create", "Create a pattern. " + TIME_HELP,
   { name: z.string().optional(), lengthTicks: z.number().optional() }, "pattern.create");

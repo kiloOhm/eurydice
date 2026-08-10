@@ -16,6 +16,21 @@
             "preLaunchTask": "build"
         },
         {
+            // The same binary with no debugger attached: starts faster, and
+            // nothing traps the signals that come with hosting plugins and the
+            // sandbox helper, so a child process dying ends that child instead
+            // of stopping the session. stdout and DBG output land in the
+            // integrated terminal. node-terminal is VS Code's built-in "run
+            // this command" launcher — it only ever attaches to node, so a
+            // native binary runs clean.
+            "name": "Eurydice (no debugger)",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "./build/Eurydice_artefacts/RelWithDebInfo/Eurydice.app/Contents/MacOS/Eurydice",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "build"
+        },
+        {
             // Use when you need reliable stepping and no <optimized out>.
             // Expect audio glitches: the engine is unoptimised here.
             "name": "Eurydice (unoptimised)",
